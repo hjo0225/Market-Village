@@ -54,7 +54,33 @@ def test_state_exposes_day_stats_portfolio():
     assert set(st) >= {"run_id", "day", "days", "finished", "stats", "portfolio", "total_asset"}
     assert set(st["stats"]) == {"급락패닉저항", "멘탈마모저항", "익절거부제어",
                                 "과대베팅제어", "추격매수저항", "막차불안저항", "멘탈회복"}
-    assert set(st["portfolio"]) == {"avg_cost", "quantity", "cash"}
+    assert set(st["portfolio"]) >= {"avg_cost", "quantity", "cash", "holdings"}
+    # T-214 — 화면 배선용 종목별 분해(주력 1개, 시작 시점 보유수량 1.0).
+    holdings = st["portfolio"]["holdings"]
+    assert len(holdings) == 1
+    h = holdings[0]
+    assert h["category"] == "meme"
+    assert h["quantity"] == 1.0
+    assert h["avg_cost"] == 100.0
+    assert h["value"] == 100.0          # day0: 현재가==avg_cost
+    assert h["unrealized_pnl"] == 0.0
+
+
+def test_portfolio_holdings_breakdown_includes_secondary_positions():
+    # T-214 — T-210의 2차 포지션(추격매수)이 holdings 분해에도 나오는지.
+    stats = _stats()
+    stats["추격매수저항"] = 20.0
+    g = _game(category="stable", start_stats=stats, start_quantity=0.0,
+              start_cash=100.0, other_categories=("meme",))
+    for _ in range(27):
+        g.advance_day(roll=100.0)
+    holdings = g.state()["portfolio"]["holdings"]
+    cats = {h["category"] for h in holdings}
+    assert "meme" in cats
+    meme = next(h for h in holdings if h["category"] == "meme")
+    assert meme["quantity"] > 0
+    assert meme["value"] > 0            # 실제 급등 구간이라 평가액이 0보다 커야 함
+    assert "unrealized_pnl" in meme
 
 
 def test_equivalent_to_batch_run_loop():

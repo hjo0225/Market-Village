@@ -166,7 +166,7 @@ export default function PlayPage() {
       <DayProgressOverlay stageIndex={dayStage} />
 
       <PixelModal isOpen={statsOpen} onClose={() => setStatsOpen(false)} title="🪞 클론 상태" size="sm">
-        <StatsPanel stats={state.stats} showTitle={false} />
+        <StatsPanel stats={state.stats} portfolio={state.portfolio} showTitle={false} />
       </PixelModal>
       <NewsModal
         isOpen={newsOpen} onClose={() => setNewsOpen(false)} news={news}

@@ -39,9 +39,19 @@ export interface CloneStats {
   과대베팅제어: number; 추격매수저항: number; 막차불안저항: number; 멘탈회복: number;
 }
 
+// PRD §6.2 — 4카테고리 한글 라벨(백엔드 category 슬러그 → 표시용).
+export const CATEGORY_LABELS: Record<string, string> = {
+  large_stable: "대형 안정형", mid_alt: "중견 알트형", meme: "밈형", stable: "스테이블",
+};
+
+export interface PortfolioHolding {
+  category: string; quantity: number; avg_cost: number; value: number; unrealized_pnl: number;
+}
+
 export interface Portfolio {
   avg_cost: number; quantity: number; cash: number;
   positions?: Record<string, { avg_cost: number; quantity: number }>;
+  holdings: PortfolioHolding[];
 }
 
 export interface GameState {

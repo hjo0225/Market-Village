@@ -229,6 +229,34 @@ class GameRun:
         return out
 
     # --- 표현 계층이 읽는 스냅샷 ----------------------------------------- #
+    def _holdings_breakdown(self) -> list[dict]:
+        """T-214 — 화면 표시용 종목별 분해(주력 + 2차 포지션). 순수 조회, 상태 무변경."""
+        out: list[dict] = []
+        qty = self.holding["quantity"]
+        if qty:
+            pnl = (self.last_price - self.holding["avg_cost"]) * qty
+            out.append({
+                "category": self.category,
+                "quantity": round(qty, 6),
+                "avg_cost": round(self.holding["avg_cost"], 4),
+                "value": round(qty * self.last_price, 4),
+                "unrealized_pnl": round(pnl, 4),
+            })
+        for cat, pos in self.holding.get("positions", {}).items():
+            pqty = pos["quantity"]
+            if not pqty:
+                continue
+            fate = self.fl.day_ohlc(cat, self.day)
+            price = fate[3] if fate is not None else pos["avg_cost"]
+            out.append({
+                "category": cat,
+                "quantity": round(pqty, 6),
+                "avg_cost": round(pos["avg_cost"], 4),
+                "value": round(pqty * price, 4),
+                "unrealized_pnl": round((price - pos["avg_cost"]) * pqty, 4),
+            })
+        return out
+
     def state(self) -> dict:
         return {
             "run_id": self.run_id,
@@ -236,7 +264,7 @@ class GameRun:
             "days": self.days,
             "finished": self.finished,
             "stats": dict(self.stats),
-            "portfolio": dict(self.holding),
+            "portfolio": {**dict(self.holding), "holdings": self._holdings_breakdown()},
             "total_asset": round(
                 self.last_snap.total_asset if self.last_snap is not None
                 else self.holding["cash"] + self.holding["quantity"] * self.last_price, 4),
