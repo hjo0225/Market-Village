@@ -1,0 +1,4 @@
+# 실제 배포 시 example.com을 실 도메인으로 교체. Caddy가 Let's Encrypt로 TLS 자동 발급.
+example.com {
+    reverse_proxy frontend:3000
+}
