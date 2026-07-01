@@ -42,11 +42,17 @@ html, body {
   from { opacity: 0; transform: translateY(4px); }
   to { opacity: 1; transform: translateY(0); }
 }
+@keyframes card-reveal {
+  0% { opacity: 0; transform: translateY(28px) scale(0.82); filter: brightness(1.8) saturate(1.4); }
+  55% { opacity: 1; transform: translateY(-5px) scale(1.04); }
+  100% { opacity: 1; transform: translateY(0) scale(1); filter: brightness(1) saturate(1); }
+}
 .animate-pixel-pop { animation: pixel-pop 0.14s ease-out; }
 .animate-pulse-soft { animation: pulse-soft 1.4s ease-in-out infinite; }
 .animate-slide-up { animation: slide-up 0.16s ease-out; }
 .animate-bump { animation: bump 0.45s ease-out; }
 .animate-fade-in { animation: fade-in 0.2s ease-out; }
+.animate-card-reveal { animation: card-reveal 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
 
 .pixel-border { border: 2px solid #161616; }
 .pixel-shadow { box-shadow: 3px 3px 0 0 #161616; }
