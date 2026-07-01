@@ -1,0 +1,322 @@
+{
+  "generated_at": "2026-06-27T09:42:52.010540+00:00",
+  "vs_currency": "krw",
+  "weighting": "cap_weighted",
+  "total": 37,
+  "markets": [
+    "KRW-BTC",
+    "KRW-ETH",
+    "KRW-SOL",
+    "KRW-ADA",
+    "KRW-AVAX",
+    "KRW-SUI",
+    "KRW-ARB",
+    "KRW-OP",
+    "KRW-POL",
+    "KRW-MNT",
+    "KRW-UNI",
+    "KRW-AAVE",
+    "KRW-COMP",
+    "KRW-PENDLE",
+    "KRW-LINK",
+    "KRW-DOT",
+    "KRW-ATOM",
+    "KRW-NEAR",
+    "KRW-GRT",
+    "KRW-XRP",
+    "KRW-XLM",
+    "KRW-BCH",
+    "KRW-ALGO",
+    "KRW-DOGE",
+    "KRW-SHIB",
+    "KRW-PEPE",
+    "KRW-BONK",
+    "KRW-WIF",
+    "KRW-RENDER",
+    "KRW-TAO",
+    "KRW-AKT",
+    "KRW-THETA",
+    "KRW-SAND",
+    "KRW-MANA",
+    "KRW-AXS",
+    "KRW-IMX",
+    "KRW-BIGTIME"
+  ],
+  "sectors": {
+    "L1_major": [
+      {
+        "market": "KRW-BTC",
+        "symbol": "BTC",
+        "coingecko_id": "bitcoin",
+        "market_cap": 1856506004026885.0,
+        "weight": 0.832473
+      },
+      {
+        "market": "KRW-ETH",
+        "symbol": "ETH",
+        "coingecko_id": "ethereum",
+        "market_cap": 292676390925691.0,
+        "weight": 0.131239
+      },
+      {
+        "market": "KRW-SOL",
+        "symbol": "SOL",
+        "coingecko_id": "solana",
+        "market_cap": 63910468747023.0,
+        "weight": 0.028658
+      },
+      {
+        "market": "KRW-ADA",
+        "symbol": "ADA",
+        "coingecko_id": "cardano",
+        "market_cap": 8394961614130.0,
+        "weight": 0.003764
+      },
+      {
+        "market": "KRW-AVAX",
+        "symbol": "AVAX",
+        "coingecko_id": "avalanche-2",
+        "market_cap": 4316113033806.0,
+        "weight": 0.001935
+      },
+      {
+        "market": "KRW-SUI",
+        "symbol": "SUI",
+        "coingecko_id": "sui",
+        "market_cap": 4305750885150.0,
+        "weight": 0.001931
+      }
+    ],
+    "L2_scaling": [
+      {
+        "market": "KRW-ARB",
+        "symbol": "ARB",
+        "coingecko_id": "arbitrum",
+        "market_cap": 724981173835.0,
+        "weight": 0.162996
+      },
+      {
+        "market": "KRW-OP",
+        "symbol": "OP",
+        "coingecko_id": "optimism",
+        "market_cap": 345620085761.0,
+        "weight": 0.077705
+      },
+      {
+        "market": "KRW-POL",
+        "symbol": "POL",
+        "coingecko_id": "polygon-ecosystem-token",
+        "market_cap": 1167519543077.0,
+        "weight": 0.262491
+      },
+      {
+        "market": "KRW-MNT",
+        "symbol": "MNT",
+        "coingecko_id": "mantle",
+        "market_cap": 2209724134349.0,
+        "weight": 0.496808
+      }
+    ],
+    "DeFi": [
+      {
+        "market": "KRW-UNI",
+        "symbol": "UNI",
+        "coingecko_id": "uniswap",
+        "market_cap": 2781293566534.0,
+        "weight": 0.499134
+      },
+      {
+        "market": "KRW-AAVE",
+        "symbol": "AAVE",
+        "coingecko_id": "aave",
+        "market_cap": 2224695078253.0,
+        "weight": 0.399246
+      },
+      {
+        "market": "KRW-COMP",
+        "symbol": "COMP",
+        "coingecko_id": "compound-governance-token",
+        "market_cap": 238679319582.0,
+        "weight": 0.042834
+      },
+      {
+        "market": "KRW-PENDLE",
+        "symbol": "PENDLE",
+        "coingecko_id": "pendle",
+        "market_cap": 327574836741.0,
+        "weight": 0.058787
+      }
+    ],
+    "infra_oracle": [
+      {
+        "market": "KRW-LINK",
+        "symbol": "LINK",
+        "coingecko_id": "chainlink",
+        "market_cap": 8438650735587.0,
+        "weight": 0.535737
+      },
+      {
+        "market": "KRW-DOT",
+        "symbol": "DOT",
+        "coingecko_id": "polkadot",
+        "market_cap": 2187523670637.0,
+        "weight": 0.138877
+      },
+      {
+        "market": "KRW-ATOM",
+        "symbol": "ATOM",
+        "coingecko_id": "cosmos",
+        "market_cap": 1251418803900.0,
+        "weight": 0.079448
+      },
+      {
+        "market": "KRW-NEAR",
+        "symbol": "NEAR",
+        "coingecko_id": "near",
+        "market_cap": 3576737193744.0,
+        "weight": 0.227073
+      },
+      {
+        "market": "KRW-GRT",
+        "symbol": "GRT",
+        "coingecko_id": "the-graph",
+        "market_cap": 297136436168.0,
+        "weight": 0.018864
+      }
+    ],
+    "payments_sov": [
+      {
+        "market": "KRW-XRP",
+        "symbol": "XRP",
+        "coingecko_id": "ripple",
+        "market_cap": 100814727287582.0,
+        "weight": 0.861173
+      },
+      {
+        "market": "KRW-XLM",
+        "symbol": "XLM",
+        "coingecko_id": "stellar",
+        "market_cap": 9049080792191.0,
+        "weight": 0.077299
+      },
+      {
+        "market": "KRW-BCH",
+        "symbol": "BCH",
+        "coingecko_id": "bitcoin-cash",
+        "market_cap": 6032913906452.0,
+        "weight": 0.051534
+      },
+      {
+        "market": "KRW-ALGO",
+        "symbol": "ALGO",
+        "coingecko_id": "algorand",
+        "market_cap": 1169969220109.0,
+        "weight": 0.009994
+      }
+    ],
+    "meme": [
+      {
+        "market": "KRW-DOGE",
+        "symbol": "DOGE",
+        "coingecko_id": "dogecoin",
+        "market_cap": 17881292575192.0,
+        "weight": 0.741871
+      },
+      {
+        "market": "KRW-SHIB",
+        "symbol": "SHIB",
+        "coingecko_id": "shiba-inu",
+        "market_cap": 3841016069347.0,
+        "weight": 0.159359
+      },
+      {
+        "market": "KRW-PEPE",
+        "symbol": "PEPE",
+        "coingecko_id": "pepe",
+        "market_cap": 1551610779973.0,
+        "weight": 0.064374
+      },
+      {
+        "market": "KRW-BONK",
+        "symbol": "BONK",
+        "coingecko_id": "bonk",
+        "market_cap": 570023562573.0,
+        "weight": 0.02365
+      },
+      {
+        "market": "KRW-WIF",
+        "symbol": "WIF",
+        "coingecko_id": "dogwifcoin",
+        "market_cap": 259038080505.0,
+        "weight": 0.010747
+      }
+    ],
+    "ai_depin": [
+      {
+        "market": "KRW-RENDER",
+        "symbol": "RENDER",
+        "coingecko_id": "render-token",
+        "market_cap": 1273122268364.0,
+        "weight": 0.259488
+      },
+      {
+        "market": "KRW-TAO",
+        "symbol": "TAO",
+        "coingecko_id": "bittensor",
+        "market_cap": 3135662076582.0,
+        "weight": 0.639112
+      },
+      {
+        "market": "KRW-AKT",
+        "symbol": "AKT",
+        "coingecko_id": "akash-network",
+        "market_cap": 293798282744.0,
+        "weight": 0.059882
+      },
+      {
+        "market": "KRW-THETA",
+        "symbol": "THETA",
+        "coingecko_id": "theta-token",
+        "market_cap": 203694960245.0,
+        "weight": 0.041517
+      }
+    ],
+    "gaming_meta": [
+      {
+        "market": "KRW-SAND",
+        "symbol": "SAND",
+        "coingecko_id": "the-sandbox",
+        "market_cap": 193074737201.0,
+        "weight": 0.230446
+      },
+      {
+        "market": "KRW-MANA",
+        "symbol": "MANA",
+        "coingecko_id": "decentraland",
+        "market_cap": 196802813959.0,
+        "weight": 0.234895
+      },
+      {
+        "market": "KRW-AXS",
+        "symbol": "AXS",
+        "coingecko_id": "axie-infinity",
+        "market_cap": 265523632939.0,
+        "weight": 0.316918
+      },
+      {
+        "market": "KRW-IMX",
+        "symbol": "IMX",
+        "coingecko_id": "immutable-x",
+        "market_cap": 160255379777.0,
+        "weight": 0.191274
+      },
+      {
+        "market": "KRW-BIGTIME",
+        "symbol": "BIGTIME",
+        "coingecko_id": "big-time",
+        "market_cap": 22174815901.0,
+        "weight": 0.026467
+      }
+    ]
+  }
+}

@@ -1,0 +1,99 @@
+{
+  "_doc": "Pre-computed portfolio allocation presets. Per persona: array of presets, each with total capital (KRW), cash_pct, and alloc = {symbol: pct}. cash_pct + sum(alloc) must equal 100. Index 0 is the default.",
+  "panic": [
+    {"total": 3000000,   "cash_pct": 60, "alloc": {"BTC": 40}},
+    {"total": 5000000,   "cash_pct": 40, "alloc": {"BTC": 35, "ETH": 25}},
+    {"total": 7000000,   "cash_pct": 30, "alloc": {"BTC": 30, "ETH": 20, "XRP": 20}},
+    {"total": 3000000,   "cash_pct": 50, "alloc": {"ETH": 30, "DOGE": 20}},
+    {"total": 10000000,  "cash_pct": 70, "alloc": {"BTC": 20, "SOL": 10}},
+    {"total": 2000000,   "cash_pct": 20, "alloc": {"SHIB": 40, "DOGE": 40}},
+    {"total": 5000000,   "cash_pct": 45, "alloc": {"BTC": 25, "XRP": 15, "ADA": 15}},
+    {"total": 8000000,   "cash_pct": 35, "alloc": {"ETH": 30, "SOL": 20, "PEPE": 15}},
+    {"total": 4000000,   "cash_pct": 55, "alloc": {"BTC": 30, "DOGE": 15}},
+    {"total": 6000000,   "cash_pct": 25, "alloc": {"BTC": 20, "ETH": 20, "SHIB": 20, "PEPE": 15}}
+  ],
+  "fomo": [
+    {"total": 3000000,   "cash_pct": 10, "alloc": {"SOL": 40, "PEPE": 30, "DOGE": 20}},
+    {"total": 5000000,   "cash_pct": 20, "alloc": {"SOL": 40, "PEPE": 25, "DOGE": 15}},
+    {"total": 8000000,   "cash_pct": 15, "alloc": {"WIF": 30, "BONK": 25, "PEPE": 30}},
+    {"total": 4000000,   "cash_pct": 5,  "alloc": {"DOGE": 35, "SHIB": 35, "BONK": 25}},
+    {"total": 10000000,  "cash_pct": 10, "alloc": {"SOL": 50, "PEPE": 20, "WIF": 20}},
+    {"total": 2000000,   "cash_pct": 15, "alloc": {"PEPE": 45, "BONK": 40}},
+    {"total": 6000000,   "cash_pct": 20, "alloc": {"SOL": 30, "DOGE": 25, "SHIB": 25}},
+    {"total": 15000000,  "cash_pct": 10, "alloc": {"SOL": 35, "WIF": 25, "PEPE": 15, "BONK": 15}},
+    {"total": 3000000,   "cash_pct": 5,  "alloc": {"DOGE": 50, "PEPE": 45}},
+    {"total": 7000000,   "cash_pct": 25, "alloc": {"SOL": 35, "DOGE": 20, "SHIB": 20}}
+  ],
+  "value": [
+    {"total": 30000000,  "cash_pct": 40, "alloc": {"BTC": 40, "ETH": 20}},
+    {"total": 50000000,  "cash_pct": 30, "alloc": {"BTC": 40, "ETH": 30}},
+    {"total": 70000000,  "cash_pct": 25, "alloc": {"BTC": 45, "ETH": 20, "LINK": 10}},
+    {"total": 100000000, "cash_pct": 35, "alloc": {"BTC": 50, "ETH": 15}},
+    {"total": 30000000,  "cash_pct": 20, "alloc": {"BTC": 35, "ETH": 25, "DOT": 10, "ATOM": 10}},
+    {"total": 50000000,  "cash_pct": 50, "alloc": {"BTC": 30, "ETH": 20}},
+    {"total": 80000000,  "cash_pct": 30, "alloc": {"BTC": 35, "ETH": 20, "LINK": 15}},
+    {"total": 40000000,  "cash_pct": 45, "alloc": {"BTC": 30, "ETH": 15, "AAVE": 10}},
+    {"total": 60000000,  "cash_pct": 20, "alloc": {"BTC": 50, "ETH": 20, "DOT": 10}},
+    {"total": 25000000,  "cash_pct": 35, "alloc": {"BTC": 40, "ETH": 25}}
+  ],
+  "quant": [
+    {"total": 15000000,  "cash_pct": 40, "alloc": {"BTC": 25, "ETH": 20, "SOL": 15}},
+    {"total": 20000000,  "cash_pct": 35, "alloc": {"BTC": 30, "ETH": 20, "SOL": 15}},
+    {"total": 30000000,  "cash_pct": 30, "alloc": {"BTC": 25, "ETH": 15, "SOL": 15, "ARB": 15}},
+    {"total": 10000000,  "cash_pct": 25, "alloc": {"BTC": 30, "ETH": 25, "OP": 20}},
+    {"total": 50000000,  "cash_pct": 40, "alloc": {"BTC": 20, "ETH": 15, "SOL": 15, "AVAX": 10}},
+    {"total": 15000000,  "cash_pct": 20, "alloc": {"SOL": 30, "ARB": 25, "OP": 25}},
+    {"total": 25000000,  "cash_pct": 35, "alloc": {"BTC": 25, "ETH": 20, "NEAR": 20}},
+    {"total": 20000000,  "cash_pct": 30, "alloc": {"BTC": 20, "SOL": 20, "AVAX": 15, "SUI": 15}},
+    {"total": 35000000,  "cash_pct": 45, "alloc": {"BTC": 30, "ETH": 25}},
+    {"total": 12000000,  "cash_pct": 20, "alloc": {"ETH": 30, "SOL": 25, "ARB": 25}}
+  ],
+  "whale": [
+    {"total": 300000000, "cash_pct": 30, "alloc": {"BTC": 50, "ETH": 20}},
+    {"total": 500000000, "cash_pct": 25, "alloc": {"BTC": 50, "ETH": 25}},
+    {"total": 800000000, "cash_pct": 20, "alloc": {"BTC": 55, "ETH": 15, "SOL": 10}},
+    {"total": 1000000000,"cash_pct": 40, "alloc": {"BTC": 45, "ETH": 15}},
+    {"total": 200000000, "cash_pct": 15, "alloc": {"BTC": 50, "ETH": 20, "XRP": 15}},
+    {"total": 500000000, "cash_pct": 50, "alloc": {"BTC": 35, "ETH": 15}},
+    {"total": 700000000, "cash_pct": 20, "alloc": {"BTC": 40, "ETH": 20, "LINK": 10, "SOL": 10}},
+    {"total": 300000000, "cash_pct": 35, "alloc": {"BTC": 45, "ETH": 20}},
+    {"total": 1500000000,"cash_pct": 30, "alloc": {"BTC": 60, "ETH": 10}},
+    {"total": 400000000, "cash_pct": 25, "alloc": {"BTC": 40, "ETH": 20, "SOL": 15}}
+  ],
+  "contrarian": [
+    {"total": 10000000,  "cash_pct": 55, "alloc": {"BTC": 25, "ETH": 20}},
+    {"total": 15000000,  "cash_pct": 50, "alloc": {"BTC": 30, "ETH": 20}},
+    {"total": 25000000,  "cash_pct": 40, "alloc": {"BTC": 25, "AAVE": 20, "UNI": 15}},
+    {"total": 10000000,  "cash_pct": 30, "alloc": {"ETH": 30, "MKR": 20, "UNI": 20}},
+    {"total": 30000000,  "cash_pct": 60, "alloc": {"BTC": 25, "ETH": 15}},
+    {"total": 20000000,  "cash_pct": 45, "alloc": {"BTC": 20, "AAVE": 20, "COMP": 15}},
+    {"total": 8000000,   "cash_pct": 35, "alloc": {"ETH": 30, "UNI": 20, "LINK": 15}},
+    {"total": 15000000,  "cash_pct": 50, "alloc": {"BTC": 30, "ATOM": 20}},
+    {"total": 40000000,  "cash_pct": 55, "alloc": {"BTC": 25, "ETH": 10, "AAVE": 10}},
+    {"total": 12000000,  "cash_pct": 40, "alloc": {"BTC": 20, "ETH": 20, "UNI": 20}}
+  ],
+  "news_bot": [
+    {"total": 1000000,   "cash_pct": 90, "alloc": {"BTC": 10}},
+    {"total": 2000000,   "cash_pct": 80, "alloc": {"BTC": 20}},
+    {"total": 1000000,   "cash_pct": 100, "alloc": {}},
+    {"total": 3000000,   "cash_pct": 85, "alloc": {"ETH": 15}},
+    {"total": 1500000,   "cash_pct": 90, "alloc": {"BTC": 10}},
+    {"total": 2000000,   "cash_pct": 75, "alloc": {"BTC": 15, "ETH": 10}},
+    {"total": 1000000,   "cash_pct": 95, "alloc": {"BTC": 5}},
+    {"total": 2500000,   "cash_pct": 80, "alloc": {"BTC": 10, "ETH": 10}},
+    {"total": 500000,    "cash_pct": 100, "alloc": {}},
+    {"total": 1500000,   "cash_pct": 85, "alloc": {"BTC": 15}}
+  ],
+  "conspiracy": [
+    {"total": 2000000,   "cash_pct": 20, "alloc": {"DOGE": 35, "SHIB": 25, "PEPE": 20}},
+    {"total": 4000000,   "cash_pct": 30, "alloc": {"DOGE": 30, "SHIB": 20, "PEPE": 20}},
+    {"total": 6000000,   "cash_pct": 25, "alloc": {"PEPE": 35, "BONK": 20, "WIF": 20}},
+    {"total": 3000000,   "cash_pct": 15, "alloc": {"DOGE": 40, "SHIB": 25, "BONK": 20}},
+    {"total": 8000000,   "cash_pct": 30, "alloc": {"DOGE": 25, "PEPE": 25, "WIF": 20}},
+    {"total": 2000000,   "cash_pct": 10, "alloc": {"SHIB": 45, "PEPE": 45}},
+    {"total": 5000000,   "cash_pct": 20, "alloc": {"DOGE": 30, "PEPE": 25, "BONK": 25}},
+    {"total": 3000000,   "cash_pct": 35, "alloc": {"DOGE": 35, "SHIB": 30}},
+    {"total": 10000000,  "cash_pct": 25, "alloc": {"PEPE": 30, "WIF": 25, "BONK": 20}},
+    {"total": 4000000,   "cash_pct": 15, "alloc": {"DOGE": 25, "SHIB": 25, "PEPE": 20, "BONK": 15}}
+  ]
+}

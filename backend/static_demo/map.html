@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Market Village — 배경 지도</title>
+<script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+<style>
+  *{ box-sizing:border-box; }
+  html,body{ margin:0; height:100%; background:#5a7a4a; overflow:hidden; }
+  #game{ position:fixed; inset:0; }
+</style>
+</head>
+<body>
+<div id="game"></div>
+
+<script>
+/**
+ * T-FE2 — 순수 배경 지도(§12.0 엔진→표현). 사이드바 없음, 상태 없음.
+ * Next.js(frontend/)가 UI 전체를 소유하고, 이 페이지는 오직 the_ville 위에서
+ * GameRun 클론이 걷는 걸 그리는 <iframe> 배경으로만 쓰인다.
+ *
+ * 사용법: /map?game_id=<Next.js가 만든 게임> — 새 게임을 여기서 만들지 않는다
+ * (이미 있는 게임에 "연결"만 한다). 하루가 지나면 부모 창이
+ * postMessage({type:"walk"})를 보내 오늘 걸음을 재생시킨다.
+ */
+const TILE = 32, MAPW = 140, MAPH = 100;
+const CLONE_ORIG = "gamerun_clone";
+let game = null, scene = null, sprites = {};
+
+// 개발환경 프록시(Next.js rewrites)가 Windows에서 간헐적으로 503/네트워크 오류를
+// 낼 수 있어(알려진 환경 플레이크, RETRO 참고) 1회 자동 재시도한다.
+async function api(path){
+  for (let attempt = 0; attempt < 2; attempt++){
+    try {
+      const r = await fetch(path);
+      if (r.ok) return r.json();
+    } catch (e) { /* 재시도 */ }
+    await new Promise((res) => setTimeout(res, 400));
+  }
+  return { status: "error", error: "network" };
+}
+
+function bootPhaser(underscore, initial, x, y){
+  if (game){ game.destroy(true); sprites = {}; }
+  const config = {
+    type: Phaser.AUTO, parent: "game", backgroundColor: "#5a7a4a",
+    pixelArt: true,
+    scale: { mode: Phaser.Scale.RESIZE, width: "100%", height: "100%" },
+    scene: { preload, create, update },
+  };
+  function preload(){
+    this.load.image("bg", "/assets/the_ville/visuals/the_ville_full.png");
+    this.load.image("fg", "/assets/the_ville/visuals/the_ville_fg.png");
+    this.load.spritesheet(underscore, "/assets/characters/" + underscore + ".png",
+      { frameWidth: 32, frameHeight: 32 });
+  }
+  function create(){
+    scene = this;
+    this.add.image(0, 0, "bg").setOrigin(0).setDisplaySize(MAPW * TILE, MAPH * TILE);
+    this.add.image(0, 0, "fg").setOrigin(0).setDisplaySize(MAPW * TILE, MAPH * TILE).setDepth(15);
+    const dirs = { down: [0, 1, 2], left: [3, 4, 5], right: [6, 7, 8], up: [9, 10, 11] };
+    Object.entries(dirs).forEach(([d, fr]) => {
+      this.anims.create({ key: underscore + "-" + d,
+        frames: this.anims.generateFrameNumbers(underscore, { frames: fr }), frameRate: 6, repeat: -1 });
+    });
+    const s = this.add.sprite(x * TILE + 16, y * TILE + 16, underscore, 1).setDepth(10);
+    const label = this.add.text(x * TILE + 16, y * TILE - 6, initial,
+      { fontSize: "11px", color: "#fff", backgroundColor: "#0008" }).setOrigin(0.5).setDepth(20);
+    sprites[CLONE_ORIG] = { s, label, key: underscore, tx: x * TILE + 16, ty: y * TILE + 16 };
+    this.cameras.main.setBounds(0, 0, MAPW * TILE, MAPH * TILE);
+    this.cameras.main.centerOn(x * TILE, y * TILE);
+    this.cameras.main.setZoom(1.35);
+  }
+  function update(){
+    Object.values(sprites).forEach((o) => {
+      o.s.x += (o.tx - o.s.x) * 0.18;
+      o.s.y += (o.ty - o.s.y) * 0.18;
+      o.label.x = o.s.x; o.label.y = o.s.y - 22;
+    });
+  }
+  game = new Phaser.Game(config);
+}
+
+function moveSprite(x, y){
+  const o = sprites[CLONE_ORIG]; if (!o) return;
+  const nx = x * TILE + 16, ny = y * TILE + 16;
+  const dx = nx - o.tx, dy = ny - o.ty;
+  let dir = null;
+  if (Math.abs(dx) > Math.abs(dy)) dir = dx > 0 ? "right" : (dx < 0 ? "left" : null);
+  else dir = dy > 0 ? "down" : (dy < 0 ? "up" : null);
+  if (dir && scene) o.s.play(o.key + "-" + dir, true);
+  else if (scene) o.s.stop();
+  o.tx = nx; o.ty = ny;
+  if (scene) scene.cameras.main.pan(nx, ny, 300, "Linear", true);
+}
+
+async function walkToday(gameId){
+  const w = await api("/control/game/day/walk?game_id=" + encodeURIComponent(gameId));
+  const allSteps = w.steps || [];
+  // §13.3 "빠르게 지나갈 날은 빨리감기" — 수백 타일을 한 칸씩 재생하지 않고 균등 샘플링.
+  // 사용자 피드백(2026-07-01) — 하루가 순간이동처럼 느껴지지 않게 느린 속도로
+  // (waypoint 늘리고 스텝 간격 늘림, 총 ~50초 — Next.js 쪽 "하루가 흐르는" 연출
+  // 1부(~60초)와 합쳐 전체 하루 진행이 약 2분이 되도록).
+  const MAX_WAYPOINTS = 30, STEP_MS = 1700;
+  const n = allSteps.length;
+  const steps = n <= MAX_WAYPOINTS ? allSteps
+    : Array.from({ length: MAX_WAYPOINTS }, (_, i) => allSteps[Math.floor(i * (n - 1) / (MAX_WAYPOINTS - 1))]);
+  for (const [x, y] of steps){
+    moveSprite(x, y);
+    await new Promise((r) => setTimeout(r, STEP_MS));
+  }
+  window.parent.postMessage({ type: "walked" }, "*");
+}
+
+async function boot(gameId){
+  const home = await api("/control/game/day/home?game_id=" + encodeURIComponent(gameId));
+  if (home.status !== "ok") return;
+  bootPhaser(home.persona.underscore, home.persona.initial, home.pos[0], home.pos[1]);
+}
+
+const params = new URLSearchParams(location.search);
+const GAME_ID = params.get("game_id");
+if (GAME_ID) boot(GAME_ID);
+
+window.addEventListener("message", (e) => {
+  if (!GAME_ID || !e.data) return;
+  if (e.data.type === "walk") walkToday(GAME_ID);
+});
+</script>
+</body>
+</html>

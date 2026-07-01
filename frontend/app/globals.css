@@ -1,0 +1,66 @@
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* { box-sizing: border-box; }
+
+html, body {
+  background: #FFFFFF;
+  color: #161616;
+  font-family: "Pretendard Variable", "Pretendard", system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: #AEB4BD; }
+
+@keyframes pixel-pop {
+  0% { transform: scale(0.92); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+@keyframes slide-up {
+  0% { opacity: 0; transform: translateY(6px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes bump {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.45); }
+  60% { transform: scale(0.9); }
+  100% { transform: scale(1); }
+}
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-pixel-pop { animation: pixel-pop 0.14s ease-out; }
+.animate-pulse-soft { animation: pulse-soft 1.4s ease-in-out infinite; }
+.animate-slide-up { animation: slide-up 0.16s ease-out; }
+.animate-bump { animation: bump 0.45s ease-out; }
+.animate-fade-in { animation: fade-in 0.2s ease-out; }
+
+.pixel-border { border: 2px solid #161616; }
+.pixel-shadow { box-shadow: 3px 3px 0 0 #161616; }
+.pixel-shadow-sm { box-shadow: 2px 2px 0 0 #161616; }
+.pixel-shadow-lg { box-shadow: 5px 5px 0 0 #161616; }
+
+.report-markdown { color: #161616; }
+.report-markdown h1 { font-size: 1.1rem; font-weight: 800; margin-bottom: 0.75rem; padding-bottom: 0.5rem; border-bottom: 2px solid #161616; }
+.report-markdown h2 { font-size: 0.95rem; font-weight: 700; margin-top: 1.1rem; margin-bottom: 0.5rem; }
+.report-markdown h3 { font-size: 0.85rem; font-weight: 700; margin-top: 0.9rem; margin-bottom: 0.25rem; }
+.report-markdown p { font-size: 0.82rem; line-height: 1.7; margin-bottom: 0.5rem; }
+.report-markdown hr { border: none; border-top: 1px solid #E4E7EC; margin: 1rem 0; }
+.report-markdown ul, .report-markdown ol { font-size: 0.82rem; padding-left: 1.25rem; margin-bottom: 0.5rem; }
+.report-markdown li { margin-bottom: 0.2rem; line-height: 1.6; }
+.report-markdown strong { font-weight: 700; }
+.report-markdown em { color: #6B7280; font-style: normal; }
+.report-markdown blockquote { border-left: 4px solid #327A1C; padding: 0.4rem 0.75rem; margin: 0.5rem 0; background: #F2F4F7; border-radius: 8px; }

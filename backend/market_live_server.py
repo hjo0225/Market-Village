@@ -1,0 +1,498 @@
+"""Market Village LIVE server.
+
+신 엔진 정본(``backend.sim.game_run.GameRun``)이 유일한 게임 경로다(§12.4,
+Next.js ``/play``가 소비). 구 엔진(``sim.engine.GameSession``, 마을 NPC 라운드
+모델)은 2026-07-01 실서비스 전환 정리에서 완전히 제거됐다(``/game``·``/demo``
+위젯과 함께 — Next.js가 이미 유일 진입점이라 병행 유지할 이유가 없어짐).
+
+reverie의 ``Maze``+``path_finder``는 지도 경로탐색 유틸로만 재사용한다(the_ville
+타일맵) — ``/control/game/day/{home,walk}``(§12.0 GameRun↔맵 좌표 브릿지)가 이걸
+쓴다. reverie의 인지 루프 자체는 안 쓴다.
+
+Run from backend/:
+    cd backend && python -m uvicorn market_live_server:app --port 8100
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import json
+import os
+import random
+import sys
+from os.path import abspath, dirname, join, normpath
+
+# Everything lives in backend/ now (no reverie folder). maze/path_finder/utils
+# are the_ville map utilities kept alongside the game logic (backend.sim).
+_HERE = dirname(abspath(__file__))            # backend/
+_REPO = normpath(join(_HERE, ".."))           # repo root
+sys.path.insert(0, _HERE)                     # maze / path_finder / utils (local)
+sys.path.insert(0, _REPO)                     # backend.sim
+
+from fastapi import FastAPI  # noqa: E402
+from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+from pydantic import BaseModel  # noqa: E402
+
+from maze import Maze  # noqa: E402  (the_ville map util)
+from path_finder import path_finder  # noqa: E402  (path util)
+from utils import collision_block_id  # noqa: E402  (config)
+
+from backend.sim import news as _news  # noqa: E402
+from backend.sim import clone_stats as _clone_stats  # noqa: E402
+from backend.sim import clone_spec as _clone_spec  # noqa: E402
+from backend.sim import result_card as _result_card  # noqa: E402
+from backend.sim import runs as _runs  # noqa: E402
+from backend.sim import db as _db  # noqa: E402  (T-DB 게임 세션 영속화, 실패시 인메모리 폴백)
+from backend.sim.trap_pipeline import Intervention as _Intervention  # noqa: E402
+from backend.sim.game_run import GameRun as _GameRun  # noqa: E402
+from backend.sim import presentation as _presentation  # noqa: E402
+from backend.sim import interview_llm as _interview_llm  # noqa: E402
+from backend.sim.interview import question_by_id as _question_by_id  # noqa: E402
+from backend.sim.fate_line import category_for_symbol as _category_for_symbol  # noqa: E402
+
+# §12.4 step-able GameRun 세션 맵 (game_id → GameRun). 신 엔진 정본 플레이 경로.
+# 이게 항상 1차 진실 소스 — MongoDB(T-DB)는 서버 재시작 후 재개용 보조 저장소일 뿐.
+_GAMES: dict[str, _GameRun] = {}
+# §5.3 대화형 인터뷰 세션 맵 (session_id → 지금까지 답변). 게임 시작 전 독립 진행.
+_INTERVIEWS: dict[str, dict] = {}
+
+
+def _get_game(game_id: str) -> "_GameRun | None":
+    """인메모리 우선, 없으면(서버 재시작 등) MongoDB에서 재구성 시도(T-DB)."""
+    g = _GAMES.get(game_id)
+    if g is not None:
+        return g
+    doc = _db.load_game(game_id)
+    if doc is None:
+        return None
+    g = _GameRun.from_doc(doc)
+    _GAMES[game_id] = g
+    return g
+
+
+def _persist_game(game_id: str, g: "_GameRun") -> None:
+    """실패해도 무시(인메모리가 진실 소스 — DB는 재개용 보조일 뿐)."""
+    _db.save_game(game_id, g.to_doc())
+
+
+# the_ville 정적 자원(맵 이미지·스프라이트) — /control/game/day/{home,walk}(§12.0)의
+# 맵 표현 계층이 쓴다.
+ASSETS_DIR = join(_REPO, "environment", "frontend_server", "static_dirs", "assets")
+
+# --------------------------------------------------------------------------- #
+# App + shared state
+# --------------------------------------------------------------------------- #
+app = FastAPI(title="Market Village Live")
+
+# Pre-warm the sentiment model so the first event doesn't pay the load cost.
+import threading
+threading.Thread(
+    target=lambda: __import__("backend.sim.sentiment", fromlist=["_get_pipeline"])._get_pipeline(),
+    daemon=True,
+).start()
+
+# mvp니까~
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"], 
+    allow_methods=["*"], allow_headers=["*"],
+)
+if os.path.isdir(ASSETS_DIR):
+    app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
+
+# T-FE2: the_ville 배경 지도(순수 캔버스, Next.js MapBackground가 iframe으로 embed).
+_MAP_PATH = join(_HERE, "static_demo", "map.html")
+
+
+@app.get("/map")
+def map_client():
+    from fastapi.responses import HTMLResponse
+    try:
+        with open(_MAP_PATH, encoding="utf-8") as f:
+            return HTMLResponse(f.read())
+    except FileNotFoundError:
+        return HTMLResponse("<h1>map not found</h1>", status_code=404)
+
+
+_MAZE: Maze | None = None
+_BLOCKED_MAZE: list | None = None
+
+# C-018: game_object_blocks.csv 기준 진열대/책장 5종. the_ville collision_maze는
+# 벽만 막고 이 가구들은 비워 둬서 캐릭터가 통과했다. 경로탐색용 충돌맵에만 막아
+# 캐릭터가 책장/진열대 위를 가로지르지 못하게 한다(공유 CSV는 무수정).
+SOLID_OBJECTS = {
+    "shelf",
+    "bookshelf",
+    "pharmacy store shelf",
+    "grocery store shelf",
+    "supply store product shelf",
+}
+
+
+def _maze() -> Maze:
+    global _MAZE
+    if _MAZE is None:
+        _MAZE = Maze("the_ville")
+    return _MAZE
+
+
+def _blocked_maze() -> list:
+    """collision_maze ∪ {SOLID_OBJECTS 가구 타일} 보강 충돌맵 (캐시).
+
+    원본 collision_maze를 복사해 진열대/책장 타일을 collision_block_id로 막는다.
+    path_finder는 값이 collision_block_id인 칸만 벽으로 보므로 형식을 그대로 둔다.
+    """
+    global _BLOCKED_MAZE
+    if _BLOCKED_MAZE is None:
+        m = _maze()
+        cid = str(collision_block_id)
+        grid = [list(row) for row in m.collision_maze]
+        for y in range(m.maze_height):
+            for x in range(m.maze_width):
+                if m.tiles[y][x]["game_object"] in SOLID_OBJECTS:
+                    grid[y][x] = cid
+        _BLOCKED_MAZE = grid
+    return _BLOCKED_MAZE
+
+
+# --------------------------------------------------------------------------- #
+# T-207b — GameRun ↔ 맵 좌표 브릿지 (§12.0 엔진→표현 단방향).
+# game_run.py는 맵을 모른다(의도적, 모듈 docstring 참고). 여기 이 표현 계층에서만
+# GameRun의 추상 일과를 the_ville 실좌표로 바꾼다. Live 클래스 인스턴스는 건드리지
+# 않는다 — 아래는 그 클래스의 _walkable/_rand_tile_for/_path와 같은 로직이지만
+# 인스턴스 상태가 전혀 필요 없는 순수 유틸이라 독립 함수로 둔다(수술하듯).
+# --------------------------------------------------------------------------- #
+_GAME_LOCATION_ADDR = {
+    "카페": "the Ville:Hobbs Cafe:cafe",
+    "일터": "the Ville:Harvey Oak Supply Store:supply store",
+    "광장": "the Ville:Johnson Park:park",
+    "운동": "the Ville:Johnson Park:park",   # 전용 체육시설 자산 없음 — 공원 재사용
+    "집_차트": "<spawn_loc>sp-A",
+}
+_GAME_CLONE_SPRITE = "Isabella_Rodriguez"   # interview.py의 거울 클론과 동일 스프라이트
+_GAME_WALKERS: dict[str, dict] = {}         # game_id → {"pos": [x,y], "day": int}
+
+
+def _gamerun_walkable(tile) -> bool:
+    if tile is None:
+        return False
+    x, y = tile
+    try:
+        return str(_blocked_maze()[y][x]) != str(collision_block_id)
+    except Exception:
+        return False
+
+
+def _gamerun_rand_tile_for(address: str, rng: random.Random):
+    tiles = _maze().address_tiles.get(address)
+    if not tiles:
+        return None
+    candidates = [t for t in sorted(tiles) if _gamerun_walkable(t)]
+    return rng.choice(candidates or sorted(tiles))
+
+
+def _gamerun_path(a, b) -> list[tuple[int, int]]:
+    if a is None or b is None:
+        return []
+    try:
+        p = path_finder(_blocked_maze(), list(a), list(b), collision_block_id)
+        return [(t[0], t[1]) for t in p]
+    except Exception:
+        return [tuple(a), tuple(b)]
+
+
+@app.get("/control/game/day/home")
+def control_game_home(game_id: str):
+    """GameRun 클론의 맵 스프라이트 정보 + 초기 좌표(§12.0 표현 부트스트랩)."""
+    g = _get_game(game_id)
+    if g is None:
+        return {"status": "error", "error": "no game"}
+    walker = _GAME_WALKERS.setdefault(game_id, {"pos": None, "day": -1})
+    if walker["pos"] is None:
+        rng = random.Random(hash(game_id) & 0xFFFFFFFF)
+        home_tile = _gamerun_rand_tile_for(_GAME_LOCATION_ADDR["집_차트"], rng)
+        walker["pos"] = list(home_tile) if home_tile else [70, 40]
+    return {"status": "ok",
+            "persona": {"original": "gamerun_clone", "underscore": _GAME_CLONE_SPRITE, "initial": "클론"},
+            "pos": walker["pos"]}
+
+
+@app.get("/control/game/day/walk")
+def control_game_walk(game_id: str):
+    """그날 일과(8슬롯)를 실좌표 경로로 — 클론이 걷고 카메라가 따라간다(§12.0).
+
+    하루당 1회만 새 경로를 낸다(day 캐시) — 같은 날 재호출은 빈 steps+cached.
+    """
+    g = _get_game(game_id)
+    if g is None:
+        return {"status": "error", "error": "no game"}
+    walker = _GAME_WALKERS.setdefault(game_id, {"pos": None, "day": -1})
+    if walker["pos"] is None:
+        rng0 = random.Random(hash(game_id) & 0xFFFFFFFF)
+        home_tile = _gamerun_rand_tile_for(_GAME_LOCATION_ADDR["집_차트"], rng0)
+        walker["pos"] = list(home_tile) if home_tile else [70, 40]
+    if walker["day"] == g.day:
+        return {"status": "ok", "steps": [], "cached": True}
+
+    rng = random.Random((hash(game_id) & 0xFFFFFFFF) + g.day)
+    addrs: list[str] = []
+    for slot in sorted(g.schedule):
+        addr = _GAME_LOCATION_ADDR.get(g.schedule[slot])
+        if addr and (not addrs or addrs[-1] != addr):
+            addrs.append(addr)
+    home_addr = _GAME_LOCATION_ADDR["집_차트"]
+    if not addrs or addrs[-1] != home_addr:
+        addrs.append(home_addr)
+
+    steps: list[list[int]] = []
+    cur = tuple(walker["pos"])
+    for addr in addrs:
+        dest = _gamerun_rand_tile_for(addr, rng)
+        if dest is None:
+            continue
+        seg = _gamerun_path(cur, dest)
+        steps.extend([list(t) for t in seg[1:]] if len(seg) > 1 else [])
+        cur = dest
+    walker["pos"] = list(cur)
+    walker["day"] = g.day
+    return {"status": "ok", "steps": steps}
+
+
+# --------------------------------------------------------------------------- #
+# Request models
+# --------------------------------------------------------------------------- #
+class InterviewAnswerBody(BaseModel):
+    session_id: str
+    qid: str
+    text: str
+    use_llm: bool = False
+
+
+@app.get("/control/interview/next")
+def control_interview_next(session_id: str, use_llm: bool = False):
+    """§5.3 대화형 인터뷰 — 다음 질문(구조는 고정, 표현은 opt-in LLM)."""
+    answers = _INTERVIEWS.setdefault(session_id, {})
+    q = _interview_llm.next_question_llm(answers, use_llm=use_llm)
+    return {"status": "ok", "done": q is None, "next": q}
+
+
+@app.post("/control/interview/answer")
+def control_interview_answer(body: InterviewAnswerBody):
+    """§5.3 자유 텍스트 답변 → 옵션 스케일로 해석(§5.3.2 출력 스키마 고정) 후 저장."""
+    if _question_by_id(body.qid) is None:
+        return {"status": "error", "error": "unknown qid"}
+    answers = _INTERVIEWS.setdefault(body.session_id, {})
+    answers[body.qid] = _interview_llm.interpret_answer(body.qid, body.text, use_llm=body.use_llm)
+    q = _interview_llm.next_question_llm(answers, use_llm=body.use_llm)
+    if q is not None:
+        return {"status": "ok", "done": False, "next": q}
+    return {"status": "ok", "done": True, "answers": dict(answers)}
+
+
+class GameStartBody(BaseModel):
+    game_id: str
+    answers: dict = {}
+    symbol: str = "DOGE"
+    start_price: float = 100.0
+    start_stats: dict | None = None
+
+
+class GameAdvanceBody(BaseModel):
+    game_id: str
+    news_id: str | None = None
+    strategy: str | None = None
+    # None(기본) = GameRun.rapport(1:1 대화와 공유하는 §11.4.4 래포 풀)를 자동
+    # 사용. 값을 명시하면 그걸로 오버라이드(배치/테스트 전용) — 일반 플레이에서
+    # 프론트가 이 필드를 보내면 실제 래포가 무시되는 버그였다(사용자 피드백
+    # 2026-07-01 "1:1대화가 제대로 진행이 안돼").
+    rapport: float | None = None
+    roll: float = 100.0
+    agent_pressure: float = 0.0
+
+
+class GameNewRunBody(BaseModel):
+    game_id: str
+    run_id: str | None = None
+
+
+@app.post("/control/game/start")
+def control_game_start(body: GameStartBody):
+    """§12.4 — 인터뷰 답변으로 클론 생성 → 30일 회차 세션 시작(신 엔진 정본)."""
+    spec = _clone_spec.build_clone_spec(body.answers)
+    g = _GameRun(spec, category=_category_for_symbol(body.symbol),
+                 start_price=body.start_price, start_stats=body.start_stats, run_id="run1")
+    _GAMES[body.game_id] = g
+    _persist_game(body.game_id, g)
+    return {"status": "ok", "state": g.state()}
+
+
+@app.get("/control/game/state")
+def control_game_state(game_id: str):
+    g = _get_game(game_id)
+    if g is None:
+        return {"status": "error", "error": "no game"}
+    return {"status": "ok", "state": g.state()}
+
+
+@app.get("/control/game/news")
+def control_game_news(game_id: str, seed: int = 0):
+    """§7 그날 아침 뉴스 3지선다."""
+    picked = _news.draw_three(_news.load_news_pool(), random.Random(seed))
+    return {"status": "ok", "news": [
+        {"id": n["id"], "tone": n["tone"], "headline": n["headline"],
+         "triggers": n.get("triggers", [])} for n in picked]}
+
+
+class GameAvoidBody(BaseModel):
+    game_id: str
+    slot_a: int
+    slot_b: int
+
+
+@app.get("/control/game/day/preview")
+def control_game_preview(game_id: str):
+    """§9.2.1 전날밤 — 내일 일과 + 마주칠 NPC(뉴스·위기는 비공개)."""
+    g = _get_game(game_id)
+    if g is None:
+        return {"status": "error", "error": "no game"}
+    return {"status": "ok", **g.preview_day()}
+
+
+@app.post("/control/game/day/avoid")
+def control_game_avoid(body: GameAvoidBody):
+    """§9.2.1 회피 — 일과 항목 하나의 순서만 바꿔 마주칠 NPC를 피한다."""
+    g = _get_game(body.game_id)
+    if g is None:
+        return {"status": "error", "error": "no game"}
+    meetings = g.avoid(body.slot_a, body.slot_b)
+    _persist_game(body.game_id, g)
+    return {"status": "ok", "schedule": dict(g.schedule), "meetings": meetings}
+
+
+class GamePersuadeBody(BaseModel):
+    game_id: str
+    npc_id: str
+    direction: str  # "calm" | "escalate"
+    roll: float = 100.0
+    escalation: float = 0.0
+
+
+class GameFgiBody(BaseModel):
+    game_id: str
+    tone: str
+    roll: float = 100.0
+
+
+@app.post("/control/game/social/persuade")
+def control_game_persuade(body: GamePersuadeBody):
+    """§9.2.2 1:1 권유 — 위기개입과 같은 래포 풀(§11.4.4)."""
+    g = _get_game(body.game_id)
+    if g is None:
+        return {"status": "error", "error": "no game"}
+    out = g.persuade(body.npc_id, body.direction, roll=body.roll, escalation=body.escalation)
+    _persist_game(body.game_id, g)
+    return {"status": "ok", **out}
+
+
+@app.post("/control/game/social/fgi")
+def control_game_fgi(body: GameFgiBody):
+    """§9.2.3 FGI 단톡방 — 익명 톤 얹기(래포 무관, 약하고 불확실)."""
+    g = _get_game(body.game_id)
+    if g is None:
+        return {"status": "error", "error": "no game"}
+    out = g.fgi_post(body.tone, roll=body.roll)
+    _persist_game(body.game_id, g)
+    return {"status": "ok", **out}
+
+
+@app.get("/control/game/day/crisis_check")
+def control_game_crisis_check(game_id: str, news_id: str | None = None):
+    """오늘 위기가 실제 발생하는지 부작용 없이 미리 조회(사용자 피드백 — 위기
+    개입은 상시 노출이 아니라 실제 위기가 터진 순간에만 이벤트로 뜬다)."""
+    g = _get_game(game_id)
+    if g is None:
+        return {"status": "error", "error": "no game"}
+    news_item = None
+    if news_id:
+        pool = _news.load_news_pool()
+        news_item = next((n for n in pool.news if n["id"] == news_id), None)
+    preview = g.preview_crisis(news=news_item)
+    return {"status": "ok", **preview}
+
+
+@app.post("/control/game/day/advance")
+def control_game_advance(body: GameAdvanceBody):
+    """하루 1칸 진행 — 뉴스 선택·개입(A/B/C) 반영 후 정산. Day30이면 카드."""
+    g = _get_game(body.game_id)
+    if g is None:
+        return {"status": "error", "error": "no game"}
+    news_item = None
+    if body.news_id:
+        pool = _news.load_news_pool()
+        news_item = next((n for n in pool.news if n["id"] == body.news_id), None)
+    # rapport 명시 시에만 오버라이드(intervention 직접 구성) — 그 외엔 strategy만
+    # 넘겨 GameRun이 자신의 공유 래포 풀(self.rapport)을 쓰게 한다.
+    intervention = (_Intervention(body.strategy, body.rapport)
+                    if (body.strategy and body.rapport is not None) else None)
+    strategy_arg = body.strategy if intervention is None else None
+    snap = g.advance_day(news=news_item, intervention=intervention, strategy=strategy_arg,
+                         roll=body.roll, agent_pressure=body.agent_pressure)
+    out = {"status": "ok", "state": g.state()}
+    if snap is not None:
+        out["day_result"] = {"trap": snap.trap, "swayed": snap.swayed,
+                             "fund_flow": snap.fund_flow, "realized_pnl": snap.realized_pnl,
+                             "stats": snap.emotion_stats}
+    if g.finished and g.summary is not None:
+        out["card"] = _result_card.result_card(g.summary)
+    _persist_game(body.game_id, g)
+    return out
+
+
+@app.get("/control/game/day/scene")
+def control_game_scene(game_id: str, use_llm: bool = False):
+    """§12.0 표현 — 마지막 하루 결정을 연출명령+대사로(맵이 연기). LLM은 opt-in."""
+    g = _get_game(game_id)
+    if g is None or g.last_snap is None:
+        return {"status": "error", "error": "no scene"}
+    return {"status": "ok",
+            "scene": _presentation.narrate(g.last_snap, g.clone_spec, use_llm=use_llm)}
+
+
+@app.get("/control/game/card")
+def control_game_card(game_id: str):
+    """§14 회차 결과카드(완주 시)."""
+    g = _get_game(game_id)
+    if g is None or g.summary is None:
+        return {"status": "error", "error": "not finished"}
+    return {"status": "ok", "card": _result_card.result_card(g.summary)}
+
+
+@app.post("/control/game/newrun")
+def control_game_newrun(body: GameNewRunBody):
+    """§13 다음 회차 — 같은 운명선 다시(클론 리셋, 요약 누적)."""
+    g = _get_game(body.game_id)
+    if g is None:
+        return {"status": "error", "error": "no game"}
+    g.new_run(run_id=body.run_id)
+    _persist_game(body.game_id, g)
+    return {"status": "ok", "state": g.state()}
+
+
+@app.get("/control/game/compare")
+def control_game_compare(game_id: str, run_a: str, run_b: str, day: int):
+    """§13.6 회차 비교 — 한 게임의 두 회차를 같은 Day로 겹쳐 본다(거울)."""
+    g = _get_game(game_id)
+    if g is None:
+        return {"status": "error", "error": "no game"}
+    cmp = _runs.compare_runs(g.store, run_a, run_b, day)
+    return {"status": "ok", **cmp}
+
+
+@app.get("/control/game/summaries")
+def control_game_summaries(game_id: str):
+    """결과 카드 모음(§14) — 이 게임에서 완주한 전 회차 요약 목록."""
+    g = _get_game(game_id)
+    if g is None:
+        return {"status": "error", "error": "no game"}
+    return {"status": "ok", "summaries": [dataclasses.asdict(s) for s in g.store.summaries()]}
