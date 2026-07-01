@@ -11,13 +11,17 @@ export default function ReportPage() {
   const router = useRouter();
   const [gameId, setGid] = useState<string | null>(null);
   const [card, setCard] = useState<ResultCard | null>(null);
+  const [notReady, setNotReady] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     const id = getGameId();
     if (!id) { router.replace("/"); return; }
     setGid(id);
-    api.gameCard(id).then((r) => { if (r.status === "ok" && r.card) setCard(r.card); });
+    api.gameCard(id).then((r) => {
+      if (r.status === "ok" && r.card) setCard(r.card);
+      else setNotReady(true);
+    });
   }, [router]);
 
   async function playAgain() {
@@ -34,6 +38,18 @@ export default function ReportPage() {
   function endAndClear() {
     clearGameId();
     router.push("/");
+  }
+
+  if (notReady) {
+    return (
+      <main className="min-h-screen flex flex-col items-center justify-center gap-4 text-center p-6">
+        <p className="text-pixel-muted">아직 완주하지 않은 회차예요. 30일을 다 살아야 결과를 볼 수 있어요.</p>
+        <div className="flex gap-2">
+          <PixelButton onClick={() => router.push("/play")}>이어서 플레이</PixelButton>
+          <PixelButton variant="ghost" onClick={backToMain}>메인으로</PixelButton>
+        </div>
+      </main>
+    );
   }
 
   if (!card) {
