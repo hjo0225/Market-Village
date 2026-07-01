@@ -112,3 +112,6 @@ environment/
 .env.local
 
 .agents
+
+# runtime PID files (server process, changes every run)
+*.pid
