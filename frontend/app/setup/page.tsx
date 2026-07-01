@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import PixelButton from "@/components/pixel/PixelButton";
 import PixelPanel from "@/components/pixel/PixelPanel";
@@ -17,33 +17,46 @@ export default function SetupPage() {
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
 
-  // -- 대화형 인터뷰 상태 --
+  // -- 대화형 인터뷰 상태 (챗봇형 — T-SVC8 테스트: use_llm=true로 질문 표현+답변 해석) --
   const [sessionId] = useState(() => "iv-" + Date.now());
-  const [ivStarted, setIvStarted] = useState(false);
   const [ivQid, setIvQid] = useState<string | null>(null);
-  const [ivQuestion, setIvQuestion] = useState("");
+  const [chatLog, setChatLog] = useState<{ role: "bot" | "user"; text: string }[]>([]);
   const [ivAnswerText, setIvAnswerText] = useState("");
+  const [ivBusy, setIvBusy] = useState(false);
   const [ivDone, setIvDone] = useState(false);
   const [ivAnswers, setIvAnswers] = useState<Record<string, number> | null>(null);
+  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatLog, ivBusy]);
 
   async function loadNextQuestion() {
-    const r = await api.interviewNext(sessionId);
+    setIvBusy(true);
+    const r = await api.interviewNext(sessionId, true);
+    setIvBusy(false);
     if (r.status !== "ok") return;   // 네트워크 플레이크 — 다음 클릭에서 재시도됨
     if (r.done) { setIvDone(true); setIvAnswers(r.answers ?? null); setIvQid(null); return; }
-    setIvQid(r.next!.id); setIvQuestion(r.next!.text); setIvAnswerText("");
+    setIvQid(r.next!.id);
+    setChatLog((log) => [...log, { role: "bot", text: r.next!.text }]);
   }
 
   async function startChatMode() {
-    setMode("chat"); setIvStarted(true); setIvDone(false); setIvAnswers(null);
+    setMode("chat"); setIvDone(false); setIvAnswers(null); setChatLog([]);
     await loadNextQuestion();
   }
 
   async function submitAnswer() {
-    if (!ivQid || !ivAnswerText.trim()) return;
-    const r = await api.interviewAnswer(sessionId, ivQid, ivAnswerText.trim());
+    if (!ivQid || !ivAnswerText.trim() || ivBusy) return;
+    const answerText = ivAnswerText.trim();
+    setChatLog((log) => [...log, { role: "user", text: answerText }]);
+    setIvAnswerText("");
+    setIvBusy(true);
+    const r = await api.interviewAnswer(sessionId, ivQid, answerText, true);
+    setIvBusy(false);
     if (r.status !== "ok") return;   // 네트워크 플레이크 — 다음 클릭에서 재시도됨
     if (r.done) { setIvDone(true); setIvAnswers(r.answers ?? null); setIvQid(null); }
-    else { setIvQid(r.next!.id); setIvQuestion(r.next!.text); setIvAnswerText(""); }
+    else { setIvQid(r.next!.id); setChatLog((log) => [...log, { role: "bot", text: r.next!.text }]); }
   }
 
   async function handleStart() {
@@ -95,22 +108,42 @@ export default function SetupPage() {
 
           {mode === "chat" && (
             <div>
-              {!ivDone ? (
-                <>
-                  <p className="text-sm bg-pixel-path rounded-lg p-3 mb-3 min-h-[48px]">{ivQuestion || "질문을 불러오는 중…"}</p>
-                  <div className="flex gap-2">
-                    <input
-                      className="flex-1 border-2 border-black rounded-lg px-3 py-2 text-sm"
-                      placeholder="자유롭게 답해주세요"
-                      value={ivAnswerText}
-                      onChange={(e) => setIvAnswerText(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && submitAnswer()}
-                    />
-                    <PixelButton size="sm" onClick={submitAnswer}>답변</PixelButton>
+              <div className="flex flex-col gap-2 max-h-[360px] overflow-y-auto mb-3 pr-1">
+                {chatLog.map((m, i) => (
+                  <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                    <div
+                      className={`max-w-[80%] text-sm rounded-lg px-3 py-2 border-2 border-black ${
+                        m.role === "user" ? "bg-pixel-grass" : "bg-pixel-path"
+                      }`}
+                    >
+                      {m.text}
+                    </div>
                   </div>
-                </>
-              ) : (
-                <p className="text-sm text-pixel-greenText font-bold">✓ 인터뷰 완료 — 아래에서 게임을 시작하세요.</p>
+                ))}
+                {ivBusy && (
+                  <div className="flex justify-start">
+                    <div className="text-sm rounded-lg px-3 py-2 border-2 border-black bg-pixel-path text-pixel-muted">
+                      …
+                    </div>
+                  </div>
+                )}
+                {ivDone && (
+                  <p className="text-sm text-pixel-greenText font-bold mt-1">✓ 인터뷰 완료 — 아래에서 게임을 시작하세요.</p>
+                )}
+                <div ref={chatEndRef} />
+              </div>
+              {!ivDone && (
+                <div className="flex gap-2">
+                  <input
+                    className="flex-1 border-2 border-black rounded-lg px-3 py-2 text-sm"
+                    placeholder="자유롭게 답해주세요"
+                    value={ivAnswerText}
+                    disabled={ivBusy}
+                    onChange={(e) => setIvAnswerText(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && submitAnswer()}
+                  />
+                  <PixelButton size="sm" disabled={ivBusy} onClick={submitAnswer}>답변</PixelButton>
+                </div>
               )}
             </div>
           )}

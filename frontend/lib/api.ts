@@ -70,12 +70,12 @@ export interface Scene { commands: unknown[]; dialogue: string; monologue_open: 
 
 export const api = {
   // -- 인터뷰 --
-  interviewNext: (sessionId: string) =>
+  interviewNext: (sessionId: string, useLlm = false) =>
     get<{ status: string; done: boolean; next?: { id: string; text: string }; answers?: Record<string, number> }>(
-      "/control/interview/next", { session_id: sessionId }),
-  interviewAnswer: (sessionId: string, qid: string, text: string) =>
+      "/control/interview/next", { session_id: sessionId, use_llm: useLlm }),
+  interviewAnswer: (sessionId: string, qid: string, text: string, useLlm = false) =>
     post<{ status: string; done: boolean; next?: { id: string; text: string }; answers?: Record<string, number> }>(
-      "/control/interview/answer", { session_id: sessionId, qid, text }),
+      "/control/interview/answer", { session_id: sessionId, qid, text, use_llm: useLlm }),
 
   // -- 게임 세션 --
   gameStart: (gameId: string, answers: Record<string, number>, symbol: string, startPrice = 100.0) =>
@@ -102,8 +102,8 @@ export const api = {
         // (opts.rapport를 넘기지 않는 게 일반 플레이의 기본 경로).
         rapport: opts.rapport ?? null, roll: opts.roll ?? Math.random() * 100,
       }),
-  gameScene: (gameId: string) =>
-    get<{ status: string; scene?: Scene }>("/control/game/day/scene", { game_id: gameId }),
+  gameScene: (gameId: string, useLlm = false) =>
+    get<{ status: string; scene?: Scene }>("/control/game/day/scene", { game_id: gameId, use_llm: useLlm }),
   gameCard: (gameId: string) =>
     get<{ status: string; card?: ResultCard }>("/control/game/card", { game_id: gameId }),
   gameNewRun: (gameId: string, runId?: string) =>

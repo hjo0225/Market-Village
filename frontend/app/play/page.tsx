@@ -120,7 +120,8 @@ export default function PlayPage() {
       // 드러낸다(T-FE2) — 안 그러면 화면이 순간이동처럼 느껴진다(사용자 피드백).
       await mapRef.current?.playWalk();
       if (r.day_result) setDayResult(r.day_result);
-      const scene = await api.gameScene(gameId);
+      // T-SVC8 테스트: 실LLM으로 클론 대사 표현만 다듬는다(수치 결정 무관, 실패 시 템플릿 폴백).
+      const scene = await api.gameScene(gameId, true);
       if (scene.status === "ok" && scene.scene) setSceneText(scene.scene.dialogue);
       setNewsId(null);
       await refresh(gameId);
