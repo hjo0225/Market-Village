@@ -1,5 +1,7 @@
 "use client";
 
+import { CATEGORY_LABELS } from "@/lib/api";
+
 // 위기 개입 카드 연출(칼바람 증강 픽 참고, PRD_CRISIS_CARD_REVEAL.md D1~D3).
 // 색상은 이 카드에 한해 프로젝트 기본 팔레트(흑백+그린/옐로)의 예외(D3, 사용자 승인).
 const STRATEGIES = [
@@ -20,23 +22,40 @@ const STRATEGIES = [
   },
 ];
 
+interface BundleEntry {
+  category: string;
+  trap: string;
+  trap_name: string;
+}
+
 interface Props {
   trapName: string;
+  bundle?: BundleEntry[];   // T-216 D4 — 2개 이상이면 동시 발생, 카드 아래 목록으로 표시
   busy: boolean;
   onChoose: (strategy: string | null) => void;
 }
 
 // 사용자 피드백(2026-07-01) — 위기 개입은 상시 노출 버튼이 아니라, 실제 위기가
 // 터진 순간에만 갑작스러운 이벤트로 튀어나와야 한다. 평소엔 렌더 자체가 안 됨.
-export default function CrisisEventModal({ trapName, busy, onChoose }: Props) {
+export default function CrisisEventModal({ trapName, bundle = [], busy, onChoose }: Props) {
+  const bundled = bundle.length > 1;
   return (
     <div role="dialog" aria-modal="true" className="fixed inset-0 z-[140] flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-pixel-ink/80" />
       <div className="relative w-full max-w-2xl flex flex-col items-center gap-5 animate-bump">
         <div className="text-center">
           <p className="text-[11px] font-bold text-pixel-danger mb-1 tracking-widest">⚠️ 위기 발생</p>
-          <h2 className="text-xl font-extrabold text-white drop-shadow-md">{trapName}</h2>
-          <p className="text-xs text-white/70 mt-1">클론이 흔들리고 있다. 어떻게 개입할까?</p>
+          <h2 className="text-xl font-extrabold text-white drop-shadow-md">
+            {bundled ? `${trapName} 외 ${bundle.length - 1}종목 동시 발생` : trapName}
+          </h2>
+          {bundled && (
+            <p className="text-xs text-white/60 mt-1">
+              {bundle.map((b) => `${CATEGORY_LABELS[b.category] ?? b.category}(${b.trap_name})`).join(" · ")}
+            </p>
+          )}
+          <p className="text-xs text-white/70 mt-1">
+            클론이 흔들리고 있다. {bundled ? "같은 전략으로 한꺼번에" : "어떻게"} 개입할까?
+          </p>
         </div>
 
         <div className="flex flex-col sm:flex-row gap-4 w-full justify-center">

@@ -462,7 +462,7 @@ def control_game_advance(body: GameAdvanceBody):
     if snap is not None:
         out["day_result"] = {"trap": snap.trap, "swayed": snap.swayed,
                              "fund_flow": snap.fund_flow, "realized_pnl": snap.realized_pnl,
-                             "stats": snap.emotion_stats}
+                             "stats": snap.emotion_stats, "bundle": snap.bundle}
     if g.finished and g.summary is not None:
         out["card"] = _result_card.result_card(g.summary)
     _persist_game(body.game_id, g)

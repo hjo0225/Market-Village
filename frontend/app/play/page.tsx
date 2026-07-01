@@ -38,6 +38,8 @@ export default function PlayPage() {
   const [sceneText, setSceneText] = useState("");
   // 위기가 실제 발생했을 때만 뜨는 이벤트 — 평소엔 null(상시 노출 안 함).
   const [crisisTrapName, setCrisisTrapName] = useState<string | null>(null);
+  // T-216 D4 — 같은 날 2종목 이상 트리거되면 여기 전부 담김(1개면 길이 1).
+  const [crisisBundle, setCrisisBundle] = useState<{ category: string; trap: string; trap_name: string }[]>([]);
   // 선택 처리 중(중복 클릭 방지)만 true — advancing과 분리해야 한다. advancing은
   // 모달이 떠 있는 동안(사용자 응답 대기 중)에도 계속 true라, 그걸 그대로 버튼
   // disabled에 쓰면 선택 버튼 자체가 눌리지 않는 회귀 버그가 난다.
@@ -87,6 +89,7 @@ export default function PlayPage() {
     if (check.status === "ok" && check.trap && check.trap_name) {
       setDayStage(-1);
       setCrisisTrapName(check.trap_name);
+      setCrisisBundle(check.bundle ?? []);
       return;   // 실제 진행은 모달의 선택(handleCrisisChoice)에서 이어진다.
     }
     await sleep(DAY_STAGE_MS);
@@ -99,6 +102,7 @@ export default function PlayPage() {
     if (crisisChoosing) return;   // 중복 클릭 방지
     setCrisisChoosing(true);
     setCrisisTrapName(null);
+    setCrisisBundle([]);
     setDayStage(2);           // 🌇 선택 후 저녁으로 이어서 진행
     await sleep(DAY_STAGE_MS);
     await finishAdvance(strategy);
@@ -183,7 +187,10 @@ export default function PlayPage() {
       />
       <DayResultToast result={dayResult} scene={sceneText} />
       {crisisTrapName && (
-        <CrisisEventModal trapName={crisisTrapName} busy={crisisChoosing} onChoose={handleCrisisChoice} />
+        <CrisisEventModal
+          trapName={crisisTrapName} bundle={crisisBundle}
+          busy={crisisChoosing} onChoose={handleCrisisChoice}
+        />
       )}
     </main>
   );

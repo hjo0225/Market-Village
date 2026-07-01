@@ -72,9 +72,13 @@ export interface RunSummary {
   emotion_overall: Record<string, number>; trap_counts: Record<string, unknown>;
   clone_spec_snapshot: Record<string, number>;
 }
+export interface BundleItem {
+  category: string; trap: string | null; trap_name: string | null;
+  resisted: boolean; reason: string; fund_flow: string; realized_pnl: number;
+}
 export interface DayResult {
   trap: string | null; swayed: boolean; fund_flow: string;
-  realized_pnl: number; stats: CloneStats;
+  realized_pnl: number; stats: CloneStats; bundle: BundleItem[];
 }
 export interface Scene { commands: unknown[]; dialogue: string; monologue_open: boolean; }
 
@@ -106,7 +110,8 @@ export const api = {
   gameNews: (gameId: string, seed = 0) =>
     get<{ status: string; news: NewsItem[] }>("/control/game/news", { game_id: gameId, seed }),
   gameCrisisCheck: (gameId: string, newsId?: string) =>
-    get<{ status: string; trap: string | null; trap_name: string | null }>(
+    get<{ status: string; trap: string | null; trap_name: string | null;
+         bundle: { category: string; trap: string; trap_name: string }[] }>(
       "/control/game/day/crisis_check", { game_id: gameId, news_id: newsId }),
   gameAdvance: (gameId: string, opts: { newsId?: string; strategy?: string; rapport?: number; roll?: number } = {}) =>
     post<{ status: string; state: GameState; day_result?: DayResult; card?: ResultCard }>(

@@ -147,7 +147,10 @@ def test_advance_day_chases_watched_surge_and_grows_positions():
               start_cash=100.0, other_categories=("meme",))
     for d in range(27):
         snap = g.advance_day(roll=100.0)
-    assert snap.trap == "M1" and snap.fund_flow == "to_hotter"
+    # T-216 — 후반부엔 meme 자체도 보유 종목이 돼 G1(익절거부, +104% 수익)을
+    # 스스로 트리거할 수 있어 번들이 될 수 있다(의도된 확장, 회귀 아님) — 그래도
+    # M1 추격매수가 한 번은 실제로 일어나 meme 포지션을 만들었는지는 항상 참이어야 함.
+    assert any(b["trap"] == "M1" and b["fund_flow"] == "to_hotter" for b in snap.bundle)
     assert "meme" in g.holding.get("positions", {})
     assert g.state()["portfolio"]["positions"]["meme"]["quantity"] > 0
 

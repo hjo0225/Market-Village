@@ -196,7 +196,7 @@ class GameRun:
         결과와 항상 일치한다(결정론).
         """
         if self.finished or self.day >= self.days:
-            return {"trap": None, "trap_name": None}
+            return {"trap": None, "trap_name": None, "bundle": []}
         plan = {"news": news, "intervention": None, "roll": 100.0,
                 "agent_pressure": 0.0, "prev_realized_pnl": self._prev_realized_pnl,
                 "crowd_mood": self.crowd_mood}
@@ -204,10 +204,18 @@ class GameRun:
                        self.day, self.start_price, self.holding, plan,
                        other_categories=self.other_categories)
         if res is None:
-            return {"trap": None, "trap_name": None}
+            return {"trap": None, "trap_name": None, "bundle": []}
         snap, _holding, _price = res
         trap = get_trap(snap.trap) if snap.trap else None
-        return {"trap": snap.trap, "trap_name": trap.name if trap else None}
+        # T-216 D4 — 번들 미리보기는 어느 종목·함정이 걸렸는지만(category/trap/
+        # trap_name) 노출한다. resisted/reason은 STEP1(감지)이 아니라 STEP4~5
+        # (개입·판정)의 산물이라 roll=100/개입없음인 이 미리보기에선 의미가 없다
+        # — 실제 결과는 advance_day에서 플레이어가 고른 전략으로 다시 판정된다.
+        bundle_preview = [
+            {"category": b["category"], "trap": b["trap"], "trap_name": get_trap(b["trap"]).name}
+            for b in snap.bundle
+        ]
+        return {"trap": snap.trap, "trap_name": trap.name if trap else None, "bundle": bundle_preview}
 
     def avoid(self, slot_a: int, slot_b: int) -> dict:
         """일과 항목 하나의 순서만 변경(두 슬롯 스왑) → 마주칠 NPC가 달라진다."""

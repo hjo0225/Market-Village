@@ -43,6 +43,13 @@ def narrate(snap: DailySnapshot, clone_spec: CloneSpec, *, use_llm: bool = False
         commands.append({"emote": "clone", "emotion": "calm"})
     if swayed and snap.fund_flow:
         commands.append({"trade": "clone", "action": snap.fund_flow})
+    # T-216 D4 — 번들(2개 이상 동시 트리거)이면 snap.fund_flow는 모호해서
+    # 비워 둔다(단일값이 아니므로) — 번들 안 각 swayed 항목을 개별 연출한다.
+    # 크기 1 번들은 이미 위에서 snap.fund_flow로 잡히므로 여기서 건너뛴다.
+    if len(snap.bundle) > 1:
+        for b in snap.bundle:
+            if not b["resisted"] and b["fund_flow"]:
+                commands.append({"trade": "clone", "action": b["fund_flow"], "category": b["category"]})
 
     if use_llm:
         dialogue = _llm_rewrite(dialogue, snap, clone_spec) or dialogue

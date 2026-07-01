@@ -67,3 +67,19 @@ def test_preview_after_finished_run_returns_no_trap():
         g.advance_day()
     assert g.finished is True
     assert g.preview_crisis()["trap"] is None
+
+
+def test_preview_bundle_matches_single_trap_when_only_one_fires():
+    # T-216 — 단일 트리거 날엔 bundle이 정확히 1개, trap 필드와 일치(회귀 없음).
+    g = _g()
+    for _ in range(21):
+        g.advance_day()
+    preview = g.preview_crisis()
+    assert len(preview["bundle"]) == 1
+    assert preview["bundle"][0]["category"] == "meme"
+    assert preview["bundle"][0]["trap"] == preview["trap"] == "G1"
+
+
+def test_preview_bundle_empty_on_calm_day():
+    g = _g()
+    assert g.preview_crisis()["bundle"] == []

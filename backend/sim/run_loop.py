@@ -11,13 +11,13 @@
 
 from __future__ import annotations
 
-from .crisis_day import simulate_clone_day
+from .crisis_day import simulate_clone_day_multi
 from .clone_spec import CloneSpec
 from .clone_stats import MENTAL
 from .fate_line import CATEGORIES, FateLine, category_for_symbol, hybrid_price, load_fate_line
 from .result_card import evaluate
 from .runs import RunStore, RunSummary
-from . import tuning as T
+from .trade import apply_fund_flow  # noqa: F401  (재수출 — 기존 호출부/테스트 하위호환, T-216에서 trade.py로 이동)
 
 _DEFAULT_STATS = {
     "급락패닉저항": 50.0, "멘탈마모저항": 50.0,
@@ -25,38 +25,6 @@ _DEFAULT_STATS = {
     "추격매수저항": 50.0, "막차불안저항": 50.0,
     "멘탈회복": 50.0,
 }
-
-
-def apply_fund_flow(fund_flow, *, avg_cost, quantity, cash, positions,
-                    price_today, surge_category=None, surge_price=None):
-    """§8.3 충동매매 자금 행선지 → 포트폴리오 실제 이동(순수). 미정의 flow는 무변화.
-
-    to_cash/to_stable(F1/F2 공포도피) = 전량 매도. to_hotter(M1/M2 추격) = 보유
-    현금 일부를 급등 미보유 종목에 새로 태움. concentrate(G2 몰빵) = 보유 현금
-    일부로 기존 포지션을 더 사(가중평균 평단 갱신). 비율은 tuning.py 상수.
-    """
-    positions = dict(positions)
-    realized = 0.0
-    if fund_flow in ("to_cash", "to_stable") and quantity > 0:
-        realized = (price_today - avg_cost) * quantity
-        cash += quantity * price_today
-        quantity = 0.0
-    elif fund_flow == "to_hotter" and surge_category and surge_price and cash > 0:
-        chase_cash = cash * T.CHASE_FRACTION
-        prev = positions.get(surge_category, {"avg_cost": surge_price, "quantity": 0.0})
-        new_qty = prev["quantity"] + chase_cash / surge_price
-        positions[surge_category] = {"avg_cost": surge_price, "quantity": new_qty}
-        cash -= chase_cash
-    elif fund_flow == "concentrate" and cash > 0 and price_today:
-        add_cash = cash * T.CONCENTRATE_FRACTION
-        add_qty = add_cash / price_today
-        new_qty = quantity + add_qty
-        if new_qty:
-            avg_cost = ((avg_cost * quantity) + (price_today * add_qty)) / new_qty
-        quantity = new_qty
-        cash -= add_cash
-    return {"avg_cost": avg_cost, "quantity": quantity, "cash": cash,
-            "positions": positions, "realized": realized}
 
 
 def step_day(clone_spec, stats, fate_line, category, day, start_price, holding, plan,
@@ -70,10 +38,6 @@ def step_day(clone_spec, stats, fate_line, category, day, start_price, holding, 
     if fate_today is None:
         return None
     price_today = hybrid_price(start_price, fate_today[3], plan.get("agent_pressure", 0.0))
-    avg_cost = holding["avg_cost"]
-    quantity = holding["quantity"]
-    cash = holding["cash"]
-    positions = dict(holding.get("positions", {}))
 
     # §8.3 M1 — 미보유(다자산) 종목 중 오늘 가장 급등한 것. 없으면 0(하위호환).
     unheld_surge_pct, surge_category, surge_price = 0.0, None, None
@@ -92,36 +56,25 @@ def step_day(clone_spec, stats, fate_line, category, day, start_price, holding, 
     fgi = crowd_mood
     crowd_buying = crowd_mood > 50.0
 
-    snap = simulate_clone_day(
+    # T-216 D4 — 보유 중인 전 종목(주력+2차 포지션)을 함께 굴려 하루 1위기로
+    # 번들(트리거 0/1개면 기존 단일종목 결과와 완전히 동일 — 회귀 없음).
+    snap = simulate_clone_day_multi(
         clone_spec=clone_spec, stats=stats, fate_line=fate_line, category=category, day=day,
-        holding={"avg_cost": avg_cost, "quantity": quantity, "cash": cash},
+        holding=holding,
         news=plan.get("news"), intervention=plan.get("intervention"),
         roll=plan.get("roll", 100.0),
         unheld_surge_pct=unheld_surge_pct,
         confidence=confidence, just_realized_profit=just_realized_profit,
         fgi=fgi, crowd_buying=crowd_buying,
-    )
-
-    flow = apply_fund_flow(
-        snap.fund_flow if snap.swayed else "", avg_cost=avg_cost, quantity=quantity,
-        cash=cash, positions=positions, price_today=price_today,
         surge_category=surge_category, surge_price=surge_price,
     )
-    avg_cost, quantity, cash, positions, realized = (
-        flow["avg_cost"], flow["quantity"], flow["cash"], flow["positions"], flow["realized"])
 
-    secondary_value = sum(
-        p["quantity"] * (fate_line.day_ohlc(c, day) or (0, 0, 0, avg_cost))[3]
-        for c, p in positions.items()
-    )
-    total = cash + quantity * price_today + secondary_value
-    snap.realized_pnl = round(realized, 4)
-    snap.total_asset = round(total, 4)
-    snap.cash = round(cash, 4)
-    snap.holdings = {category: {"quantity": quantity, "avg_cost": avg_cost},
-                     **{c: dict(p) for c, p in positions.items()}}
-    new_holding = {"avg_cost": avg_cost, "quantity": quantity, "cash": cash,
-                   "positions": positions}
+    new_holding = {
+        "avg_cost": snap.holdings[category]["avg_cost"],
+        "quantity": snap.holdings[category]["quantity"],
+        "cash": snap.cash,
+        "positions": {c: dict(v) for c, v in snap.holdings.items() if c != category},
+    }
     return snap, new_holding, price_today
 
 

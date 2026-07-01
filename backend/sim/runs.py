@@ -41,7 +41,11 @@ class DailySnapshot:
     swayed: bool = False             # 휘둘렸는가(함정 발동+충동 매매)
     fund_flow: str = ""              # §8.3 자금 행선지
     companion: str = ""              # 그날 주로 누구와 교류했나
-    trap: str | None = None          # 그날 발동·선정된 함정(없으면 None)
+    trap: str | None = None          # 그날 발동·선정된 함정(없으면 None, 번들이면 첫 항목과 동일)
+    # T-216 D4 — 분산 보유 시 같은 날 여러 종목이 트리거되면 여기 전부 담긴다.
+    # [{category, trap, trap_name, resisted, reason, fund_flow, realized_pnl}, ...]
+    # 트리거가 0/1개일 때도 채워짐(0개=[], 1개=[그 항목]) — bundle이 항상 정답.
+    bundle: list = field(default_factory=list)
 
 
 class RunStore:

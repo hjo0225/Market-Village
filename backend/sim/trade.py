@@ -17,6 +17,7 @@ This module depends ONLY on sim.models and the stdlib.
 
 from __future__ import annotations
 
+from . import tuning as T
 from .llm import LLMClient, safe_json
 from .models import (
     Action,
@@ -454,3 +455,39 @@ def fund_destination(flow: str, proceeds: float = 0.0) -> tuple[str, list[str]]:
     proceeds는 로깅용(현재 분류엔 미사용) — 호출자가 금액과 함께 기록.
     """
     return _FUND_FLOW_SIGNALS.get(flow, ("중립", []))
+
+
+def apply_fund_flow(fund_flow, *, avg_cost, quantity, cash, positions,
+                    price_today, surge_category=None, surge_price=None):
+    """§8.3 충동매매 자금 행선지 → 포트폴리오 실제 이동(순수). 미정의 flow는 무변화.
+
+    to_cash/to_stable(F1/F2 공포도피) = 전량 매도. to_hotter(M1/M2 추격) = 보유
+    현금 일부를 급등 미보유 종목에 새로 태움. concentrate(G2 몰빵) = 보유 현금
+    일부로 기존 포지션을 더 사(가중평균 평단 갱신). 비율은 tuning.py 상수.
+
+    run_loop.py(단일종목 경로)와 crisis_day.py(T-216 다중종목 번들)가 공유한다
+    — trade.py에 둔 이유는 둘 다 이 함수를 필요로 해서(crisis_day←run_loop
+    순환 임포트를 피하려면 둘 다 임포트할 수 있는 더 낮은 모듈에 있어야 함).
+    """
+    positions = dict(positions)
+    realized = 0.0
+    if fund_flow in ("to_cash", "to_stable") and quantity > 0:
+        realized = (price_today - avg_cost) * quantity
+        cash += quantity * price_today
+        quantity = 0.0
+    elif fund_flow == "to_hotter" and surge_category and surge_price and cash > 0:
+        chase_cash = cash * T.CHASE_FRACTION
+        prev = positions.get(surge_category, {"avg_cost": surge_price, "quantity": 0.0})
+        new_qty = prev["quantity"] + chase_cash / surge_price
+        positions[surge_category] = {"avg_cost": surge_price, "quantity": new_qty}
+        cash -= chase_cash
+    elif fund_flow == "concentrate" and cash > 0 and price_today:
+        add_cash = cash * T.CONCENTRATE_FRACTION
+        add_qty = add_cash / price_today
+        new_qty = quantity + add_qty
+        if new_qty:
+            avg_cost = ((avg_cost * quantity) + (price_today * add_qty)) / new_qty
+        quantity = new_qty
+        cash -= add_cash
+    return {"avg_cost": avg_cost, "quantity": quantity, "cash": cash,
+            "positions": positions, "realized": realized}

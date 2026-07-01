@@ -40,6 +40,25 @@ def test_calm_day_closed_monologue():
     assert any("emote" in c for c in sc["commands"])
 
 
+def test_bundle_of_two_emits_trade_command_per_swayed_category():
+    # T-216 — 번들 2개 이상이면 snap.fund_flow는 비지만, 번들 안 각 swayed
+    # 항목마다 개별 trade 연출 명령이 나와야 한다(회귀: 예전엔 아예 안 나왔음).
+    snap = DailySnapshot(
+        day=5, swayed=True, fund_flow="", trap="F1",
+        emotion_stats={"급락패닉저항": 12.0},
+        bundle=[
+            {"category": "large_stable", "trap": "F1", "trap_name": "급락 패닉",
+             "resisted": False, "reason": "", "fund_flow": "to_cash", "realized_pnl": -5.0},
+            {"category": "meme", "trap": "F1", "trap_name": "급락 패닉",
+             "resisted": True, "reason": "", "fund_flow": "", "realized_pnl": 0.0},
+        ],
+    )
+    sc = P.narrate(snap, SPEC)
+    trade_cmds = [c for c in sc["commands"] if "trade" in c]
+    assert len(trade_cmds) == 1                     # meme은 resisted라 연출 없음
+    assert trade_cmds[0]["category"] == "large_stable"
+
+
 def test_deterministic():
     s = _snap(trap="F1", swayed=True, fund_flow="to_cash")
     assert P.narrate(s, SPEC) == P.narrate(s, SPEC)
