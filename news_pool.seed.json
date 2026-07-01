@@ -97,6 +97,216 @@
       "headline": "무역 협상 교착, 타결 여부 불투명",
       "body": "협상이 장기화되며 불확실성이 시장에 부담으로 작용하고 있다.",
       "triggers": ["F2"]
+    },
+    {
+      "id": "fear_hack",
+      "tone": "fear",
+      "headline": "대형 거래소 해킹 피해 발생",
+      "body": "거액의 자산이 유출된 정황이 드러나며 보안에 대한 불안이 시장 전반으로 번지고 있다.",
+      "triggers": ["F1", "F2"]
+    },
+    {
+      "id": "fear_default",
+      "tone": "fear",
+      "headline": "대형 기관 채무불이행 우려 확산",
+      "body": "한 대형 기관이 만기 채무를 갚지 못할 수 있다는 관측에 투자 심리가 얼어붙고 있다.",
+      "triggers": ["F1", "F2"]
+    },
+    {
+      "id": "fear_inflation",
+      "tone": "fear",
+      "headline": "물가 상승률, 예상치 큰 폭 상회",
+      "body": "인플레이션 지표가 시장 예상을 뛰어넘으며 긴축 강화 우려가 커지고 있다.",
+      "triggers": ["F1", "F2"]
+    },
+    {
+      "id": "fear_jobs",
+      "tone": "fear",
+      "headline": "실업률 지표 급격히 악화",
+      "body": "고용 시장 냉각 신호에 경기 침체 우려가 다시 고개를 들고 있다.",
+      "triggers": ["F2"]
+    },
+    {
+      "id": "fear_scandal",
+      "tone": "fear",
+      "headline": "주요국 정치 스캔들, 정국 혼란 가중",
+      "body": "핵심 인사를 둘러싼 의혹이 커지며 정책 공백에 대한 우려가 확산되고 있다.",
+      "triggers": ["F2"]
+    },
+    {
+      "id": "fear_energy",
+      "tone": "fear",
+      "headline": "에너지 가격 급등, 원가 부담 확산",
+      "body": "공급 차질로 에너지 가격이 치솟으며 전방위 비용 압박 우려가 커지고 있다.",
+      "triggers": ["F1", "F2"]
+    },
+    {
+      "id": "fear_fund",
+      "tone": "fear",
+      "headline": "대형 펀드 강제 청산설 확산",
+      "body": "레버리지 포지션이 컸던 한 대형 펀드가 청산 위기에 놓였다는 소문이 돌고 있다.",
+      "triggers": ["F1"]
+    },
+    {
+      "id": "fear_cyberattack",
+      "tone": "fear",
+      "headline": "핵심 금융 인프라 사이버 공격 피해",
+      "body": "결제·정산 시스템 일부가 마비되며 시장 신뢰가 흔들리고 있다.",
+      "triggers": ["F1", "F2"]
+    },
+    {
+      "id": "fear_downgrade",
+      "tone": "fear",
+      "headline": "국가 신용등급 강등 경고",
+      "body": "주요 신용평가사가 등급 강등 가능성을 언급하며 자금 이탈 우려가 커지고 있다.",
+      "triggers": ["F1", "F2"]
+    },
+    {
+      "id": "fear_bankrun",
+      "tone": "fear",
+      "headline": "대형 은행 예금 대량 인출 사태",
+      "body": "예금 인출 행렬이 이어지며 금융 시스템 전반의 불안이 확산되고 있다.",
+      "triggers": ["F1"]
+    },
+    {
+      "id": "opt_inflow",
+      "tone": "optimism",
+      "headline": "대형 기관, 대규모 자금 유입 발표",
+      "body": "기관 투자자들의 잇따른 매수 소식에 시장 심리가 살아나고 있다.",
+      "triggers": ["M1", "M2", "G2"]
+    },
+    {
+      "id": "opt_tech",
+      "tone": "optimism",
+      "headline": "신기술 상용화, 채택 확산 기대감",
+      "body": "새로운 기술이 실제 도입되기 시작하며 미래 성장에 대한 기대가 커지고 있다.",
+      "triggers": ["M1", "G1"]
+    },
+    {
+      "id": "opt_tax",
+      "tone": "optimism",
+      "headline": "주요국, 우호적 세제 개편안 발표",
+      "body": "투자 부담을 낮추는 세제 개편에 시장이 긍정적으로 반응하고 있다.",
+      "triggers": ["M1", "G1", "G2"]
+    },
+    {
+      "id": "opt_payment",
+      "tone": "optimism",
+      "headline": "대형 결제망, 신규 자산 지원 발표",
+      "body": "주요 결제 서비스가 지원을 확대하며 실생활 활용에 대한 기대가 커지고 있다.",
+      "triggers": ["M1", "M2"]
+    },
+    {
+      "id": "opt_disinflation",
+      "tone": "optimism",
+      "headline": "물가 상승률, 둔화세로 전환",
+      "body": "인플레이션 압력이 완화되며 긴축 종료 기대가 시장에 퍼지고 있다.",
+      "triggers": ["M2", "G1", "G2"]
+    },
+    {
+      "id": "opt_jobsgood",
+      "tone": "optimism",
+      "headline": "고용지표 예상치 상회, 경기 낙관론 확산",
+      "body": "견조한 고용 지표에 경기 연착륙 기대가 커지며 위험자산 선호가 살아나고 있다.",
+      "triggers": ["M1", "G1"]
+    },
+    {
+      "id": "opt_trade",
+      "tone": "optimism",
+      "headline": "주요국 무역협정 전격 타결",
+      "body": "오랜 협상 끝에 합의가 이뤄지며 교역 확대 기대감이 시장에 반영되고 있다.",
+      "triggers": ["M1", "M2", "G1"]
+    },
+    {
+      "id": "opt_celebrity",
+      "tone": "optimism",
+      "headline": "영향력 있는 인사, 긍정적 발언 화제",
+      "body": "유명 인사의 우호적 발언이 확산되며 매수 심리를 자극하고 있다.",
+      "triggers": ["M1", "M2", "G2"]
+    },
+    {
+      "id": "opt_dereg",
+      "tone": "optimism",
+      "headline": "규제 완화 기대감 확산",
+      "body": "당국이 유연한 접근을 시사하며 제도권 편입 기대가 커지고 있다.",
+      "triggers": ["M1", "G1"]
+    },
+    {
+      "id": "opt_upgrade",
+      "tone": "optimism",
+      "headline": "국가 신용등급 상향 조정",
+      "body": "재정 건전성 개선 평가에 자금 유입 기대감이 커지고 있다.",
+      "triggers": ["M2", "G1", "G2"]
+    },
+    {
+      "id": "unc_poll",
+      "tone": "uncertain",
+      "headline": "여론조사 초박빙, 결과 예측 불가",
+      "body": "지지율 격차가 좁혀지며 정책 방향을 둘러싼 관망세가 짙어지고 있다.",
+      "triggers": ["F2"]
+    },
+    {
+      "id": "unc_budget",
+      "tone": "uncertain",
+      "headline": "예산안 표결 임박, 통과 여부 불투명",
+      "body": "의회 내 이견이 좁혀지지 않으며 시장이 결과를 예의주시하고 있다.",
+      "triggers": ["F2"]
+    },
+    {
+      "id": "unc_earnings",
+      "tone": "uncertain",
+      "headline": "대형 기업 실적 발표 임박",
+      "body": "예상을 뛰어넘을지 밑돌지를 두고 시장의 관측이 엇갈리고 있다.",
+      "triggers": []
+    },
+    {
+      "id": "unc_detente",
+      "tone": "uncertain",
+      "headline": "지정학적 긴장 완화 협상 진행 중",
+      "body": "대화 재개 소식에도 실질적 진전 여부는 아직 불투명하다.",
+      "triggers": ["F2"]
+    },
+    {
+      "id": "unc_succession",
+      "tone": "uncertain",
+      "headline": "핵심 인사 거취를 둘러싼 관측 엇갈림",
+      "body": "주요 정책 결정권자의 거취가 불확실해지며 시장이 방향을 못 정하고 있다.",
+      "triggers": ["F2"]
+    },
+    {
+      "id": "unc_billstall",
+      "tone": "uncertain",
+      "headline": "핵심 법안 처리 지연, 통과 여부 안갯속",
+      "body": "이해관계 조율이 난항을 겪으며 관련 시장의 관망세가 이어지고 있다.",
+      "triggers": ["F2"]
+    },
+    {
+      "id": "unc_orgmeeting",
+      "tone": "uncertain",
+      "headline": "국제기구 회의 결과 발표 대기",
+      "body": "회의 결과에 따라 시장 방향이 크게 갈릴 수 있어 투자자들이 촉각을 곤두세우고 있다.",
+      "triggers": []
+    },
+    {
+      "id": "unc_emerging",
+      "tone": "uncertain",
+      "headline": "신흥국 정정 불안, 파급 여부 주목",
+      "body": "일부 지역의 정치적 불안이 다른 시장으로 번질지 관측이 엇갈리고 있다.",
+      "triggers": ["F2"]
+    },
+    {
+      "id": "unc_mna",
+      "tone": "uncertain",
+      "headline": "대형 인수합병 협상 난항설",
+      "body": "협상 결렬 가능성이 제기되며 관련 시장이 불확실성에 흔들리고 있다.",
+      "triggers": ["F2"]
+    },
+    {
+      "id": "unc_supplychain",
+      "tone": "uncertain",
+      "headline": "핵심 공급망 재편 논의 확산",
+      "body": "구조 개편 방향을 두고 다양한 시나리오가 거론되며 시장이 관망하고 있다.",
+      "triggers": []
     }
   ],
   "signature_dramas": {
