@@ -88,9 +88,13 @@ export const api = {
       "/control/interview/answer", { session_id: sessionId, qid, text, use_llm: useLlm }),
 
   // -- 게임 세션 --
-  gameStart: (gameId: string, answers: Record<string, number>, symbol: string, startPrice = 100.0) =>
+  gameStart: (
+    gameId: string, answers: Record<string, number>, symbol: string, startPrice = 100.0,
+    allocations?: Record<string, number>,
+  ) =>
     post<{ status: string; state: GameState }>(
-      "/control/game/start", { game_id: gameId, answers, symbol, start_price: startPrice }),
+      "/control/game/start",
+      { game_id: gameId, answers, symbol, start_price: startPrice, allocations: allocations ?? null }),
   gameState: (gameId: string) =>
     get<{ status: string; state: GameState }>("/control/game/state", { game_id: gameId }),
   gamePreview: (gameId: string) =>

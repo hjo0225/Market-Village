@@ -30,6 +30,39 @@ def _game(**kw):
     return GameRun(PANICKY, **base)
 
 
+def test_initial_positions_seed_diversified_start():
+    # T-215 D1 — 분산 시작: 주력(meme) + 2차 포지션(large_stable)을 day0부터.
+    g = _game(initial_positions={"large_stable": {"avg_cost": 100.0, "quantity": 0.3}})
+    st = g.state()
+    holdings = {h["category"]: h for h in st["portfolio"]["holdings"]}
+    assert set(holdings) == {"meme", "large_stable"}
+    assert holdings["large_stable"]["quantity"] == 0.3
+    assert holdings["large_stable"]["avg_cost"] == 100.0
+    # 이미 보유 중인 카테고리는 M1(추격매수) 감시 목록(other_categories)에서 빠져야 함.
+    assert "large_stable" not in g.other_categories
+
+
+def test_initial_positions_included_in_day0_total_asset():
+    # 버그 재현: last_snap이 없는 day0의 total_asset 폴백이 2차 포지션을 빠뜨렸었음.
+    g = _game(category="large_stable", start_quantity=0.4,
+              initial_positions={
+                  "mid_alt": {"avg_cost": 100.0, "quantity": 0.3},
+                  "meme": {"avg_cost": 100.0, "quantity": 0.2},
+                  "stable": {"avg_cost": 100.0, "quantity": 0.1},
+              })
+    assert g.state()["total_asset"] == 100.0
+
+
+def test_initial_positions_survive_new_run_reset():
+    # NG+에서도 같은 분산 배분으로 리셋(통제 변인 유지, 기둥3).
+    g = _game(initial_positions={"large_stable": {"avg_cost": 100.0, "quantity": 0.3}})
+    g.advance_day()
+    g.new_run()
+    holdings = {h["category"]: h for h in g.state()["portfolio"]["holdings"]}
+    assert "large_stable" in holdings
+    assert holdings["large_stable"]["quantity"] == 0.3
+
+
 def test_advance_one_day_at_a_time():
     g = _game()
     assert g.state()["day"] == 0 and g.finished is False

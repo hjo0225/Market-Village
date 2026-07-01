@@ -296,6 +296,10 @@ class GameStartBody(BaseModel):
     symbol: str = "DOGE"
     start_price: float = 100.0
     start_stats: dict | None = None
+    # T-215 D1 — "분산해서 시작" 토글. {category: 0~100 비중, 합계 100} 주면
+    # 최대 비중 카테고리가 주력, 나머지는 day0부터 2차 포지션으로 채워진다.
+    # 없으면(기본) 기존 단일종목(symbol) 경로 그대로.
+    allocations: dict[str, float] | None = None
 
 
 class GameAdvanceBody(BaseModel):
@@ -320,8 +324,24 @@ class GameNewRunBody(BaseModel):
 def control_game_start(body: GameStartBody):
     """§12.4 — 인터뷰 답변으로 클론 생성 → 30일 회차 세션 시작(신 엔진 정본)."""
     spec = _clone_spec.build_clone_spec(body.answers)
-    g = _GameRun(spec, category=_category_for_symbol(body.symbol),
-                 start_price=body.start_price, start_stats=body.start_stats, run_id="run1")
+    allocations = {c: p for c, p in (body.allocations or {}).items() if p and p > 0}
+    if allocations:
+        # 최대 비중 = 주력(§8.3 T-215 D4 전제). 전 카테고리가 day0 지수정규화로
+        # 거의 동일가(§6.1.1)라 start_price를 공통 기준가로 그대로 쓴다(기존
+        # 단일종목 경로와 동일한 근사 수준 — 별도 fate_line day0 조회 불필요).
+        primary_cat = max(allocations, key=allocations.get)
+        total = body.start_price
+        primary_qty = (allocations[primary_cat] / 100.0) * total / body.start_price
+        initial_positions = {
+            cat: {"avg_cost": body.start_price, "quantity": (pct / 100.0) * total / body.start_price}
+            for cat, pct in allocations.items() if cat != primary_cat
+        }
+        g = _GameRun(spec, category=primary_cat, start_price=body.start_price,
+                     start_stats=body.start_stats, start_quantity=primary_qty,
+                     initial_positions=initial_positions, run_id="run1")
+    else:
+        g = _GameRun(spec, category=_category_for_symbol(body.symbol),
+                     start_price=body.start_price, start_stats=body.start_stats, run_id="run1")
     _GAMES[body.game_id] = g
     _persist_game(body.game_id, g)
     return {"status": "ok", "state": g.state()}

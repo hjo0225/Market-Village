@@ -27,6 +27,26 @@ def test_start_returns_day0_state():
     assert r["state"]["day"] == 0 and r["state"]["finished"] is False
 
 
+def test_start_with_allocations_seeds_diversified_portfolio():
+    # T-215 D1 — "분산해서 시작" 토글 켠 경로. 최대 비중 카테고리가 주력.
+    r = _start("ep_alloc",
+               allocations={"large_stable": 50, "mid_alt": 20, "meme": 20, "stable": 10})
+    assert r["status"] == "ok"
+    holdings = {h["category"]: h for h in r["state"]["portfolio"]["holdings"]}
+    assert set(holdings) == {"large_stable", "mid_alt", "meme", "stable"}
+    assert r["state"]["category"] == "large_stable"          # 최대 비중 = 주력
+    total_value = sum(h["value"] for h in holdings.values())
+    assert abs(total_value - 100.0) < 1.0                     # 총자산 100 그대로 분배
+
+
+def test_start_without_allocations_stays_single_asset():
+    # 토글 꺼짐(기본) — 회귀 없음 확인.
+    r = _start("ep_no_alloc")
+    holdings = r["state"]["portfolio"]["holdings"]
+    assert len(holdings) == 1
+    assert holdings[0]["category"] == "meme"
+
+
 def test_news_three_distinct_tones():
     _start("ep_news")
     r = mls.control_game_news(game_id="ep_news", seed=7)

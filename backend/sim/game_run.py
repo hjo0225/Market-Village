@@ -52,6 +52,7 @@ class GameRun:
         run_id: str = "run1",
         initial_rapport: float = 50.0,
         other_categories: tuple[str, ...] | None = None,
+        initial_positions: dict[str, dict] | None = None,
     ) -> None:
         self.clone_spec = clone_spec
         self.category = category
@@ -63,11 +64,15 @@ class GameRun:
         self.initial_rapport = initial_rapport
         self._start_quantity = start_quantity
         self._start_cash = start_cash
+        # §6.2/T-215 D1 — 분산 시작(주력 외 day0부터 보유하는 2차 포지션들).
+        # {category: {avg_cost, quantity}}. 없으면 기존 단일종목 경로 그대로.
+        self._initial_positions = dict(initial_positions or {})
         # §8.3 T-210 — 보유하지 않은 감시 종목(M1 추격매수 컨텍스트). 기본값은
-        # 나머지 전 카테고리(다자산 거울) — 명시로 좁히거나 끌 수 있다.
+        # 나머지 전 카테고리(다자산 거울)에서 day0부터 이미 보유한 것들은 제외
+        # — 이미 들고 있는 종목은 "추격"할 대상이 아니다.
         self.other_categories = (
             other_categories if other_categories is not None
-            else tuple(c for c in CATEGORIES if c != category)
+            else tuple(c for c in CATEGORIES if c != category and c not in self._initial_positions)
         )
         self._base_stats = dict(start_stats or _DEFAULT_STATS)
         self._run_index = 0
@@ -83,7 +88,10 @@ class GameRun:
         self.stats = dict(self._base_stats)
         self.holding = {"avg_cost": self.start_price,
                         "quantity": self._start_quantity, "cash": self._start_cash}
-        self.initial_total = self._start_cash + self._start_quantity * self.start_price
+        if self._initial_positions:
+            self.holding["positions"] = {c: dict(p) for c, p in self._initial_positions.items()}
+        self.initial_total = self._start_cash + self._start_quantity * self.start_price + sum(
+            p["quantity"] * p["avg_cost"] for p in self._initial_positions.values())
         self.day = 0
         self.last_price = self.start_price
         self.finished = False
@@ -258,16 +266,17 @@ class GameRun:
         return out
 
     def state(self) -> dict:
+        holdings = self._holdings_breakdown()
         return {
             "run_id": self.run_id,
             "day": self.day,
             "days": self.days,
             "finished": self.finished,
             "stats": dict(self.stats),
-            "portfolio": {**dict(self.holding), "holdings": self._holdings_breakdown()},
+            "portfolio": {**dict(self.holding), "holdings": holdings},
             "total_asset": round(
                 self.last_snap.total_asset if self.last_snap is not None
-                else self.holding["cash"] + self.holding["quantity"] * self.last_price, 4),
+                else self.holding["cash"] + sum(h["value"] for h in holdings), 4),
             "category": self.category,
             "last_event": self.last_event,
             "rapport": round(self.rapport, 2),
@@ -284,6 +293,7 @@ class GameRun:
             "days": self.days,
             "start_quantity": self._start_quantity,
             "start_cash": self._start_cash,
+            "initial_positions": self._initial_positions,
             "other_categories": list(self.other_categories),
             "base_stats": dict(self._base_stats),
             "run_index": self._run_index,
@@ -315,6 +325,7 @@ class GameRun:
             store=RunStore.from_dict(doc["store"]),
             run_id=doc["run_id"], initial_rapport=doc["initial_rapport"],
             other_categories=tuple(doc["other_categories"]),
+            initial_positions=doc.get("initial_positions") or None,
         )
         # __init__이 새 회차로 리셋해버리므로, 저장된 실제 진행 상태를 그 위에 덮는다.
         g._run_index = doc["run_index"]
