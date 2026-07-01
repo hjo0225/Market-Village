@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import PixelButton from "@/components/pixel/PixelButton";
 import PixelPanel from "@/components/pixel/PixelPanel";
+import OnboardingOverlay from "@/components/OnboardingOverlay";
 import { getGameId } from "@/lib/session";
 
 export default function MainMenu() {
@@ -16,6 +17,7 @@ export default function MainMenu() {
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-white p-6">
+      <OnboardingOverlay />
       <PixelPanel tone="cloud" className="w-full max-w-md p-8 text-center animate-pixel-pop">
         <div className="text-5xl mb-3">🪞</div>
         <h1 className="text-2xl font-extrabold mb-1">Market Village</h1>
