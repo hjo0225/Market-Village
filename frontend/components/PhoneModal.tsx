@@ -58,6 +58,7 @@ export default function PhoneModal({ isOpen, onClose, gameId, rapport, crowdMood
         <div className="absolute left-1/2 -translate-x-1/2 top-4 w-20 h-5 bg-black rounded-full z-10" />
         <button
           onClick={onClose}
+          aria-label="닫기"
           className="absolute -right-3 -top-3 w-7 h-7 rounded-full bg-white border-2 border-black flex items-center justify-center"
         >
           <X size={13} />
