@@ -21,7 +21,6 @@ from pathlib import Path
 from . import personas as _personas
 from . import resistance as RES
 from . import tuning as T
-from .clone_spec import CloneSpec
 
 # --------------------------------------------------------------------------- #
 # 1:1 권유 (§9.2.2)
@@ -98,10 +97,14 @@ def fgi_post(
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 BOARD_POOL_PATH = _REPO_ROOT / "board_pool.seed.json"
 
-# 트리거 컨텍스트 매핑(D2): 함정이 우선, 없으면 고강도 뉴스의 톤.
-_TRAP_CONTEXT = {"F1": "fear", "F2": "fear", "G1": "greed", "G2": "greed",
-                 "M1": "fomo", "M2": "fomo"}
+# 트리거 컨텍스트 매핑(D2 개정): 시장 급변동이 우선, 없으면 고강도 뉴스의 톤.
+# 클론 개인의 함정(위기)은 마을의 공개 이벤트가 아니므로 게시판과 무관하다
+# (사용자 재정의 2026-07-02 — 함정 연동은 오늘 위기를 아침에 누설하는 부작용도 있었다).
 _TONE_CONTEXT = {"fear": "fear", "optimism": "fomo", "uncertain": "unrest"}
+
+# 컨텍스트 ↔ 클론 감정 반응 판정에 쓰는 관련 스탯(D9 개정 — 수치는 규칙, 문구는 표현).
+_STAT_FOR_CONTEXT = {"fear": "급락패닉저항", "greed": "과대베팅제어",
+                     "fomo": "추격매수저항", "unrest": "멘탈마모저항"}
 
 # 컨텍스트별 출연진(§7.3) — 글 관중 / 댓글 관중(반박·부채질).
 _BOARD_CAST = {
@@ -128,14 +131,17 @@ def _load_board_pool(path_str: str) -> dict:
         return json.load(f)
 
 
-def board_trigger(trap: str | None, drawn_news: list[dict]) -> str | None:
-    """D2 — 오늘 게시판이 열리는가. 열리면 컨텍스트(fear/greed/fomo/unrest).
+def board_trigger(market_move_pct: float, drawn_news: list[dict]) -> str | None:
+    """D2 개정 — 오늘 게시판이 열리는가. 열리면 컨텍스트(fear/greed/fomo/unrest).
 
-    위기 발동(trap)이 우선. 아니면 그날 뽑힌 뉴스 3개 중 intensity high/extreme이
-    있을 때 그 톤으로 연다(위기로 안 이어졌어도 마을은 시끄럽다).
+    게시판은 **마을의 공개 이벤트**에만 반응한다: ①시장 급변동(전일 대비 ±기준,
+    급락→공포 수다·급등→불장 수다) ②그날 뽑힌 고강도 뉴스(그 톤으로). 클론
+    개인의 함정은 여기서 보지 않는다(비공개 §12.4 — 게시판이 위기를 누설 금지).
     """
-    if trap:
-        return _TRAP_CONTEXT.get(trap, "fear")
+    if market_move_pct <= -T.BOARD_MARKET_MOVE_PCT:
+        return "fear"
+    if market_move_pct >= T.BOARD_MARKET_MOVE_PCT:
+        return "fomo"
     for n in drawn_news:
         if n.get("intensity") in ("high", "extreme"):
             return _TONE_CONTEXT.get(n.get("tone", ""), "unrest")
@@ -158,14 +164,15 @@ def _board_llm_rewrite(text: str, author_name: str, style: str) -> str | None:
 
 
 def board_event(
-    context: str, clone_spec: CloneSpec, trap: str | None,
+    context: str, clone_stats: dict[str, float],
     rng: random.Random, use_llm: bool = False,
 ) -> dict:
-    """이벤트 날 게시판 피드 1회분 생성(D8·D9 — 구성은 규칙, 표현은 opt-in LLM).
+    """이벤트 날 게시판 피드 1회분 생성(D8·D9 개정 — 구성은 규칙, 표현은 opt-in LLM).
 
-    반환: {"context", "posts": [{author, author_id, author_kind, portrait, text,
-    comments: [{author, text}]}], "crowd_mood_delta"} — 적용(캐시·crowd_mood 이동)은
-    호출자(GameRun.board_today)의 몫. 순수함수(같은 rng 시드 = 같은 피드).
+    클론도 매 게시판에 참여하되(D9), 글 내용은 함정이 아니라 **이벤트에 대한 감정
+    반응**이다: 컨텍스트 관련 스탯이 낮으면 동요(shaken), 높으면 침착(steady) 문구.
+    반환: {"context", "posts": [...], "crowd_mood_delta"} — 적용(캐시·crowd_mood
+    이동)은 호출자(GameRun)의 몫. 순수함수(같은 rng 시드 = 같은 피드).
     """
     pool = _load_board_pool(str(BOARD_POOL_PATH))
     cast = _BOARD_CAST[context]
@@ -195,9 +202,14 @@ def board_event(
                 {"author": _SNS_NAME[pid], "author_id": pid,
                  "text": pick_text("comments", pid)})
 
-    # D9 — 클론 게시: 함정을 겪은 날이면 합리화 언어(§12.0 narrate와 같은 소스).
-    if trap and clone_spec.rationalization.get(trap):
-        text = rng.choice(clone_spec.rationalization[trap])
+    # D9 개정 — 클론도 이벤트에 대한 감정 반응으로 참여(함정·위기 무관, 누설 없음).
+    stat_name = _STAT_FOR_CONTEXT.get(context, "멘탈마모저항")
+    mood_key = "steady" if clone_stats.get(stat_name, 50.0) >= 50.0 else "shaken"
+    clone_variants = pool.get("clone", {}).get(context, {}).get(mood_key)
+    if clone_variants:
+        text = rng.choice(clone_variants)
+        if use_llm:
+            text = _board_llm_rewrite(text, "내 클론", "이벤트에 반응하는 투자 초심자") or text
         posts.append({"author": "내 클론", "author_id": "clone", "author_kind": "clone",
                       "portrait": None, "text": text, "comments": []})
 

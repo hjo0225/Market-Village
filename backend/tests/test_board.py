@@ -22,32 +22,44 @@ _HIGH_UNC = {"id": "n3", "tone": "uncertain", "intensity": "high"}
 _MED = {"id": "n4", "tone": "fear", "intensity": "medium"}
 
 
-# --- 트리거 판정 (D2) ------------------------------------------------------ #
-def test_trigger_none_on_calm_day_without_high_news():
-    assert social.board_trigger(None, [_MED]) is None
-    assert social.board_trigger(None, []) is None
+# --- 트리거 판정 (D2 개정 — 공개 이벤트만: 시장 급변동 or 고강도 뉴스) ------ #
+def test_trigger_none_on_calm_day():
+    assert social.board_trigger(0.0, [_MED]) is None
+    assert social.board_trigger(3.0, []) is None
 
 
-def test_trigger_trap_maps_to_context():
-    assert social.board_trigger("F1", []) == "fear"
-    assert social.board_trigger("G2", [_MED]) == "greed"
-    assert social.board_trigger("M1", []) == "fomo"
+def test_trigger_market_crash_and_surge():
+    assert social.board_trigger(-12.0, []) == "fear"
+    assert social.board_trigger(15.0, [_MED]) == "fomo"
 
 
-def test_trigger_high_news_opens_board_even_without_crisis():
-    assert social.board_trigger(None, [_MED, _HIGH_FEAR]) == "fear"
-    assert social.board_trigger(None, [_HIGH_OPT]) == "fomo"
-    assert social.board_trigger(None, [_HIGH_UNC]) == "unrest"
+def test_trigger_high_news_opens_board():
+    assert social.board_trigger(0.0, [_MED, _HIGH_FEAR]) == "fear"
+    assert social.board_trigger(0.0, [_HIGH_OPT]) == "fomo"
+    assert social.board_trigger(0.0, [_HIGH_UNC]) == "unrest"
 
 
-def test_trigger_crisis_takes_precedence_over_news():
-    assert social.board_trigger("G1", [_HIGH_FEAR]) == "greed"
+def test_trigger_market_move_takes_precedence_over_news():
+    assert social.board_trigger(-12.0, [_HIGH_OPT]) == "fear"
 
 
-# --- 피드 생성 (D8·D9) ----------------------------------------------------- #
+def test_trigger_never_sees_clone_traps():
+    # D2 개정 핵심 — 시그니처에 함정이 아예 없다(위기 누설 구조적 차단).
+    import inspect
+    params = list(inspect.signature(social.board_trigger).parameters)
+    assert "trap" not in params
+
+
+# --- 피드 생성 (D8·D9 개정) ------------------------------------------------- #
+_SHAKEN_STATS = {"급락패닉저항": 20.0, "추격매수저항": 20.0,
+                 "과대베팅제어": 20.0, "멘탈마모저항": 20.0}
+_STEADY_STATS = {"급락패닉저항": 80.0, "추격매수저항": 80.0,
+                 "과대베팅제어": 80.0, "멘탈마모저항": 80.0}
+
+
 def test_board_event_contract_and_determinism():
-    a = social.board_event("fear", CLONE, trap="F1", rng=random.Random(7))
-    b = social.board_event("fear", CLONE, trap="F1", rng=random.Random(7))
+    a = social.board_event("fear", _SHAKEN_STATS, rng=random.Random(7))
+    b = social.board_event("fear", _SHAKEN_STATS, rng=random.Random(7))
     assert a == b                                   # 같은 시드 = 같은 피드
     assert len(a["posts"]) >= 3                     # 관중 여럿 + 클론
     for p in a["posts"]:
@@ -58,21 +70,26 @@ def test_board_event_contract_and_determinism():
     assert a["crowd_mood_delta"] > 0                # 이벤트 날은 들끓는다
 
 
-def test_board_event_clone_post_uses_rationalization_when_trapped():
-    out = social.board_event("fear", CLONE, trap="F1", rng=random.Random(1))
-    clone_posts = [p for p in out["posts"] if p["author_kind"] == "clone"]
-    assert len(clone_posts) == 1
-    assert clone_posts[0]["text"] in CLONE.rationalization["F1"]
+def test_board_event_clone_reacts_by_relevant_stat():
+    # D9 개정 — 클론은 매 게시판 참여, 문구는 이벤트 반응(관련 스탯 낮음=동요/높음=침착).
+    pool = social._load_board_pool(str(social.BOARD_POOL_PATH))
+    shaken = social.board_event("fear", _SHAKEN_STATS, rng=random.Random(1))
+    steady = social.board_event("fear", _STEADY_STATS, rng=random.Random(1))
+    sh_post = next(p for p in shaken["posts"] if p["author_kind"] == "clone")
+    st_post = next(p for p in steady["posts"] if p["author_kind"] == "clone")
+    assert sh_post["text"] in pool["clone"]["fear"]["shaken"]
+    assert st_post["text"] in pool["clone"]["fear"]["steady"]
 
 
-def test_board_event_no_clone_post_without_trap():
-    out = social.board_event("fear", CLONE, trap=None, rng=random.Random(1))
-    assert all(p["author_kind"] != "clone" for p in out["posts"])
+def test_board_event_clone_participates_in_every_context():
+    for ctx in ("fear", "greed", "fomo", "unrest"):
+        out = social.board_event(ctx, _STEADY_STATS, rng=random.Random(2))
+        assert any(p["author_kind"] == "clone" for p in out["posts"]), ctx
 
 
 def test_board_event_offline_needs_no_llm():
     # 키/네트워크 없이도(기본 use_llm=False) 항상 동작 — 예외 없이 텍스트 생성.
-    out = social.board_event("greed", CLONE, trap="G2", rng=random.Random(3))
+    out = social.board_event("greed", _STEADY_STATS, rng=random.Random(3))
     assert all(p["text"] for p in out["posts"])
 
 
@@ -81,7 +98,7 @@ def test_board_event_llm_optin_rewrites_via_fake(monkeypatch):
     from sim import llm as llmmod
     fake = llmmod.FakeLLM(response="다듬어진 문장")
     monkeypatch.setattr(llmmod, "LLMClient", lambda *a, **kw: fake)
-    out = social.board_event("fear", CLONE, trap="F1", rng=random.Random(5), use_llm=True)
+    out = social.board_event("fear", _SHAKEN_STATS, rng=random.Random(5), use_llm=True)
     assert any(p["text"] == "다듬어진 문장" for p in out["posts"])
 
 
@@ -92,7 +109,7 @@ def test_board_event_llm_failure_falls_back_to_template(monkeypatch):
         raise RuntimeError("no key")
 
     monkeypatch.setattr(llmmod, "LLMClient", _boom)
-    out = social.board_event("fear", CLONE, trap="F1", rng=random.Random(5), use_llm=True)
+    out = social.board_event("fear", _SHAKEN_STATS, rng=random.Random(5), use_llm=True)
     assert all(p["text"] for p in out["posts"])     # 폴백으로 항상 채워짐
 
 
@@ -102,31 +119,49 @@ def _g(run_id="board_g"):
 
 
 def test_board_today_closed_on_calm_day():
+    # day0은 change_rate=0(첫날) — 시장 트리거 없음 + medium 뉴스뿐 → 닫힘.
     g = _g()
     out = g.board_today([_MED])
     assert out["open"] is False and out["posts"] == []
 
 
-def test_board_today_opens_on_high_news_and_caches_same_day():
+def test_board_today_opens_on_market_crash_without_news():
+    # D2 개정 — 뉴스가 조용해도 시장이 급락하면 마을이 수군댄다(가짜 운명선).
+    from sim.fate_line import FateLine
+    fl = FateLine({"days": 3, "categories": {"meme": {
+        "ohlc": [[100, 100, 100, 100], [100, 100, 60, 70], [70, 70, 70, 70]]}}})
+    g = GameRun(CLONE, category="meme", start_price=100.0, run_id="crashday",
+                fate_line=fl, other_categories=())
+    g.advance_day()                                  # day0 → day1 (전일비 -30%)
+    out = g.board_today([_MED])
+    assert out["open"] is True and out["context"] == "fear"
+
+
+def test_board_today_is_pure_observation_and_caches_same_day():
+    # D11(/review 수정) — 관찰 GET은 crowd_mood를 변이하지 않는다(레이스·이중적용·
+    # 네트워크 유실 차단). 여파는 advance_day 밤 정산에서 1회.
     g = _g()
     mood0 = g.crowd_mood
     first = g.board_today([_HIGH_FEAR])
     assert first["open"] is True and len(first["posts"]) >= 3
-    mood1 = g.crowd_mood
-    assert mood1 > mood0                            # 들끓음 1회 반영
+    assert g.crowd_mood == mood0                    # 관찰은 무변이
     second = g.board_today([_HIGH_FEAR])
     assert second == first                          # 같은 날 재호출 = 캐시
-    assert g.crowd_mood == mood1                    # 두 번 안 오른다
+    g.advance_day()
+    mood_after = g.crowd_mood
+    assert mood_after > mood0                       # 밤 정산에서 들끓음 반영(회귀 포함)
+    g.advance_day()                                 # 다음 날 게시판 없이 진행
+    assert g.crowd_mood < mood_after                # 재적용 없음 — 중립으로 감쇠만
 
 
 def test_board_survives_serialization_without_reapplying_mood():
     g = _g()
     g.board_today([_HIGH_FEAR])
+    g.advance_day()                                 # 여파 반영 + mood_applied 기록
     mood = g.crowd_mood
     restored = GameRun.from_doc(g.to_doc())
-    out = restored.board_today([_HIGH_FEAR])
-    assert out["open"] is True
-    assert restored.crowd_mood == mood              # 재생성·재적용 없음
+    assert restored.crowd_mood == mood
+    assert restored._board.get("mood_applied") is True   # 재적용 안 됨(직렬화 보존)
 
 
 # --- §9.3 폭주 방지 — crowd_mood 밤사이 회귀 (T-225 검증에서 발견한 결함) --- #
@@ -140,12 +175,14 @@ def test_crowd_mood_reverts_toward_neutral_overnight():
 
 
 def test_daily_boards_do_not_push_crowd_mood_past_m2_threshold():
+    # M2는 "그날 스텝이 읽는 값"(advance 직전 crowd_mood)으로 판정 — 그 값을 검사
+    # (/review 지적: 야간 회귀 후 값만 재면 낮에 임계를 넘어도 통과해버린다).
     from sim import tuning as T
     g = _g("mood_loop")
     for _ in range(15):
         g.board_today([_HIGH_FEAR])               # 매일 게시판이 열리는 최악 케이스
+        assert g.crowd_mood < T.M2_FGI, g.day     # M2가 읽는 낮 값이 임계 아래
         g.advance_day()
-        assert g.crowd_mood < T.M2_FGI, g.day     # 평형이 임계(75) 아래 유지
 def test_board_endpoint_deterministic_same_day():
     mls.control_game_start(mls.GameStartBody(
         game_id="board_ep", answers={}, symbol="DOGE", start_price=100.0))

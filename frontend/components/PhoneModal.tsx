@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 import PixelButton from "@/components/pixel/PixelButton";
-import { api } from "@/lib/api";
+import { api, NPC_LABELS } from "@/lib/api";
 
 const FGI_TONES = [
   { value: "calm", label: "휩쓸리지 마" },
@@ -11,17 +11,16 @@ const FGI_TONES = [
   { value: "fear_join", label: "같이 무서워하기" },
 ];
 
-// §9.5.3 매매 에이전트 8종(T-221) — id는 backend/sim/personas.py와 동일해야 한다.
-const NPCS = [
-  { value: "value_investor", label: "가치투자자 (도움·차분)" },
-  { value: "quant_trader", label: "퀀트 트레이더 (도움·냉정)" },
-  { value: "macro_whale", label: "매크로 고래 (도움·대범)" },
-  { value: "contrarian", label: "역발상 투자자 (도움·독립)" },
-  { value: "panic_ant", label: "패닉셀 개미 (자극·공포)" },
-  { value: "fomo_scalper", label: "FOMO 단타러 (자극·추격)" },
-  { value: "conspiracy_influencer", label: "음모론 인플루언서 (자극·루머)" },
-  { value: "jackpot_gambler", label: "한탕 도박꾼 (자극·탐욕)" },
+// §9.5.3 매매 에이전트 8종(T-221) — 표시명은 api.ts NPC_LABELS 단일 소스에서.
+// 역할 태그(도움/자극)만 이 화면 전용. 순서 = 도움 4 → 자극 4.
+const NPC_ROLES: [string, string][] = [
+  ["value_investor", "도움·차분"], ["quant_trader", "도움·냉정"],
+  ["macro_whale", "도움·대범"], ["contrarian", "도움·독립"],
+  ["panic_ant", "자극·공포"], ["fomo_scalper", "자극·추격"],
+  ["conspiracy_influencer", "자극·루머"], ["jackpot_gambler", "자극·탐욕"],
 ];
+const NPCS = NPC_ROLES.map(([value, role]) => (
+  { value, label: `${NPC_LABELS[value] ?? value} (${role})` }));
 
 interface Props {
   isOpen: boolean;

@@ -152,6 +152,14 @@ class GameRun:
                 self.stats["멘탈회복"] = clamp(
                     self.stats["멘탈회복"] + self.last_event["delta"], 0.0, 100.0)
             self.store.record_snapshot(self.run_id, snap)
+        # T-223/D11 게시판 여파 — 그날 게시판이 열렸으면 과열 델타를 밤 정산에서
+        # 정확히 1회 반영(self.day는 위에서 이미 +1됨). 관찰 GET은 무변이라
+        # preview_crisis==advance_day 불변식·결정론이 유지된다.
+        if (self._board is not None and self._board.get("day") == self.day - 1
+                and self._board.get("open") and not self._board.get("mood_applied")):
+            self.crowd_mood = clamp(
+                self.crowd_mood + self._board["crowd_mood_delta"], 0.0, 100.0)
+            self._board["mood_applied"] = True
         # §9.3 폭주 방지 — 군중 분위기는 밤사이 중립으로 일부 회귀(게시판·FGI로
         # 올라간 과열이 영구 고착돼 M2를 상시 발동시키는 되먹임 차단, T-225).
         self.crowd_mood = clamp(
@@ -255,23 +263,26 @@ class GameRun:
     def board_today(self, drawn_news: list[dict], use_llm: bool = False) -> dict:
         """T-223 게시판(D1~D3) — 이벤트 날만 열리고, 하루 1회 확정 생성.
 
-        같은 날 재호출은 캐시 반환(crowd_mood도 하루 1회만 이동 — 결정론). 트리거는
-        위기(preview_crisis, 부작용 없음) 또는 그날 뽑힌 뉴스의 고강도 여부(D2).
-        시드는 (run_id, day) 고정 crc32 — 서버 재시작·재호출에도 같은 피드.
+        같은 날 재호출은 캐시 반환. 트리거는 위기(preview_crisis, 부작용 없음) 또는
+        그날 뽑힌 뉴스의 고강도 여부(D2). 시드는 (run_id, day) 고정 crc32.
+
+        ⚠️ 관찰 전용 — 상태(crowd_mood)를 변이하지 않는다. 여파(crowd_mood_delta)는
+        advance_day의 밤 정산에서 1회 반영(D11) — GET에서 변이하면 crisis_check와의
+        레이스·동시호출 이중적용·네트워크 유실로 결정론이 깨진다(/review에서 발견).
         """
         if self._board is not None and self._board.get("day") == self.day:
             return self._board
-        trap = self.preview_crisis()["trap"]
-        context = _social.board_trigger(trap, drawn_news)
+        # D2 개정 — 트리거는 공개 이벤트만: 시장 급변동(전일 대비) 또는 고강도 뉴스.
+        # 클론의 함정(preview_crisis)은 여기서 안 본다(§12.4 비공개 — 누설 금지).
+        market_move = self.fl.change_rate(self.category, self.day)
+        context = _social.board_trigger(market_move, drawn_news)
         if context is None:
             board: dict = {"day": self.day, "open": False, "context": None,
                            "posts": [], "crowd_mood_delta": 0.0}
         else:
             rng = random.Random(zlib.crc32(f"{self.run_id}:{self.day}".encode()))
-            feed = _social.board_event(context, self.clone_spec, trap, rng,
-                                       use_llm=use_llm)
-            board = {"day": self.day, "open": True, **feed}
-            self.crowd_mood = clamp(self.crowd_mood + feed["crowd_mood_delta"], 0.0, 100.0)
+            feed = _social.board_event(context, self.stats, rng, use_llm=use_llm)
+            board = {"day": self.day, "open": True, "mood_applied": False, **feed}
         self._board = board
         return board
 

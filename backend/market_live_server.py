@@ -205,12 +205,18 @@ def _gamerun_path(a, b) -> list[tuple[int, int]]:
         return [tuple(a), tuple(b)]
 
 
+def _walker_seed(*parts) -> int:
+    """워커용 고정 시드 — hash()는 프로세스마다 소금이 달라 재시작 안정성이 없음
+    (_news_seed와 같은 이유로 crc32, /review에서 일관성 지적)."""
+    return zlib.crc32(":".join(str(p) for p in parts).encode())
+
+
 def _ensure_game_walker(game_id: str) -> dict:
     """클론+NPC 워커 상태 초기화(결정론) — home/walk 어느 쪽이 먼저 와도 동일."""
     walker = _GAME_WALKERS.setdefault(game_id, {"pos": None, "day": -1, "npcs": {}})
     walker.setdefault("npcs", {})  # T-221 이전에 만들어진 워커 하위호환
     if walker["pos"] is None:
-        rng = random.Random(hash(game_id) & 0xFFFFFFFF)
+        rng = random.Random(_walker_seed("walker", game_id))
         home_tile = _gamerun_rand_tile_for(_GAME_LOCATION_ADDR["집_차트"], rng)
         walker["pos"] = list(home_tile) if home_tile else [70, 40]
     for p in _personas.TRADER_PERSONAS:
@@ -218,7 +224,7 @@ def _ensure_game_walker(game_id: str) -> dict:
             continue
         # NPC 시작 위치 = 자기 일과의 첫 장소(결정론, game_id·npc_id 시드).
         first_place = p["sched"][min(p["sched"])]
-        rng_n = random.Random((hash(game_id) ^ hash(p["id"])) & 0xFFFFFFFF)
+        rng_n = random.Random(_walker_seed("walker", game_id, p["id"]))
         tile = _gamerun_rand_tile_for(_GAME_LOCATION_ADDR[first_place], rng_n)
         walker["npcs"][p["id"]] = list(tile) if tile else [70, 40]
     return walker
@@ -268,7 +274,7 @@ def control_game_walk(game_id: str):
     if walker["day"] == g.day:
         return {"status": "ok", "steps": [], "npcs": {}, "cached": True}
 
-    rng = random.Random((hash(game_id) & 0xFFFFFFFF) + g.day)
+    rng = random.Random(_walker_seed("walk", game_id, g.day))
     addrs: list[str] = []
     for slot in sorted(g.schedule):
         addr = _GAME_LOCATION_ADDR.get(g.schedule[slot])
@@ -282,7 +288,7 @@ def control_game_walk(game_id: str):
 
     npc_steps: dict[str, list[list[int]]] = {}
     for p in _personas.TRADER_PERSONAS:
-        rng_n = random.Random(((hash(game_id) ^ hash(p["id"])) & 0xFFFFFFFF) + g.day)
+        rng_n = random.Random(_walker_seed("walk", game_id, p["id"], g.day))
         npc_addrs: list[str] = []
         for slot in sorted(p["sched"]):
             addr = _GAME_LOCATION_ADDR.get(p["sched"][slot])
@@ -572,6 +578,8 @@ def control_game_compare_days(game_id: str, run_a: str, run_b: str):
     g = _get_game(game_id)
     if g is None:
         return {"status": "error", "error": "no game"}
+    if not _runs.runs_comparable(g.store, run_a, run_b):
+        return {"status": "error", "error": "unknown or empty run"}
     return {"status": "ok", "days": _runs.diverging_days(g.store, run_a, run_b)}
 
 

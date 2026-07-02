@@ -57,3 +57,16 @@ def test_compare_days_endpoint():
 def test_compare_days_endpoint_missing_game():
     assert mls.control_game_compare_days(
         game_id="nope", run_a="a", run_b="b")["status"] == "error"
+
+
+def test_compare_days_endpoint_rejects_unknown_or_same_runs():
+    # /review 지적 — 존재하지 않는 run/자기 자신 비교는 빈 목록("같은 선택")이
+    # 아니라 에러여야 한다(프론트가 틀린 결론을 그리지 않게).
+    mls.control_game_start(mls.GameStartBody(
+        game_id="cmp_bad", answers={}, symbol="DOGE", start_price=100.0))
+    g = mls._get_game("cmp_bad")
+    g.store.record_snapshot("run1", DailySnapshot(day=1))
+    assert mls.control_game_compare_days(
+        game_id="cmp_bad", run_a="run1", run_b="ghost")["status"] == "error"
+    assert mls.control_game_compare_days(
+        game_id="cmp_bad", run_a="run1", run_b="run1")["status"] == "error"

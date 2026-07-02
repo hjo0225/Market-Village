@@ -60,6 +60,7 @@ function CompareInner() {
   const [runA, setRunA] = useState<string | null>(params.get("a"));
   const [runB, setRunB] = useState<string | null>(params.get("b"));
   const [days, setDays] = useState<number[] | null>(null);
+  const [daysError, setDaysError] = useState(false);
   const [selDay, setSelDay] = useState<number | null>(null);
   const [view, setView] = useState<{ a: CompareDayView | null; b: CompareDayView | null } | null>(null);
 
@@ -79,9 +80,10 @@ function CompareInner() {
   }, [router]);
 
   const loadDays = useCallback(async (id: string, a: string, b: string) => {
-    setDays(null); setSelDay(null); setView(null);
+    setDays(null); setSelDay(null); setView(null); setDaysError(false);
     const r = await api.gameCompareDays(id, a, b);
-    if (r.status !== "ok") return;
+    // 백엔드가 없는 run·자기 자신 비교를 에러로 거른다 — "같은 선택" 오표시 방지.
+    if (r.status !== "ok") { setDaysError(true); return; }
     setDays(r.days);
     if (r.days.length > 0) setSelDay(r.days[0]);
   }, []);
@@ -134,7 +136,9 @@ function CompareInner() {
           </select>
         </div>
 
-        {days === null ? (
+        {daysError ? (
+          <p className="text-sm">비교할 회차 데이터를 찾을 수 없어요 — 컬렉션에서 다시 진입해 주세요.</p>
+        ) : days === null ? (
           <p className="text-pixel-muted text-sm">분기일을 찾는 중…</p>
         ) : days.length === 0 ? (
           <p className="text-sm">두 회차가 같은 선택을 했습니다 — 행동이 갈린 날이 없어요.</p>

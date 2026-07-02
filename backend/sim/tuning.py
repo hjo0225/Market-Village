@@ -54,6 +54,8 @@ M2_FGI = 75.0             # 시장 과열 FGI ≥ 75 AND 군중 매수 우세
 # §9.3 폭주 방지 — crowd_mood는 밤사이 중립(50)으로 이만큼 회귀한다(T-225에서 발견:
 # 게시판 +3.5/일에 감쇠가 없으면 M2가 영구 발동. 0.15면 매일 열려도 평형 ≈ 69.8 < 75).
 CROWD_MOOD_REVERT = 0.15
+# 게시판(D2 개정) — 마을이 수군댈 만한 시장 급변동 기준(전일 종가 대비 ±%). [TUNE]
+BOARD_MARKET_MOVE_PCT = 8.0
 CONFIRMATION_BIAS_IGNORE_STREAK = 3   # 손실 포지션 중 비관 정보 3회 연속 무시
 
 # T-210 — 다자산 자금흐름(§8.3 to_hotter/concentrate 충동매매의 실제 이동 비율)

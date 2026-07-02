@@ -142,6 +142,17 @@ class RunStore:
         return store
 
 
+def runs_comparable(store: RunStore, run_a: str, run_b: str) -> bool:
+    """§13.6 비교 가능 여부 — 서로 다른 두 회차 모두 스냅샷이 있어야 한다.
+
+    (/review 지적: 검증 없이 빈 목록을 돌려주면 프론트가 존재하지 않는 회차에
+    대해 "두 회차가 같은 선택을 했습니다"라는 틀린 결론을 자신 있게 그린다.)
+    """
+    return (run_a != run_b
+            and bool(store._snapshots.get(run_a))
+            and bool(store._snapshots.get(run_b)))
+
+
 def diverging_days(store: RunStore, run_a: str, run_b: str) -> list[int]:
     """§13.6/T-227 — 두 회차의 행동이 실제로 갈린 날 목록(오름차순).
 
