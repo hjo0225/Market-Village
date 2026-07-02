@@ -41,6 +41,7 @@ from utils import collision_block_id  # noqa: E402  (config)
 
 from backend.sim import news as _news  # noqa: E402
 from backend.sim import personas as _personas  # noqa: E402
+from backend.sim import npc_traders as _npc_traders  # noqa: E402
 from backend.sim import clone_stats as _clone_stats  # noqa: E402
 from backend.sim import clone_spec as _clone_spec  # noqa: E402
 from backend.sim import result_card as _result_card  # noqa: E402
@@ -660,6 +661,25 @@ def control_game_newrun(body: GameNewRunBody):
     g.new_run(run_id=body.run_id)
     _persist_game(body.game_id, g)
     return {"status": "ok", "state": g.state()}
+
+
+@app.get("/control/game/leaderboard")
+def control_game_leaderboard(game_id: str):
+    """T-245 §13.7 — 마을 수익률 순위(클론+NPC 8, 배경 정보 톤 — 경쟁 목표화 금지 M4)."""
+    g = _get_game(game_id)
+    if g is None:
+        return {"status": "error", "error": "no game"}
+    total = (g.last_snap.total_asset if g.last_snap is not None
+             else g.holding["cash"] + g.holding["quantity"] * g.last_price)
+    clone_pct = round((total - g.initial_total) / g.initial_total * 100.0, 2) \
+        if g.initial_total else 0.0
+    board = [{"id": "clone", "name": "내 클론", "return_pct": clone_pct}]
+    for p in _personas.TRADER_PERSONAS:
+        board.append({"id": p["id"], "name": p["name"],
+                      "return_pct": _npc_traders.npc_return_pct(p, g.fl, g.category, g.day)})
+    board.sort(key=lambda e: e["return_pct"], reverse=True)
+    clone_rank = next(i + 1 for i, e in enumerate(board) if e["id"] == "clone")
+    return {"status": "ok", "board": board, "clone_rank": clone_rank, "total": len(board)}
 
 
 @app.get("/control/game/compare_days")

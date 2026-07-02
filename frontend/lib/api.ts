@@ -155,6 +155,11 @@ export const api = {
   gameCompare: (gameId: string, runA: string, runB: string, day: number) =>
     get<{ status: string; day: number; a: CompareDayView | null; b: CompareDayView | null }>(
       "/control/game/compare", { game_id: gameId, run_a: runA, run_b: runB, day }),
+  // T-245 §13.7 — 마을 수익률 순위(배경 정보 톤).
+  gameLeaderboard: (gameId: string) =>
+    get<{ status: string; board: { id: string; name: string; return_pct: number }[];
+         clone_rank: number; total: number }>(
+      "/control/game/leaderboard", { game_id: gameId }),
   gameBoard: (gameId: string, useLlm = false) =>
     get<{ status: string } & BoardFeed>("/control/game/day/board", { game_id: gameId, use_llm: useLlm }),
   gameCrisisCheck: (gameId: string, newsId?: string) =>

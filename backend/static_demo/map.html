@@ -260,8 +260,9 @@ function setBubble(orig, text){
 // 첫 구간(오전)에서 한 번만 받아 캐시(서버가 day 캐시라 재요청하면 빈값이 온다).
 let walkData = null;
 
-async function walkBand(gameId, band){
+async function walkBand(gameId, band, speedup){
   const gen = ++walkGen;
+  const target = BAND_TARGET_MS / Math.max(1, speedup || 1);   // T-243 배속
   if (band === "오전" || walkData === null){
     walkData = await api("/control/game/day/walk?game_id=" + encodeURIComponent(gameId));
   }
@@ -269,14 +270,14 @@ async function walkBand(gameId, band){
   const npcSegs = (walkData.npc_segments || {});
   Object.entries(npcSegs).forEach(([nid, bands]) => {
     const seg = (bands || {})[band] || [];
-    playSteps(nid, seg, false, stepMsFor(seg.length, BAND_TARGET_MS), HARD_CAP, gen);
+    playSteps(nid, seg, false, stepMsFor(seg.length, target), HARD_CAP, gen);
   });
   const cloneSeg = segs[band] || [];
   // T-242 — 이동 중 말풍선: 이 시간대의 목적지들.
   const plan = ((walkData.plan || {})[band]) || [];
   const planLabel = plan.map((p) => PLACE_SHORT[p] || p).join(" · ");
   if (plan.length && cloneSeg.length) setBubble(CLONE_ORIG, "🚶 ➜ " + planLabel);
-  await playSteps(CLONE_ORIG, cloneSeg, true, stepMsFor(cloneSeg.length, BAND_TARGET_MS), HARD_CAP, gen);
+  await playSteps(CLONE_ORIG, cloneSeg, true, stepMsFor(cloneSeg.length, target), HARD_CAP, gen);
   // 도착 — 이 시간대 마지막 장소의 활동 플레이버(다음 구간까지 유지).
   if (gen === walkGen && plan.length){
     setBubble(CLONE_ORIG, PLACE_DOING[plan[plan.length - 1]] || "");
@@ -310,7 +311,7 @@ window.addEventListener("message", (e) => {
     // T-233 — 수신 즉시 ack: 부모(MapBackground)가 "지도 살아있음"을 알고
     // 걷기 완료(walked)까지 제대로 기다릴 수 있게 한다(기존 4초 포기 문제).
     window.parent.postMessage({ type: "walk-ack", band: e.data.band ?? null }, "*");
-    if (e.data.band) walkBand(GAME_ID, e.data.band);   // T-237 시간대 동기 재생
+    if (e.data.band) walkBand(GAME_ID, e.data.band, e.data.speedup);   // T-237/T-243
     else walkToday(GAME_ID);                            // 하위호환(밴드 없는 통재생)
   }
 });

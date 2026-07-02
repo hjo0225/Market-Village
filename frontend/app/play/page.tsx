@@ -16,9 +16,10 @@ import MapBackground, { MapBackgroundHandle } from "@/components/MapBackground";
 import { api, BoardFeed, GameState, NewsItem, Meetings, Picks, DayResult } from "@/lib/api";
 import { getGameId } from "@/lib/session";
 
-// 사용자 피드백(2026-07-01) — "하루가 2분동안 진행되는 속도로". 3단계(아침·한낮·
-// 저녁) × 20초 = 60초 연출 + 실제 지도 걷기(~50초, map.html에서 조정) ≈ 총 2분.
+// 사용자 피드백(2026-07-01) — "하루가 2분동안 진행되는 속도로". 4단계 × 20초 기본.
+// T-243(council M1) — §13.3 빨리감기: 배속(1×/2×/4×)이 스테이지·걷기에 함께 적용.
 const DAY_STAGE_MS = 20000;
+const SPEED_OPTIONS = [1, 2, 4];
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 export default function PlayPage() {
@@ -45,6 +46,13 @@ export default function PlayPage() {
   // T-234 — 하루진행이 뉴스 선택을 기다리는 중인가(모달에서 선택/스킵 시 진행 시작).
   const [pendingAdvance, setPendingAdvance] = useState(false);
   const chosenNewsRef = useRef<string | null>(null);
+  // T-243 — 하루 배속(스테이지·걷기 연동). 모달(뉴스·게시판·위기)은 배속 무관.
+  const [speed, setSpeed] = useState(1);
+  const speedRef = useRef(1);
+  speedRef.current = speed;
+  // T-245 §13.7 — 마을 수익률 순위(배경 정보 톤 — 목표는 순위가 아니라 카드 등급).
+  const [rank, setRank] = useState<{ rank: number; total: number; delta: number } | null>(null);
+  const prevRankRef = useRef<number | null>(null);
   // 위기가 실제 발생했을 때만 뜨는 이벤트 — 평소엔 null(상시 노출 안 함).
   const [crisisTrapName, setCrisisTrapName] = useState<string | null>(null);
   // T-216 D4 — 같은 날 2종목 이상 트리거되면 여기 전부 담김(1개면 길이 1).
@@ -77,6 +85,13 @@ export default function PlayPage() {
       setSchedule(prev.schedule ?? {});   // T-240 — 진행 중 일정 안내에 사용
     }
     if (nw.status === "ok") setNews(nw.news);
+    // T-245 — 마을 순위(실패해도 화면 안 깨짐 — 칩만 안 뜸).
+    const lb = await api.gameLeaderboard(id);
+    if (lb.status === "ok") {
+      const delta = prevRankRef.current === null ? 0 : prevRankRef.current - lb.clone_rank;
+      prevRankRef.current = lb.clone_rank;
+      setRank({ rank: lb.clone_rank, total: lb.total, delta });
+    }
     if (st.state.finished) router.replace("/report");
   }, [router]);
 
@@ -109,7 +124,7 @@ export default function PlayPage() {
     // T-237(§12.1b) — 하루 8슬롯 = 4시간대(오전2·점심2·오후2·저녁2). 각 단계에서
     // 그 시간대 일과 구간을 걷는다(단계 길이 = max(연출 최소시간, 그 구간 걷기)).
     setDayStage(0);           // 🌅 오전
-    await Promise.all([sleep(DAY_STAGE_MS), mapRef.current?.playWalk("오전") ?? sleep(0)]);
+    await Promise.all([sleep(DAY_STAGE_MS / speedRef.current), mapRef.current?.playWalk("오전", speedRef.current) ?? sleep(0)]);
     // 이벤트 있는 날이면 📱 게시판(블로킹) — 닫을 때까지 하루가 멈춘다(D1·D3).
     const board = await boardPromise;
     if (board.status === "ok" && board.open) {
@@ -120,7 +135,7 @@ export default function PlayPage() {
       boardCloseResolver.current = null;
     }
     setDayStage(1);           // 🍜 점심 — 끝나면 위기 판정(오후 장 직전)
-    await Promise.all([sleep(DAY_STAGE_MS), mapRef.current?.playWalk("점심") ?? sleep(0)]);
+    await Promise.all([sleep(DAY_STAGE_MS / speedRef.current), mapRef.current?.playWalk("점심", speedRef.current) ?? sleep(0)]);
     const check = await checkPromise;
     if (check.status === "ok" && check.trap && check.trap_name) {
       setDayStage(-1);
@@ -135,9 +150,9 @@ export default function PlayPage() {
   // 오후·저녁 구간(위기 유무와 무관한 하루의 꼬리) — 위기 선택 후에도 재사용.
   async function playAfternoonEvening() {
     setDayStage(2);           // ☀️ 오후
-    await Promise.all([sleep(DAY_STAGE_MS), mapRef.current?.playWalk("오후") ?? sleep(0)]);
+    await Promise.all([sleep(DAY_STAGE_MS / speedRef.current), mapRef.current?.playWalk("오후", speedRef.current) ?? sleep(0)]);
     setDayStage(3);           // 🌇 저녁
-    await Promise.all([sleep(DAY_STAGE_MS), mapRef.current?.playWalk("저녁") ?? sleep(0)]);
+    await Promise.all([sleep(DAY_STAGE_MS / speedRef.current), mapRef.current?.playWalk("저녁", speedRef.current) ?? sleep(0)]);
   }
 
   async function handleCrisisChoice(strategy: string | null) {
@@ -204,6 +219,14 @@ export default function PlayPage() {
           <h1 className="text-lg font-extrabold">🪞 {state.run_id}</h1>
           <span className="text-sm">Day <b>{state.day}</b>/{state.days}</span>
           <span className="text-sm">총자산 <b>{Math.round(state.total_asset)}</b></span>
+          {/* T-245 — 마을 순위(배경 정보 톤, 버튼 아님 — 목표는 순위가 아니라 카드 등급 §13.7) */}
+          {rank && (
+            <span className="text-xs text-pixel-muted">
+              🏘 마을 {rank.rank}위/{rank.total}
+              {rank.delta > 0 && <b className="text-pixel-greenText"> ▲{rank.delta}</b>}
+              {rank.delta < 0 && <b className="text-red-500"> ▼{-rank.delta}</b>}
+            </span>
+          )}
           <div className="flex-1" />
           <PixelButton size="sm" variant="secondary" onClick={() => setStatsOpen(true)}>📊 상태</PixelButton>
           <PixelButton
@@ -212,6 +235,11 @@ export default function PlayPage() {
           >📰 뉴스{newsId ? " ✓" : ""}</PixelButton>
           <PixelButton size="sm" variant="secondary" onClick={() => setPreviewOpen(true)}>🌙 전날밤</PixelButton>
           <PixelButton size="sm" variant="secondary" onClick={() => setPhoneOpen(true)}>📱 핸드폰</PixelButton>
+          {/* T-243(§13.3 빨리감기) — 하루 연출 배속. 모달 선택 대기엔 영향 없음. */}
+          <PixelButton
+            size="sm" variant={speed > 1 ? "primary" : "ghost"}
+            onClick={() => setSpeed(SPEED_OPTIONS[(SPEED_OPTIONS.indexOf(speed) + 1) % SPEED_OPTIONS.length])}
+          >⏩ {speed}×</PixelButton>
         </header>
       </div>
 
