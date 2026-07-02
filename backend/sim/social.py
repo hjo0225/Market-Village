@@ -119,7 +119,9 @@ _BOARD_CAST = {
 }
 # 이벤트 날 군중은 들끓는다(관찰 이벤트라 §9.2.3 수동 개입보다 크게, §9.3 폭주는
 # crowd_mood 상한이 이미 clamp).
-_BOARD_MOOD_DELTA = {"fear": 3.5, "greed": 2.5, "fomo": 3.5, "unrest": 1.5}
+# T-250(council F4) — crowd_mood를 FGI 그대로 해석(0=극공포, 100=극탐욕 — run_loop의
+# fgi/crowd_buying 프록시와 정합). 공포 계열은 음수(공포로), 탐욕 계열은 양수(과열로).
+_BOARD_MOOD_DELTA = {"fear": -3.5, "greed": 2.5, "fomo": 3.5, "unrest": -1.5}
 
 _SNS_NAME = {p["id"]: p["name"] for p in _personas.SNS_PERSONAS}
 _SNS_ROLE = {p["id"]: p["role"] for p in _personas.SNS_PERSONAS}   # T-246 부기 표기

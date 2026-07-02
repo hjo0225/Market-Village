@@ -67,7 +67,11 @@ def test_board_event_contract_and_determinism():
         assert p["author_kind"] in ("sns", "clone")
         assert isinstance(p["comments"], list)
     assert any(len(p["comments"]) > 0 for p in a["posts"])   # 댓글 상호작용
-    assert a["crowd_mood_delta"] > 0                # 이벤트 날은 들끓는다
+    # T-250 — 델타는 부호를 갖는다(FGI 의미론): fear/unrest는 공포로(-),
+    # greed/fomo는 과열로(+). 0이면 게시판이 군중에 아무 흔적도 못 남긴 것.
+    assert a["crowd_mood_delta"] != 0
+    _SIGN = {"fear": -1, "unrest": -1, "greed": 1, "fomo": 1}
+    assert a["crowd_mood_delta"] * _SIGN[a["context"]] > 0
 
 
 def test_board_event_clone_reacts_by_relevant_stat():
@@ -149,9 +153,12 @@ def test_board_today_is_pure_observation_and_caches_same_day():
     assert second == first                          # 같은 날 재호출 = 캐시
     g.advance_day()
     mood_after = g.crowd_mood
-    assert mood_after > mood0                       # 밤 정산에서 들끓음 반영(회귀 포함)
+    # T-250 — 밤 정산에서 델타가 그 부호 방향으로 반영된다(회귀 포함).
+    delta = first["crowd_mood_delta"]
+    assert (mood_after - mood0) * delta > 0 or delta == 0
     g.advance_day()                                 # 다음 날 게시판 없이 진행
-    assert g.crowd_mood < mood_after                # 재적용 없음 — 중립으로 감쇠만
+    # 재적용 없음 — 중립(50)으로 감쇠만(부호 무관: 편차 절대값이 줄어든다).
+    assert abs(g.crowd_mood - 50.0) < abs(mood_after - 50.0)
 
 
 def test_board_survives_serialization_without_reapplying_mood():
@@ -214,3 +221,16 @@ def test_news_endpoint_explicit_seed_still_works():
     a = mls.control_game_news(game_id="news_seed2", seed=7)
     b = mls.control_game_news(game_id="news_seed2", seed=7)
     assert [n["id"] for n in a["news"]] == [n["id"] for n in b["news"]]
+
+
+def test_crowd_mood_equilibrium_stays_below_m2():
+    """T-250(R8/4b) — 최악 지속(+클램프 상한 매일)에도 평형이 M2 임계 아래.
+
+    M2는 평형으로는 상시 발동 불가 — 탐욕 이벤트 연속일에만 일시 돌파(의도).
+    """
+    from sim import tuning as T
+    mood = 50.0
+    for _ in range(60):
+        mood = T.clamp(mood + T.CROWD_DELTA_CLAMP, 0.0, 100.0)
+        mood = 50.0 + (mood - 50.0) * (1.0 - T.CROWD_MOOD_REVERT)
+    assert mood < T.M2_FGI

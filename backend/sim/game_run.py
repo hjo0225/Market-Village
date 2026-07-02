@@ -180,7 +180,9 @@ class GameRun:
         if (self._board is not None and self._board.get("day") == self.day - 1
                 and self._board.get("open") and not self._board.get("mood_applied")):
             self.crowd_mood = clamp(
-                self.crowd_mood + self._board["crowd_mood_delta"], 0.0, 100.0)
+                self.crowd_mood + clamp(self._board["crowd_mood_delta"],
+                                        -_T.CROWD_DELTA_CLAMP, _T.CROWD_DELTA_CLAMP),
+                0.0, 100.0)
             self._board["mood_applied"] = True
         # T-249 — 만남 감정 효과(밤 정산, R1): 자극형은 관련 저항 스탯을 소폭 깎고
         # 도움형은 멘탈회복을 소폭 올린다(§11.5.4 대화 보정과 같은 급, 하루 상한 없음
