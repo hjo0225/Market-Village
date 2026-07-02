@@ -343,7 +343,9 @@ def control_game_walk(game_id: str):
         return {"status": "ok", "steps": [], "npcs": {}, "cached": True,
                 "segments": {b: [] for b in band_names},
                 "npc_segments": {p["id"]: {b: [] for b in band_names}
-                                 for p in _personas.TRADER_PERSONAS}}
+                                 for p in _personas.TRADER_PERSONAS},
+                "plan": {band: [g.schedule[s] for s in slots if g.schedule.get(s)]
+                         for band, slots in _WALK_BANDS}}
 
     # T-237 — 클론·NPC 모두 시간대 4구간으로 분해(연출이 하루 단계와 동기).
     # flat(steps/npcs)은 구간의 순차 연결 — 구버전 map.html 하위호환.
@@ -363,8 +365,11 @@ def control_game_walk(game_id: str):
         npc_steps[p["id"]] = [xy for b in band_names for xy in segs_n[b]]
         walker["npcs"][p["id"]] = list(n_cur)
     walker["day"] = g.day
+    # T-242 — 말풍선용 클론 일정(시간대→장소명). 표현 계층이 "어디로/뭐 하는 중"을 그린다.
+    plan = {band: [g.schedule[s] for s in slots if g.schedule.get(s)]
+            for band, slots in _WALK_BANDS}
     return {"status": "ok", "steps": steps, "npcs": npc_steps,
-            "segments": segments, "npc_segments": npc_segments}
+            "segments": segments, "npc_segments": npc_segments, "plan": plan}
 
 
 # --------------------------------------------------------------------------- #

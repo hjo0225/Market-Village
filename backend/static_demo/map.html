@@ -135,6 +135,7 @@ function bootPhaser(walkers){
         o.s.y += dy * k;
       }
       o.label.x = o.s.x; o.label.y = o.s.y - 6 - 16 * SPRITE_SCALE;
+      if (o.bubble){ o.bubble.x = o.s.x; o.bubble.y = o.label.y - 26; }   // T-242
     });
   }
   game = new Phaser.Game(config);
@@ -220,6 +221,40 @@ async function walkToday(gameId){
   window.parent.postMessage({ type: "walked" }, "*");
 }
 
+// T-242 — 클론 말풍선: 이동 중엔 목적지, 도착하면 그 장소의 활동 플레이버(다음
+// 구간까지 유지). 표현 계층 전용 — 게임 수치와 무관한 서사 텍스트.
+const PLACE_DOING = {
+  "카페": "☕ 커피 한 잔… 근데 차트가 자꾸 눈에 들어온다",
+  "일터": "🛠 일하는 중 (머릿속은 온통 시세)",
+  "광장": "🌳 바람 좀 쐬는 중",
+  "운동": "🏃 달리면서 멘탈 다잡는 중",
+  "집_차트": "🏠 집에서 차트 뚫어져라 보는 중",
+  "펍": "🍺 옆 테이블 투자 무용담 엿듣는 중",
+  "마켓": "🧺 장 보는 중 (지출도 투자다)",
+  "도서관": "📚 투자 책 뒤적이는 중",
+};
+const PLACE_SHORT = { "집_차트": "집" };
+
+function setBubble(orig, text){
+  const o = sprites[orig];
+  if (!o || !scene) return;
+  if (o.bubble){ o.bubble.destroy(); o.bubble = null; }
+  if (!text) return;
+  const t = scene.add.text(0, 0, text, {
+    fontSize: "13px",
+    fontFamily: "Pretendard, 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif",
+    fontStyle: "bold", color: "#1f2937",
+  }).setOrigin(0.5).setResolution(3);
+  const bw = t.width + 14, bh = t.height + 8;
+  const g = scene.add.graphics();
+  g.fillStyle(0xffffff, 0.95);
+  g.fillRoundedRect(-bw / 2, -bh / 2, bw, bh, 7);
+  g.lineStyle(1, 0x111111, 0.55);
+  g.strokeRoundedRect(-bw / 2, -bh / 2, bw, bh, 7);
+  g.fillTriangle(-4, bh / 2, 4, bh / 2, 0, bh / 2 + 6);   // 말꼬리
+  o.bubble = scene.add.container(o.s.x, o.s.y, [g, t]).setDepth(21);
+}
+
 // T-237 §12.1b — 시간대 동기 재생: 부모가 {type:"walk", band:"오전"…}를 단계마다
 // 보내면 그 시간대 일과 구간만 걷고 {type:"walked", band}로 답한다. 하루치 경로는
 // 첫 구간(오전)에서 한 번만 받아 캐시(서버가 day 캐시라 재요청하면 빈값이 온다).
@@ -237,7 +272,15 @@ async function walkBand(gameId, band){
     playSteps(nid, seg, false, stepMsFor(seg.length, BAND_TARGET_MS), HARD_CAP, gen);
   });
   const cloneSeg = segs[band] || [];
+  // T-242 — 이동 중 말풍선: 이 시간대의 목적지들.
+  const plan = ((walkData.plan || {})[band]) || [];
+  const planLabel = plan.map((p) => PLACE_SHORT[p] || p).join(" · ");
+  if (plan.length && cloneSeg.length) setBubble(CLONE_ORIG, "🚶 ➜ " + planLabel);
   await playSteps(CLONE_ORIG, cloneSeg, true, stepMsFor(cloneSeg.length, BAND_TARGET_MS), HARD_CAP, gen);
+  // 도착 — 이 시간대 마지막 장소의 활동 플레이버(다음 구간까지 유지).
+  if (gen === walkGen && plan.length){
+    setBubble(CLONE_ORIG, PLACE_DOING[plan[plan.length - 1]] || "");
+  }
   window.parent.postMessage({ type: "walked", band }, "*");
   if (band === "저녁") walkData = null;   // 다음 날은 새로 받는다
 }

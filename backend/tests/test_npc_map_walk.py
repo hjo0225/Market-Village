@@ -87,6 +87,9 @@ def test_walk_returns_time_band_segments():
     for nid in _TRADER_IDS:
         concat_n = [xy for band in _BANDS for xy in r["npc_segments"][nid][band]]
         assert concat_n == r["npcs"][nid]
+    # T-242 — 말풍선용 시간대 일정(클론): 각 시간대에 장소명 목록.
+    assert list(r["plan"].keys()) == list(_BANDS)
+    assert all(isinstance(v, list) and v for v in r["plan"].values())
 
 
 def test_walk_segments_cached_same_day():
