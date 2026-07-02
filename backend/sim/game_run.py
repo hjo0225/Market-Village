@@ -26,6 +26,8 @@ from .result_card import evaluate
 from .run_loop import _DEFAULT_STATS, step_day
 from .runs import DailySnapshot, RunStore, RunSummary
 from . import social as _social
+from . import board_v2 as _board_v2
+from . import agent_state as _agent_state
 from .traps import get_trap
 from .trap_pipeline import Intervention
 
@@ -86,6 +88,10 @@ class GameRun:
         # 결정론 셔플(T-248). 회피는 그날 일과 위에만 적용(다음 날 이월 없음).
         self.schedule = self._schedule_for_day(0)
         self.npc_scheds = {k: dict(v) for k, v in _NPC_SCHEDS.items()}
+        # T-252 — 게시판 대화 아카이브(공개 트랙): "day:news_id" → conversation.
+        # **게임 레벨**(회차 무관) — 같은 날 같은 뉴스면 회차가 달라도 같은 대화
+        # (같은 시험지 보호). new_run(_reset_run_state)에서 리셋하지 않는다.
+        self.board_archive: dict[str, dict] = {}
         self._reset_run_state(run_id)
 
     def _schedule_for_day(self, day: int) -> dict[int, str]:
@@ -320,9 +326,30 @@ class GameRun:
             board: dict = {"day": self.day, "open": False, "context": None,
                            "posts": [], "crowd_mood_delta": 0.0}
         else:
-            rng = random.Random(zlib.crc32(f"{self.run_id}:{self.day}".encode()))
-            feed = _social.board_event(context, self.stats, rng, use_llm=use_llm)
-            board = {"day": self.day, "open": True, "mood_applied": False, **feed}
+            # T-251~253(게시판 v2) — 그날 뉴스에 대한 에이전트 대화. 공개 트랙은
+            # 게임 레벨 아카이브에 박제(회차 무관 재사용 — 같은 시험지 보호),
+            # 클론 발언만 회차별로 주입(D9 규칙).
+            news_id, _ = _board_v2._news_line(drawn_news)
+            key = f"{self.day}:{news_id}"
+            conv = self.board_archive.get(key)
+            if conv is None:
+                if use_llm:
+                    conv = _board_v2.llm_conversation(
+                        context, drawn_news, market_move,
+                        memory_digests=_agent_state.memory_digests(
+                            self.board_archive, self.day))
+                if conv is None:
+                    rng = random.Random(
+                        zlib.crc32(f"board:{self.run_id}:{self.day}".encode()))
+                    conv = _board_v2.offline_conversation(
+                        context, self.stats, drawn_news, rng)
+                self.board_archive[key] = conv
+            crng = random.Random(zlib.crc32(f"{self.run_id}:{self.day}".encode()))
+            with_clone = _board_v2.inject_clone(conv, context, self.stats, crng)
+            board = {"day": self.day, "open": True, "mood_applied": False,
+                     "context": context, "verdict": with_clone["verdict"],
+                     "posts": _board_v2.to_posts(with_clone),
+                     "crowd_mood_delta": with_clone["crowd_delta"]}
         self._board = board
         return board
 
@@ -403,6 +430,7 @@ class GameRun:
             "rapport": self.rapport,
             "crowd_mood": self.crowd_mood,
             "board": self._board,
+            "archive": self.board_archive,   # T-252 — 대화 박제(재시작 안전)
             "store": self.store.to_dict(),
         }
 
@@ -434,4 +462,5 @@ class GameRun:
         g.rapport = doc["rapport"]
         g.crowd_mood = doc["crowd_mood"]
         g._board = doc.get("board")   # T-223 이전 문서엔 없음 → None(하위호환)
+        g.board_archive = doc.get("archive") or {}   # T-252 하위호환
         return g

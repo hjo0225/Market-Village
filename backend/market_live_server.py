@@ -597,11 +597,16 @@ def control_game_fgi(body: GameFgiBody):
 
 @app.get("/control/game/day/board")
 def control_game_board(game_id: str, use_llm: bool = False):
-    """T-223 게시판(D1~D3) — 이벤트 날만 열림, 같은 날 재호출 = 같은 피드."""
+    """T-223/T-253 게시판 — 이벤트 날만 열림, 같은 날 재호출 = 같은 피드.
+
+    LLM 대화 생성은 서버 env `MV_BOARD_LLM=1`(운영자 스위치)이나 use_llm 쿼리로
+    켠다 — 키 없음·실패·검증 탈락이면 오프라인 결정론 대화로 폴백(과금 게이트).
+    """
     g = _get_game(game_id)
     if g is None:
         return {"status": "error", "error": "no game"}
-    board = g.board_today(_drawn_news_today(game_id, g), use_llm=use_llm)
+    llm_on = use_llm or os.environ.get("MV_BOARD_LLM") == "1"
+    board = g.board_today(_drawn_news_today(game_id, g), use_llm=llm_on)
     _persist_game(game_id, g)
     return {"status": "ok", **board}
 
