@@ -47,6 +47,7 @@ from backend.sim import result_card as _result_card  # noqa: E402
 from backend.sim import runs as _runs  # noqa: E402
 from backend.sim import db as _db  # noqa: E402  (T-DB 게임 세션 영속화, 실패시 인메모리 폴백)
 from backend.sim.trap_pipeline import Intervention as _Intervention  # noqa: E402
+from backend.sim.traps import get_trap as _traps_get  # noqa: E402
 from backend.sim.game_run import GameRun as _GameRun  # noqa: E402
 from backend.sim import presentation as _presentation  # noqa: E402
 from backend.sim import interview_llm as _interview_llm  # noqa: E402
@@ -309,6 +310,25 @@ class InterviewAnswerBody(BaseModel):
     qid: str
     text: str
     use_llm: bool = False
+
+
+class ClonePreviewBody(BaseModel):
+    answers: dict
+
+
+@app.post("/control/clone/preview")
+def control_clone_preview(body: ClonePreviewBody):
+    """T-231 §5.5 — 인터뷰 확정 화면용 성향 프리뷰(순수, 게임 미생성).
+
+    답변이 만들 클론의 함정별 취약점을 보여주고, 사용자가 '확정'한 뒤에야
+    포트폴리오 단계로 넘어간다(한 페이지 한 목적).
+    """
+    spec = _clone_spec.build_clone_spec(body.answers)
+    traits = [
+        {"id": trap_id, "name": _traps_get(trap_id).name, "score": round(score, 1)}
+        for trap_id, score in spec.trap_scores.items()
+    ]
+    return {"status": "ok", "trap_scores": spec.trap_scores, "traits": traits}
 
 
 @app.get("/control/interview/next")

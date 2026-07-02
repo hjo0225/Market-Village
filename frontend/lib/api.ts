@@ -123,6 +123,12 @@ export const api = {
     post<{ status: string; done: boolean; next?: { id: string; text: string }; answers?: Record<string, number> }>(
       "/control/interview/answer", { session_id: sessionId, qid, text, use_llm: useLlm }),
 
+  // T-231 — 인터뷰 확정 화면용 성향 프리뷰(순수, 게임 미생성).
+  clonePreview: (answers: Record<string, number>) =>
+    post<{ status: string; trap_scores: Record<string, number>;
+          traits: { id: string; name: string; score: number }[] }>(
+      "/control/clone/preview", { answers }),
+
   // -- 게임 세션 --
   gameStart: (
     gameId: string, answers: Record<string, number>, symbol: string, startPrice = 100.0,
