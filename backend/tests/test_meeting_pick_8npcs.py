@@ -37,10 +37,13 @@ def test_pick_deterministic_across_calls():
 
 
 def test_helpers_only_slot_picks_one_deterministically():
-    # 기본 일과 슬롯2(일터)엔 도움형 2명(value_investor·contrarian)만 겹친다 —
+    # 슬롯2를 일터로 정렬(T-248 일일 셔플 대응)하면 도움형 2명(정호·미나)만 겹친다 —
     # 그중 하나가 결정론적으로 선택되어 picks에 노출된다.
     g = GameRun(CS.build_clone_spec({"q_panic": 0.5}),
                 category="meme", start_price=100.0, run_id="t222")
+    cur = next(s for s, pl in g.schedule.items() if pl == "일터")
+    if cur != 2:
+        g.avoid(cur, 2)
     p = g.preview_day()
     assert set(p["meetings"].get(2, [])) == {"value_investor", "contrarian"}
     pick = p["picks"][2]

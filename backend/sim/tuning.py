@@ -56,6 +56,9 @@ M2_FGI = 75.0             # 시장 과열 FGI ≥ 75 AND 군중 매수 우세
 CROWD_MOOD_REVERT = 0.15
 # 게시판(D2 개정) — 마을이 수군댈 만한 시장 급변동 기준(전일 종가 대비 ±%). [TUNE]
 BOARD_MARKET_MOVE_PCT = 8.0
+# T-249 — 1:1 만남 감정 효과(밤 정산). 외란(±2~4)·대화 보정(±3)과 같은 급, 소폭. [TUNE]
+MEETING_STIM_DELTA = 1.5   # 자극형 NPC와 어울린 날: 관련 저항 스탯 -1.5
+MEETING_CALM_DELTA = 1.0   # 도움형 NPC와 어울린 날: 멘탈회복 +1.0
 CONFIRMATION_BIAS_IGNORE_STREAK = 3   # 손실 포지션 중 비관 정보 3회 연속 무시
 
 # T-210 — 다자산 자금흐름(§8.3 to_hotter/concentrate 충동매매의 실제 이동 비율)

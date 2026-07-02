@@ -16,7 +16,7 @@ from dataclasses import asdict
 from .avoidance import avoid as _avoid_slots, clone_picks_npc
 from .clone_spec import CloneSpec
 from .clone_stats import MENTAL, stat_for_trap
-from .day_loop import clone_disturbance, day_slots, overlap_meetings
+from .day_loop import clone_disturbance, day_slots, overlap_meetings, shuffle_schedule
 from . import tuning as _T
 from .tuning import clamp
 from . import personas as _personas
@@ -82,14 +82,22 @@ class GameRun:
         self._base_stats = dict(start_stats or _DEFAULT_STATS)
         self._run_index = 0
         self.summary: RunSummary | None = None
-        # §9.2.1 클론 일과(8슬롯 → 장소). 메뉴를 순환 배치(결정론). 회피로 순서만 바뀜.
-        self.schedule = {i + 1: _MENU[i % len(_MENU)] for i in range(8)}
+        # §9.2.1/§12.2 클론 일과(8슬롯 → 장소) — 종류는 고정 메뉴, 순서는 매일
+        # 결정론 셔플(T-248). 회피는 그날 일과 위에만 적용(다음 날 이월 없음).
+        self.schedule = self._schedule_for_day(0)
         self.npc_scheds = {k: dict(v) for k, v in _NPC_SCHEDS.items()}
         self._reset_run_state(run_id)
+
+    def _schedule_for_day(self, day: int) -> dict[int, str]:
+        """§12.2/T-248 — 그날의 일과 순서(결정론 셔플, 종류 집합은 불변)."""
+        rng = random.Random(zlib.crc32(f"sched:{self.run_id}:{day}".encode()))
+        order = shuffle_schedule(_MENU, rng)
+        return {i + 1: order[i] for i in range(8)}
 
     # --- 회차 상태 ------------------------------------------------------- #
     def _reset_run_state(self, run_id: str) -> None:
         self.run_id = run_id
+        self.schedule = self._schedule_for_day(0)   # T-248 — 새 회차 day0 일과
         self.stats = dict(self._base_stats)
         self.holding = {"avg_cost": self.start_price,
                         "quantity": self._start_quantity, "cash": self._start_cash}
@@ -131,10 +139,22 @@ class GameRun:
             return None
         if intervention is None and strategy is not None:
             intervention = Intervention(strategy, self.rapport)
+        # T-249 — 오늘 동선이 겹친 NPC와의 만남을 실제 반영(§9.2.1b). companion은
+        # 오늘 스냅샷에 기록(§13.6 '교류' 축), 감정 효과는 밤 정산에서(R1 —
+        # preview_crisis==advance 판정 불변식을 지키기 위해 오늘 판정엔 미반영).
+        met: list[str] = []
+        meetings = overlap_meetings(self.schedule, self.npc_scheds)
+        for slot in sorted(meetings):
+            pick = clone_picks_npc(meetings[slot], self.clone_spec.trap_scores,
+                                   _NPC_STIM_TRAP)
+            if pick:
+                met.append(pick)
+        self._met_today = met
         plan = {"news": news, "intervention": intervention,
                 "roll": roll, "agent_pressure": agent_pressure,
                 "prev_realized_pnl": self._prev_realized_pnl,
-                "crowd_mood": self.crowd_mood}
+                "crowd_mood": self.crowd_mood,
+                "companion": met[0] if met else ""}
         res = step_day(self.clone_spec, self.stats, self.fl, self.category,
                        self.day, self.start_price, self.holding, plan,
                        other_categories=self.other_categories)
@@ -162,10 +182,26 @@ class GameRun:
             self.crowd_mood = clamp(
                 self.crowd_mood + self._board["crowd_mood_delta"], 0.0, 100.0)
             self._board["mood_applied"] = True
+        # T-249 — 만남 감정 효과(밤 정산, R1): 자극형은 관련 저항 스탯을 소폭 깎고
+        # 도움형은 멘탈회복을 소폭 올린다(§11.5.4 대화 보정과 같은 급, 하루 상한 없음
+        # — 만남은 하루 최대 몇 건이고 스탯은 클램프·게임 자체 동학으로 평형).
+        for npc_id in getattr(self, "_met_today", []):
+            trap_id = _NPC_STIM_TRAP.get(npc_id)
+            if trap_id:
+                stat = stat_for_trap(trap_id)
+                self.stats[stat] = clamp(
+                    self.stats.get(stat, 50.0) - _T.MEETING_STIM_DELTA, 0.0, 100.0)
+            else:
+                self.stats[MENTAL] = clamp(
+                    self.stats.get(MENTAL, 50.0) + _T.MEETING_CALM_DELTA, 0.0, 100.0)
+        self._met_today = []
         # §9.3 폭주 방지 — 군중 분위기는 밤사이 중립으로 일부 회귀(게시판·FGI로
         # 올라간 과열이 영구 고착돼 M2를 상시 발동시키는 되먹임 차단, T-225).
         self.crowd_mood = clamp(
             50.0 + (self.crowd_mood - 50.0) * (1.0 - _T.CROWD_MOOD_REVERT), 0.0, 100.0)
+        # T-248 — 다음 날 일과는 그날의 셔플(어제의 회피 스왑은 이월되지 않음).
+        if self.day < self.days:
+            self.schedule = self._schedule_for_day(self.day)
         if self.day >= self.days:
             self._settle_run()
         return snap

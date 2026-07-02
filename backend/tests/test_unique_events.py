@@ -45,8 +45,13 @@ def test_game_surfaces_event_and_nudges_mental():
     assert "last_event" in g.state()
 
 
-def test_disturbance_does_not_break_return_equivalence():
-    # 외란이 멘탈회복만 건드리므로 수익률은 run_loop과 여전히 동치
+def test_disturbance_does_not_break_return_equivalence(monkeypatch):
+    # 외란이 멘탈회복만 건드리므로 수익률은 run_loop과 여전히 동치.
+    # T-249 이후 GameRun은 만남 효과(§11.5.4)를 실제 반영한다 — 이 테스트의 검증
+    # 대상은 '외란'이므로 만남 델타만 중립화해 batch(만남 없는 코어)와 비교한다.
+    from sim import tuning as _T
+    monkeypatch.setattr(_T, "MEETING_STIM_DELTA", 0.0)
+    monkeypatch.setattr(_T, "MEETING_CALM_DELTA", 0.0)
     from sim import run_loop as RL
     from sim.runs import RunStore
     g = GameRun(SPEC, category="meme", start_price=100.0, run_id="ue2",

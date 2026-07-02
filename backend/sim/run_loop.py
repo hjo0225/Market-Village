@@ -63,6 +63,7 @@ def step_day(clone_spec, stats, fate_line, category, day, start_price, holding, 
         holding=holding,
         news=plan.get("news"), intervention=plan.get("intervention"),
         roll=plan.get("roll", 100.0),
+        companion=plan.get("companion", ""),   # T-249 — §13.6 '교류' 축 기록
         unheld_surge_pct=unheld_surge_pct,
         confidence=confidence, just_realized_profit=just_realized_profit,
         fgi=fgi, crowd_buying=crowd_buying,

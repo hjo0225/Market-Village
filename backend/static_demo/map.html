@@ -293,6 +293,18 @@ async function walkBand(gameId, band, speedup){
   if (gen === walkGen && plan.length){
     setBubble(CLONE_ORIG, PLACE_DOING[plan[plan.length - 1]] || "");
   }
+  // T-249 — 이 시간대에 동선이 겹친 만남: 두 스프라이트가 실제로 대화한다.
+  const met = ((walkData.meetings_by_band || {})[band]) || [];
+  if (gen === walkGen && met.length){
+    const m = met[0];
+    setBubble(CLONE_ORIG, "💬 " + m.name + "와 이야기 중");
+    setBubble(m.id, "💬");
+    setTimeout(() => {
+      if (walkGen !== gen) return;
+      setBubble(m.id, null);
+      if (plan.length) setBubble(CLONE_ORIG, PLACE_DOING[plan[plan.length - 1]] || "");
+    }, 5000);
+  }
   window.parent.postMessage({ type: "walked", band }, "*");
   if (band === "저녁"){
     walkData = null;   // 다음 날은 새로 받는다

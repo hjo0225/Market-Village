@@ -32,7 +32,12 @@ def test_persuade_with_stable_npc_raises_rapport_on_success():
     assert g.rapport > before   # 래포가 세션에 실제로 누적됨
 
 
-def test_persuasion_raises_crisis_intervention_success_next_day():
+def test_persuasion_raises_crisis_intervention_success_next_day(monkeypatch):
+    # T-249 만남 효과 중립화 — 이 테스트는 권유→개입 연동만 본다(만남이 27일간
+    # 저항을 깎으면 래포 98로도 못 버티는 날이 생겨 검증 대상이 흐려짐).
+    from sim import tuning as _T
+    monkeypatch.setattr(_T, "MEETING_STIM_DELTA", 0.0)
+    monkeypatch.setattr(_T, "MEETING_CALM_DELTA", 0.0)
     # DoD 핵심 증명: day27(F1 급락, 실 업비트 DOGE −21.6%) 전에 1:1 권유로 래포를
     # 올려두면, 같은 roll·같은 전략의 위기 개입이 실제로 더 잘 먹힌다(공유 래포 풀 §11.4.4).
     def make(persuade_n):

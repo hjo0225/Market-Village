@@ -19,10 +19,18 @@ def _g():
     return GameRun(CLONE, category="meme", start_price=100.0, run_id="pick")
 
 
+def _align(g, place, slot):
+    """T-248(일일 셔플) 이후 만남은 그날 일과에 달렸다 — 회피 스왑으로 정렬해 구성."""
+    cur = next(s for s, pl in g.schedule.items() if pl == place)
+    if cur != slot:
+        g.avoid(cur, slot)
+
+
 def test_preview_day_exposes_clone_pick_per_meeting_slot():
     g = _g()
+    _align(g, "광장", 3)               # 만식(음모론)의 {3: 광장}과 겹치게 정렬
     p = g.preview_day()
-    assert 3 in p["meetings"]          # 슬롯3 광장에서 음모론 인플루언서와 마주침(T-221)
+    assert 3 in p["meetings"]
     assert "picks" in p
     assert p["picks"][3] == "conspiracy_influencer"  # 후보가 하나뿐이어도 선택 결과 노출
 
@@ -40,7 +48,9 @@ def test_preview_day_pick_matches_clone_picks_npc_pure_function():
 
 def test_avoided_slot_has_no_pick():
     g = _g()
-    g.avoid(3, 1)
+    _align(g, "광장", 3)
+    assert 3 in g.preview_day()["meetings"]
+    g.avoid(3, next(s for s in g.schedule if s != 3 and g.schedule[s] != "광장"))
     p = g.preview_day()
     assert 3 not in p["meetings"]
     assert 3 not in p["picks"]

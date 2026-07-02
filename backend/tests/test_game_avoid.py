@@ -17,18 +17,28 @@ def _g():
     return GameRun(CLONE, category="meme", start_price=100.0, run_id="av")
 
 
+def _align(g, place, slot):
+    """T-248(일일 셔플) — 만남을 결정론으로 구성하기 위한 회피 정렬 헬퍼."""
+    cur = next(s for s, pl in g.schedule.items() if pl == place)
+    if cur != slot:
+        g.avoid(cur, slot)
+
+
 def test_preview_returns_schedule_and_meetings():
     g = _g()
+    _align(g, "광장", 3)               # 만식(음모론)의 {3: 광장}과 겹치게 정렬
     p = g.preview_day()
     assert len(p["slots"]) == 8
     assert len(p["schedule"]) == 8
-    assert 3 in p["meetings"]   # 슬롯3 광장에서 음모론 인플루언서와 마주침(T-221)
+    assert 3 in p["meetings"]
 
 
 def test_avoid_changes_meetings():
     g = _g()
+    _align(g, "광장", 3)
     assert 3 in g.preview_day()["meetings"]    # 회피 전: 슬롯3 광장 만남 존재
-    after = g.avoid(3, 1)                        # 슬롯3↔1 스왑 = 동선 틀기
+    other = next(s for s in g.schedule if s != 3 and g.schedule[s] != "광장")
+    after = g.avoid(3, other)                    # 동선 틀기
     assert 3 not in after                        # 회피 성공: 슬롯3 만남 사라짐
     # 활동 집합은 불변(통제변인 §12.2)
     assert sorted(g.schedule.values()) == sorted(_g().schedule.values())
@@ -37,9 +47,12 @@ def test_avoid_changes_meetings():
 # --- 엔드포인트 (핸들러 직접호출) --------------------------------------- #
 def test_preview_and_avoid_endpoints():
     mls.control_game_start(mls.GameStartBody(game_id="av_ep", answers={}, symbol="DOGE"))
+    g = mls._get_game("av_ep")
+    _align(g, "광장", 3)               # 결정론 정렬 후 엔드포인트 계약 검증
     p = mls.control_game_preview(game_id="av_ep")
     assert p["status"] == "ok" and len(p["slots"]) == 8 and 3 in p["meetings"]
-    r = mls.control_game_avoid(mls.GameAvoidBody(game_id="av_ep", slot_a=3, slot_b=1))
+    other = next(s for s in g.schedule if s != 3 and g.schedule[s] != "광장")
+    r = mls.control_game_avoid(mls.GameAvoidBody(game_id="av_ep", slot_a=3, slot_b=other))
     assert r["status"] == "ok" and 3 not in r["meetings"]
 
 

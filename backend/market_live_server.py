@@ -217,6 +217,20 @@ def _walker_seed(*parts) -> int:
     return zlib.crc32(":".join(str(p) for p in parts).encode())
 
 
+def _meetings_by_band(g: "_GameRun") -> dict:
+    """T-249 — 오늘의 만남(픽)을 시간대별로(맵 대화 연출용). 순수 조회."""
+    band_names = [b for b, _ in _WALK_BANDS]
+    out: dict[str, list] = {b: [] for b in band_names}
+    prev = g.preview_day()
+    for slot, pick in (prev.get("picks") or {}).items():
+        if not pick:
+            continue
+        band = band_names[(int(slot) - 1) // 2]
+        p = _personas.trader_by_id(pick)
+        out[band].append({"id": pick, "name": p["name"] if p else pick})
+    return out
+
+
 def _ensure_game_walker(game_id: str) -> dict:
     """클론+NPC 워커 상태 초기화(결정론) — home/walk 어느 쪽이 먼저 와도 동일."""
     walker = _GAME_WALKERS.setdefault(game_id, {"pos": None, "day": -1, "npcs": {}})
@@ -346,7 +360,8 @@ def control_game_walk(game_id: str):
                 "npc_segments": {p["id"]: {b: [] for b in band_names}
                                  for p in _personas.TRADER_PERSONAS},
                 "plan": {band: [g.schedule[s] for s in slots if g.schedule.get(s)]
-                         for band, slots in _WALK_BANDS}}
+                         for band, slots in _WALK_BANDS},
+                "meetings_by_band": _meetings_by_band(g)}
 
     # T-237 — 클론·NPC 모두 시간대 4구간으로 분해(연출이 하루 단계와 동기).
     # flat(steps/npcs)은 구간의 순차 연결 — 구버전 map.html 하위호환.
@@ -370,7 +385,8 @@ def control_game_walk(game_id: str):
     plan = {band: [g.schedule[s] for s in slots if g.schedule.get(s)]
             for band, slots in _WALK_BANDS}
     return {"status": "ok", "steps": steps, "npcs": npc_steps,
-            "segments": segments, "npc_segments": npc_segments, "plan": plan}
+            "segments": segments, "npc_segments": npc_segments, "plan": plan,
+            "meetings_by_band": _meetings_by_band(g)}
 
 
 # --------------------------------------------------------------------------- #

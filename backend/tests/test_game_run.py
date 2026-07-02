@@ -116,7 +116,12 @@ def test_portfolio_holdings_breakdown_includes_secondary_positions():
     assert "unrealized_pnl" in meme
 
 
-def test_equivalent_to_batch_run_loop():
+def test_equivalent_to_batch_run_loop(monkeypatch):
+    # T-249 — batch run_loop은 만남(게임 레이어)이 없는 코어. 이 동치 테스트는
+    # 하루 코어의 threading 동일성만 보므로 만남 델타를 중립화한다.
+    from sim import tuning as _T
+    monkeypatch.setattr(_T, "MEETING_STIM_DELTA", 0.0)
+    monkeypatch.setattr(_T, "MEETING_CALM_DELTA", 0.0)
     # 동치(DRY): GameRun 30일 == run_loop.simulate_run 같은 입력(감시 종목도 명시로 맞춤)
     g = _game(other_categories=())
     for _ in range(30):
@@ -127,7 +132,12 @@ def test_equivalent_to_batch_run_loop():
     assert g.summary.return_pct == batch.return_pct
 
 
-def test_equivalent_to_batch_run_loop_with_default_watch():
+def test_equivalent_to_batch_run_loop_with_default_watch(monkeypatch):
+    # T-249 — batch run_loop은 만남(게임 레이어)이 없는 코어. 이 동치 테스트는
+    # 하루 코어의 threading 동일성만 보므로 만남 델타를 중립화한다.
+    from sim import tuning as _T
+    monkeypatch.setattr(_T, "MEETING_STIM_DELTA", 0.0)
+    monkeypatch.setattr(_T, "MEETING_CALM_DELTA", 0.0)
     # 기본 감시(전 카테고리)까지도 동치 — 두 경로 기본 정책이 정확히 같음을 보장.
     g = _game()
     for _ in range(30):
