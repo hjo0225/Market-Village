@@ -25,6 +25,9 @@
  * postMessage({type:"walk"})를 보내 오늘 걸음을 재생시킨다.
  */
 const TILE = 32, MAPW = 140, MAPH = 100;
+// T-233 — 캐릭터 확대(사용자 요청: 2배 → 그 0.75배 = 1.5). 이동은 픽셀 좌표 기반이라
+// 스케일과 무관(오류 없음), 타일보다 커져 벽·가구와 살짝 겹칠 수 있음 — 이 값만 조절.
+const SPRITE_SCALE = 1.5;
 const CLONE_ORIG = "gamerun_clone";
 let game = null, scene = null, sprites = {};
 // T-229 — 걷기 세대 토큰: 새 하루 걷기가 시작되면 이전 날 루프는 즉시 종료(중첩 방지).
@@ -71,10 +74,26 @@ function bootPhaser(walkers){
       this.anims.create({ key: key + "-" + d,
         frames: this.anims.generateFrameNumbers(key, { frames: fr }), frameRate: 6, repeat: -1 });
     }));
+    // T-233(사용자 요청) — 이름표는 기본 텍스트 대신 직접 그린 네임플레이트:
+    // 고해상도 텍스트(setResolution)로 카메라 줌에서도 선명하고, 둥근 반투명 배경.
+    const makeNameplate = (scn, x, y, text, isClone) => {
+      const t = scn.add.text(0, 0, text, {
+        fontSize: "10px", fontFamily: "'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif",
+        fontStyle: "bold", color: isClone ? "#baff7a" : "#ffffff",
+      }).setOrigin(0.5).setResolution(3);
+      const bw = t.width + 12, bh = t.height + 6;
+      const g = scn.add.graphics();
+      g.fillStyle(0x000000, 0.62);
+      g.fillRoundedRect(-bw / 2, -bh / 2, bw, bh, 5);
+      g.lineStyle(1, isClone ? 0xbaff7a : 0xffffff, 0.35);
+      g.strokeRoundedRect(-bw / 2, -bh / 2, bw, bh, 5);
+      return scn.add.container(x, y, [g, t]).setDepth(20);
+    };
     walkers.forEach((w) => {
-      const s = this.add.sprite(w.x * TILE + 16, w.y * TILE + 16, w.key, 1).setDepth(10);
-      const label = this.add.text(w.x * TILE + 16, w.y * TILE - 6, w.initial,
-        { fontSize: "11px", color: "#fff", backgroundColor: "#0008" }).setOrigin(0.5).setDepth(20);
+      const s = this.add.sprite(w.x * TILE + 16, w.y * TILE + 16, w.key, 1)
+        .setDepth(10).setScale(SPRITE_SCALE);
+      const label = makeNameplate(this, w.x * TILE + 16, w.y * TILE - 6, w.initial,
+        w.orig === CLONE_ORIG);
       sprites[w.orig] = { s, label, key: w.key, tx: w.x * TILE + 16, ty: w.y * TILE + 16 };
     });
     const cam = walkers.find((w) => w.cam) || walkers[0];
@@ -86,7 +105,7 @@ function bootPhaser(walkers){
     Object.values(sprites).forEach((o) => {
       o.s.x += (o.tx - o.s.x) * 0.18;
       o.s.y += (o.ty - o.s.y) * 0.18;
-      o.label.x = o.s.x; o.label.y = o.s.y - 22;
+      o.label.x = o.s.x; o.label.y = o.s.y - 6 - 16 * SPRITE_SCALE;
     });
   }
   game = new Phaser.Game(config);
@@ -147,19 +166,26 @@ async function playSteps(orig, allSteps, pan, stepMs, max, gen){
   }
 }
 
+// T-233 — 사용자 피드백("순간이동 말고 집에서부터 한칸씩"): 샘플링 대신 전체 타일을
+// 연속 재생한다. 스텝 간격은 경로 길이에 맞춰 총 ~48초 안에 들어오게 조절(130~320ms),
+// 폭주 방지로 600타일 하드캡만 유지. 짧은 경로(NPC)는 자연히 먼저 도착해 배회로 전환.
+const WALK_TARGET_MS = 48000, STEP_MS_MIN = 130, STEP_MS_MAX = 320, HARD_CAP = 600;
+
+function stepMsFor(n){
+  if (n <= 0) return STEP_MS_MAX;
+  return Math.max(STEP_MS_MIN, Math.min(STEP_MS_MAX, Math.floor(WALK_TARGET_MS / n)));
+}
+
 async function walkToday(gameId){
   const gen = ++walkGen;   // T-229 — 이 날 걷기의 세대(이전 날 잔여 루프 즉시 무효화)
   const w = await api("/control/game/day/walk?game_id=" + encodeURIComponent(gameId));
-  // 사용자 피드백(2026-07-01) — 하루가 순간이동처럼 느껴지지 않게 느린 속도로
-  // (waypoint 늘리고 스텝 간격 늘림, 총 ~50초 — Next.js 쪽 "하루가 흐르는" 연출
-  // 1부(~60초)와 합쳐 전체 하루 진행이 약 2분이 되도록).
-  const MAX_WAYPOINTS = 30, STEP_MS = 1700;
   // NPC들은 카메라 추적 없이 동시 재생(T-221 상시 이동 연출) — 완료를 기다리지 않고
-  // 클론 걸음(기존 페이싱 계약)이 끝나면 walked를 보낸다.
+  // 클론 걸음(페이싱 계약)이 끝나면 walked를 보낸다.
   Object.entries(w.npcs || {}).forEach(([nid, steps]) => {
-    playSteps(nid, steps || [], false, STEP_MS, MAX_WAYPOINTS, gen);
+    playSteps(nid, steps || [], false, stepMsFor((steps || []).length), HARD_CAP, gen);
   });
-  await playSteps(CLONE_ORIG, w.steps || [], true, STEP_MS, MAX_WAYPOINTS, gen);
+  const cloneSteps = w.steps || [];
+  await playSteps(CLONE_ORIG, cloneSteps, true, stepMsFor(cloneSteps.length), HARD_CAP, gen);
   window.parent.postMessage({ type: "walked" }, "*");
 }
 
@@ -181,7 +207,12 @@ if (GAME_ID) boot(GAME_ID);
 
 window.addEventListener("message", (e) => {
   if (!GAME_ID || !e.data) return;
-  if (e.data.type === "walk") walkToday(GAME_ID);
+  if (e.data.type === "walk"){
+    // T-233 — 수신 즉시 ack: 부모(MapBackground)가 "지도 살아있음"을 알고
+    // 걷기 완료(walked)까지 제대로 기다릴 수 있게 한다(기존 4초 포기 문제).
+    window.parent.postMessage({ type: "walk-ack" }, "*");
+    walkToday(GAME_ID);
+  }
 });
 </script>
 </body>

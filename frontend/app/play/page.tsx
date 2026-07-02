@@ -41,6 +41,9 @@ export default function PlayPage() {
   // 닫기 전엔 하루가 진행되지 않는다(resolver로 진행 재개).
   const [boardFeed, setBoardFeed] = useState<BoardFeed | null>(null);
   const boardCloseResolver = useRef<(() => void) | null>(null);
+  // T-234 — 하루진행이 뉴스 선택을 기다리는 중인가(모달에서 선택/스킵 시 진행 시작).
+  const [pendingAdvance, setPendingAdvance] = useState(false);
+  const chosenNewsRef = useRef<string | null>(null);
   // 위기가 실제 발생했을 때만 뜨는 이벤트 — 평소엔 null(상시 노출 안 함).
   const [crisisTrapName, setCrisisTrapName] = useState<string | null>(null);
   // T-216 D4 — 같은 날 2종목 이상 트리거되면 여기 전부 담김(1개면 길이 1).
@@ -81,11 +84,20 @@ export default function PlayPage() {
   // 않게 2분 가량에 걸쳐 아침→한낮→저녁 순으로 흘러간다. 위기가 실제 발생한
   // 날이면(시장조건만으로 결정, 뉴스/개입과 무관하므로 미리 조용히 조회해도
   // 결과가 달라지지 않음) 그 흐름을 멈추고 이벤트 모달을 띄워 선택을 기다린다.
-  async function handleAdvance() {
+  function handleAdvance() {
     if (!gameId || advancing) return;
+    // T-234(§7.4 매일 아침 3지선다) — 아직 뉴스를 안 골랐으면 선택부터. 헤더 📰로
+    // 미리 골라뒀으면 바로 진행. 모달에서 선택/스킵하면 이어서 진행된다.
+    if (!newsId) { setPendingAdvance(true); setNewsOpen(true); return; }
+    void runAdvance(newsId);
+  }
+
+  async function runAdvance(chosenNewsId: string | null) {
+    if (!gameId || advancing) return;
+    chosenNewsRef.current = chosenNewsId;   // 위기 선택 경로(finishAdvance)도 같은 뉴스 사용
     setAdvancing(true);
     setDayResult(null); setSceneText("");
-    const checkPromise = api.gameCrisisCheck(gameId, newsId ?? undefined);
+    const checkPromise = api.gameCrisisCheck(gameId, chosenNewsId ?? undefined);
     // T-225(D3) — 게시판 판정도 아침 단계에서 미리 조회. 부작용 없는 판정 재사용
     // (백엔드가 위기 프리뷰+그날 뽑힌 뉴스로 열림 여부를 정함, 같은 날 재호출=캐시).
     const boardPromise = api.gameBoard(gameId);
@@ -133,7 +145,7 @@ export default function PlayPage() {
       // 쌓인 값)을 자동으로 쓴다. roll은 매번 진짜 난수(고정값을 쓰면 위기개입이
       // 결정론적으로 항상 같은 결과만 나온다 — 사용자 피드백 2026-07-01).
       const r = await api.gameAdvance(gameId, {
-        newsId: newsId ?? undefined,
+        newsId: chosenNewsRef.current ?? undefined,
         strategy: strategy || undefined,
         roll: Math.random() * 100,
       });
@@ -190,8 +202,14 @@ export default function PlayPage() {
         <StatsPanel stats={state.stats} portfolio={state.portfolio} showTitle={false} />
       </PixelModal>
       <NewsModal
-        isOpen={newsOpen} onClose={() => setNewsOpen(false)} news={news}
-        onSelect={(id) => setNewsId(id)}
+        isOpen={newsOpen} news={news}
+        onClose={() => { setNewsOpen(false); setPendingAdvance(false); }}
+        onSelect={(id) => {
+          setNewsId(id);
+          // T-234 — 하루진행이 뉴스 선택을 기다리던 중이면 그 뉴스로 바로 진행.
+          if (pendingAdvance) { setPendingAdvance(false); void runAdvance(id); }
+        }}
+        onSkip={pendingAdvance ? () => { setPendingAdvance(false); void runAdvance(null); } : undefined}
       />
       <PhoneModal
         isOpen={phoneOpen} onClose={() => setPhoneOpen(false)} gameId={gameId}

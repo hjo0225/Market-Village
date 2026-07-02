@@ -21,19 +21,29 @@ const MapBackground = forwardRef<MapBackgroundHandle, { gameId: string }>(functi
   useImperativeHandle(ref, () => ({
     playWalk: () =>
       new Promise<void>((resolve) => {
+        // T-233 — 기존엔 4초 뒤 무조건 resolve라 걷기(~50초)를 실제로 안 기다렸다
+        // (순간이동 체감의 원인 중 하나). 지도가 walk-ack로 살아있음을 알리면
+        // 걷기 완료(walked)까지 제대로 기다리고, ack가 없으면(지도 미로딩·프록시
+        // 플레이크) 4초 폴백으로 무한 대기를 막는다.
+        let done = false;
+        let fallback: ReturnType<typeof setTimeout>;
+        const finish = () => {
+          if (done) return;
+          done = true;
+          clearTimeout(fallback);
+          window.removeEventListener("message", onMessage);
+          resolve();
+        };
         const onMessage = (e: MessageEvent) => {
-          if (e.data?.type === "walked") {
-            window.removeEventListener("message", onMessage);
-            resolve();
+          if (e.data?.type === "walk-ack") {
+            clearTimeout(fallback);
+            fallback = setTimeout(finish, 75000);   // 걷기 상한 + 여유
+          } else if (e.data?.type === "walked") {
+            finish();
           }
         };
         window.addEventListener("message", onMessage);
-        // 지도가 못 뜨거나 응답이 없어도(Windows 프록시 플레이크) 무한정 안
-        // 막히게 안전장치를 둔다.
-        setTimeout(() => {
-          window.removeEventListener("message", onMessage);
-          resolve();
-        }, 4000);
+        fallback = setTimeout(finish, 4000);
         iframeRef.current?.contentWindow?.postMessage({ type: "walk" }, "*");
       }),
   }));
