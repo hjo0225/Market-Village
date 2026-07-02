@@ -13,6 +13,8 @@ export default function ReportPage() {
   const [card, setCard] = useState<ResultCard | null>(null);
   const [notReady, setNotReady] = useState(false);
   const [busy, setBusy] = useState(false);
+  // T-227 §13.6 — 완주 회차가 2개 이상이면 비교 진입 노출(카타르시스 골든타임 C3).
+  const [canCompare, setCanCompare] = useState(false);
 
   useEffect(() => {
     const id = getGameId();
@@ -21,6 +23,9 @@ export default function ReportPage() {
     api.gameCard(id).then((r) => {
       if (r.status === "ok" && r.card) setCard(r.card);
       else setNotReady(true);
+    });
+    api.gameSummaries(id).then((r) => {
+      if (r.status === "ok") setCanCompare(r.summaries.length >= 2);
     });
   }, [router]);
 
@@ -64,7 +69,12 @@ export default function ReportPage() {
           returnPct={card.return_pct} grade={card.grade}
           emotionOverall={card.emotion_overall} evaluation={card.evaluation}
         />
-        <div className="flex gap-2 mt-5">
+        {canCompare && (
+          <PixelButton className="w-full mt-5" onClick={() => router.push("/compare")}>
+            🪞 지난 회차와 비교
+          </PixelButton>
+        )}
+        <div className={`flex gap-2 ${canCompare ? "mt-2" : "mt-5"}`}>
           <PixelButton className="flex-1" disabled={busy} onClick={playAgain}>
             ↻ 새 회차 (같은 시험지)
           </PixelButton>

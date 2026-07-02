@@ -142,6 +142,23 @@ class RunStore:
         return store
 
 
+def diverging_days(store: RunStore, run_a: str, run_b: str) -> list[int]:
+    """§13.6/T-227 — 두 회차의 행동이 실제로 갈린 날 목록(오름차순).
+
+    비교 기준은 행동 3요소(swayed·fund_flow·companion) — "결과 아는 날은
+    빨리감기"(§13.3): 같은 선택을 한 날은 비교 화면에 나열하지 않는다.
+    양쪽 모두에 스냅샷이 있는 날만 대상(미완주 회차의 잔여일 제외).
+    """
+    a_days = store._snapshots.get(run_a, {})
+    b_days = store._snapshots.get(run_b, {})
+    out = []
+    for day in sorted(set(a_days) & set(b_days)):
+        a, b = a_days[day], b_days[day]
+        if (a.swayed, a.fund_flow, a.companion) != (b.swayed, b.fund_flow, b.companion):
+            out.append(day)
+    return out
+
+
 def compare_runs(store: RunStore, run_a: str, run_b: str, day: int) -> dict:
     """§13.6 회차 비교 — 같은 Day를 두 회차로 겹쳐 본다(거울의 핵심 산출물)."""
 

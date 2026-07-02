@@ -33,10 +33,26 @@ export default function HistoryPage() {
         ) : (
           <div className="flex flex-col gap-3">
             {summaries.map((s) => (
-              <ResultCardView
-                key={s.run_id} runId={s.run_id}
-                returnPct={s.return_pct} grade={s.grade} emotionOverall={s.emotion_overall}
-              />
+              <div key={s.run_id}>
+                <ResultCardView
+                  runId={s.run_id}
+                  returnPct={s.return_pct} grade={s.grade} emotionOverall={s.emotion_overall}
+                />
+                {/* T-227 §13.6 — 이 회차를 최신 회차와 겹쳐보기(최신 카드면 직전과). */}
+                {summaries.length >= 2 && (
+                  <div className="flex justify-end mt-1">
+                    <PixelButton
+                      size="sm" variant="ghost"
+                      onClick={() => {
+                        const latest = summaries[summaries.length - 1].run_id;
+                        const a = s.run_id === latest
+                          ? summaries[summaries.length - 2].run_id : s.run_id;
+                        router.push(`/compare?a=${encodeURIComponent(a)}&b=${encodeURIComponent(latest)}`);
+                      }}
+                    >🪞 비교</PixelButton>
+                  </div>
+                )}
+              </div>
             ))}
           </div>
         )}

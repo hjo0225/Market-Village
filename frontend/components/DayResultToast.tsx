@@ -1,14 +1,6 @@
 "use client";
 
-import { CATEGORY_LABELS, DayResult, STAT_LABELS } from "@/lib/api";
-
-const FUND_FLOW_LABEL: Record<string, string> = {
-  to_cash: "공포 매도 → 현금 도피",
-  to_stable: "공포 매도 → 스테이블 이동",
-  to_hotter: "충동 추격 → 급등 종목에 새로 태움",
-  concentrate: "몰빵 → 기존 포지션 더 매수",
-  hold_winner: "익절 거부 → 계속 보유",
-};
+import { CATEGORY_LABELS, DayResult, FUND_FLOW_LABELS as FUND_FLOW_LABEL, STAT_LABELS } from "@/lib/api";
 
 export default function DayResultToast({ result, scene }: { result: DayResult | null; scene: string }) {
   if (!result) return null;
