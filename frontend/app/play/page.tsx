@@ -44,8 +44,6 @@ export default function PlayPage() {
   // T-234 — 하루진행이 뉴스 선택을 기다리는 중인가(모달에서 선택/스킵 시 진행 시작).
   const [pendingAdvance, setPendingAdvance] = useState(false);
   const chosenNewsRef = useRef<string | null>(null);
-  // T-235 — 아침에 발사한 걷기 연출 프라미스(정산 공개 전 대기).
-  const walkPromiseRef = useRef<Promise<void> | null>(null);
   // 위기가 실제 발생했을 때만 뜨는 이벤트 — 평소엔 null(상시 노출 안 함).
   const [crisisTrapName, setCrisisTrapName] = useState<string | null>(null);
   // T-216 D4 — 같은 날 2종목 이상 트리거되면 여기 전부 담김(1개면 길이 1).
@@ -104,11 +102,10 @@ export default function PlayPage() {
     // (백엔드가 위기 프리뷰+그날 뽑힌 뉴스로 열림 여부를 정함, 같은 날 재호출=캐시).
     const boardPromise = api.gameBoard(gameId);
 
-    setDayStage(0);           // 🌅 아침
-    // T-235(사용자 피드백 "캐릭터가 저녁에야 움직여") — 걷기 연출을 아침부터
-    // 스테이지와 병렬 재생. 완료 대기는 finishAdvance에서(결과 공개 전 정합).
-    walkPromiseRef.current = mapRef.current?.playWalk() ?? null;
-    await sleep(DAY_STAGE_MS);
+    // T-237(§12.1b) — 하루 8슬롯 = 4시간대(오전2·점심2·오후2·저녁2). 각 단계에서
+    // 그 시간대 일과 구간을 걷는다(단계 길이 = max(연출 최소시간, 그 구간 걷기)).
+    setDayStage(0);           // 🌅 오전
+    await Promise.all([sleep(DAY_STAGE_MS), mapRef.current?.playWalk("오전") ?? sleep(0)]);
     // 이벤트 있는 날이면 📱 게시판(블로킹) — 닫을 때까지 하루가 멈춘다(D1·D3).
     const board = await boardPromise;
     if (board.status === "ok" && board.open) {
@@ -118,7 +115,8 @@ export default function PlayPage() {
       setBoardFeed(null);
       boardCloseResolver.current = null;
     }
-    setDayStage(1);           // ☀️ 한낮 — 위기가 있다면 여기서 멈춘다
+    setDayStage(1);           // 🍜 점심 — 끝나면 위기 판정(오후 장 직전)
+    await Promise.all([sleep(DAY_STAGE_MS), mapRef.current?.playWalk("점심") ?? sleep(0)]);
     const check = await checkPromise;
     if (check.status === "ok" && check.trap && check.trap_name) {
       setDayStage(-1);
@@ -126,10 +124,16 @@ export default function PlayPage() {
       setCrisisBundle(check.bundle ?? []);
       return;   // 실제 진행은 모달의 선택(handleCrisisChoice)에서 이어진다.
     }
-    await sleep(DAY_STAGE_MS);
-    setDayStage(2);           // 🌇 저녁
-    await sleep(DAY_STAGE_MS);
+    await playAfternoonEvening();
     await finishAdvance(null);
+  }
+
+  // 오후·저녁 구간(위기 유무와 무관한 하루의 꼬리) — 위기 선택 후에도 재사용.
+  async function playAfternoonEvening() {
+    setDayStage(2);           // ☀️ 오후
+    await Promise.all([sleep(DAY_STAGE_MS), mapRef.current?.playWalk("오후") ?? sleep(0)]);
+    setDayStage(3);           // 🌇 저녁
+    await Promise.all([sleep(DAY_STAGE_MS), mapRef.current?.playWalk("저녁") ?? sleep(0)]);
   }
 
   async function handleCrisisChoice(strategy: string | null) {
@@ -137,8 +141,7 @@ export default function PlayPage() {
     setCrisisChoosing(true);
     setCrisisTrapName(null);
     setCrisisBundle([]);
-    setDayStage(2);           // 🌇 선택 후 저녁으로 이어서 진행
-    await sleep(DAY_STAGE_MS);
+    await playAfternoonEvening();   // 선택 후 오후→저녁으로 이어서 진행
     await finishAdvance(strategy);
     setCrisisChoosing(false);
   }
@@ -154,10 +157,7 @@ export default function PlayPage() {
         strategy: strategy || undefined,
         roll: Math.random() * 100,
       });
-      // 배경 지도가 오늘 하루를 실제로 다 걸을 때까지 기다린 뒤에야 결과를
-      // 드러낸다(T-FE2) — 걷기는 아침부터 병렬로 돌고 있다(T-235).
-      if (walkPromiseRef.current) await walkPromiseRef.current;
-      walkPromiseRef.current = null;
+      // 걷기는 각 시간대 단계에서 이미 동기 재생됐다(T-237) — 여기선 대기 불필요.
       if (r.day_result) setDayResult(r.day_result);
       // T-SVC8 테스트: 실LLM으로 클론 대사 표현만 다듬는다(수치 결정 무관, 실패 시 템플릿 폴백).
       const scene = await api.gameScene(gameId, true);

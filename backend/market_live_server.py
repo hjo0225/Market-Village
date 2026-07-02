@@ -244,6 +244,33 @@ def _walk_via(cur: tuple, addrs: list[str], rng: random.Random) -> tuple[list[li
     return steps, cur
 
 
+# T-237 §12.1b — 8슬롯을 4시간대로 묶는다(슬롯 1·2=오전 … 7·8=저녁, day_loop와 동일).
+_WALK_BANDS: tuple[tuple[str, tuple[int, int]], ...] = (
+    ("오전", (1, 2)), ("점심", (3, 4)), ("오후", (5, 6)), ("저녁", (7, 8)))
+
+
+def _banded_route(
+    sched: dict[int, str], cur: tuple, rng: random.Random, home_return: bool,
+) -> tuple[dict[str, list[list[int]]], tuple]:
+    """일과를 시간대별 경로 구간으로 — 연출이 하루 단계와 동기화되도록(T-237).
+
+    저녁 구간 끝에만(클론) 귀가를 붙인다. 구간 안에서만 연속 중복 주소를 접는다.
+    """
+    segments: dict[str, list[list[int]]] = {}
+    for band, slots in _WALK_BANDS:
+        addrs: list[str] = []
+        for slot in slots:
+            addr = _GAME_LOCATION_ADDR.get(sched.get(slot, ""))
+            if addr and (not addrs or addrs[-1] != addr):
+                addrs.append(addr)
+        if band == "저녁" and home_return:
+            home_addr = _GAME_LOCATION_ADDR["집_차트"]
+            if not addrs or addrs[-1] != home_addr:
+                addrs.append(home_addr)
+        segments[band], cur = _walk_via(cur, addrs, rng)
+    return segments, cur
+
+
 @app.get("/control/game/day/home")
 def control_game_home(game_id: str):
     """GameRun 클론+NPC 8종의 맵 스프라이트 정보 + 초기 좌표(§12.0 부트스트랩)."""
@@ -272,34 +299,32 @@ def control_game_walk(game_id: str):
     if g is None:
         return {"status": "error", "error": "no game"}
     walker = _ensure_game_walker(game_id)
+    band_names = [b for b, _ in _WALK_BANDS]
     if walker["day"] == g.day:
-        return {"status": "ok", "steps": [], "npcs": {}, "cached": True}
+        return {"status": "ok", "steps": [], "npcs": {}, "cached": True,
+                "segments": {b: [] for b in band_names},
+                "npc_segments": {p["id"]: {b: [] for b in band_names}
+                                 for p in _personas.TRADER_PERSONAS}}
 
+    # T-237 — 클론·NPC 모두 시간대 4구간으로 분해(연출이 하루 단계와 동기).
+    # flat(steps/npcs)은 구간의 순차 연결 — 구버전 map.html 하위호환.
     rng = random.Random(_walker_seed("walk", game_id, g.day))
-    addrs: list[str] = []
-    for slot in sorted(g.schedule):
-        addr = _GAME_LOCATION_ADDR.get(g.schedule[slot])
-        if addr and (not addrs or addrs[-1] != addr):
-            addrs.append(addr)
-    home_addr = _GAME_LOCATION_ADDR["집_차트"]
-    if not addrs or addrs[-1] != home_addr:
-        addrs.append(home_addr)
-    steps, cur = _walk_via(tuple(walker["pos"]), addrs, rng)
+    segments, cur = _banded_route(g.schedule, tuple(walker["pos"]), rng, home_return=True)
     walker["pos"] = list(cur)
+    steps = [xy for b in band_names for xy in segments[b]]
 
     npc_steps: dict[str, list[list[int]]] = {}
+    npc_segments: dict[str, dict[str, list[list[int]]]] = {}
     for p in _personas.TRADER_PERSONAS:
         rng_n = random.Random(_walker_seed("walk", game_id, p["id"], g.day))
-        npc_addrs: list[str] = []
-        for slot in sorted(p["sched"]):
-            addr = _GAME_LOCATION_ADDR.get(p["sched"][slot])
-            if addr and (not npc_addrs or npc_addrs[-1] != addr):
-                npc_addrs.append(addr)
-        n_steps, n_cur = _walk_via(tuple(walker["npcs"][p["id"]]), npc_addrs, rng_n)
-        npc_steps[p["id"]] = n_steps
+        segs_n, n_cur = _banded_route(
+            p["sched"], tuple(walker["npcs"][p["id"]]), rng_n, home_return=False)
+        npc_segments[p["id"]] = segs_n
+        npc_steps[p["id"]] = [xy for b in band_names for xy in segs_n[b]]
         walker["npcs"][p["id"]] = list(n_cur)
     walker["day"] = g.day
-    return {"status": "ok", "steps": steps, "npcs": npc_steps}
+    return {"status": "ok", "steps": steps, "npcs": npc_steps,
+            "segments": segments, "npc_segments": npc_segments}
 
 
 # --------------------------------------------------------------------------- #

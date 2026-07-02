@@ -3,10 +3,10 @@
 import { useEffect, useImperativeHandle, useRef, forwardRef } from "react";
 
 export interface MapBackgroundHandle {
-  // 지도 iframe이 오늘 걷기 애니메이션을 다 마칠 때까지 기다린다(map.html이
-  // 끝나면 {type:"walked"}를 postMessage로 보내줌) — 호출부가 이걸 기다렸다가
-  // 결과를 보여주면 "하루가 순간이동하지 않고 천천히 흐르는" 느낌이 난다.
-  playWalk: () => Promise<void>;
+  // 지도 iframe이 걷기 애니메이션을 마칠 때까지 기다린다(map.html이 끝나면
+  // {type:"walked", band}를 postMessage로 보내줌). band를 주면 그 시간대
+  // 구간만(T-237 §12.1b 동기화), 없으면 하루치 통재생(하위호환).
+  playWalk: (band?: string) => Promise<void>;
 }
 
 // T-FE2 — the_ville 배경 지도(§12.0). 백엔드의 순수 캔버스 페이지를 iframe으로
@@ -19,7 +19,7 @@ const MapBackground = forwardRef<MapBackgroundHandle, { gameId: string }>(functi
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   useImperativeHandle(ref, () => ({
-    playWalk: () =>
+    playWalk: (band?: string) =>
       new Promise<void>((resolve) => {
         // T-233 — 기존엔 4초 뒤 무조건 resolve라 걷기(~50초)를 실제로 안 기다렸다
         // (순간이동 체감의 원인 중 하나). 지도가 walk-ack로 살아있음을 알리면
@@ -37,14 +37,15 @@ const MapBackground = forwardRef<MapBackgroundHandle, { gameId: string }>(functi
         const onMessage = (e: MessageEvent) => {
           if (e.data?.type === "walk-ack") {
             clearTimeout(fallback);
-            fallback = setTimeout(finish, 75000);   // 걷기 상한 + 여유
-          } else if (e.data?.type === "walked") {
+            // T-237 — 밴드 재생은 한 구간(≤16초+여유), 통재생은 하루치 상한.
+            fallback = setTimeout(finish, band ? 30000 : 75000);
+          } else if (e.data?.type === "walked" && (!band || e.data?.band === band)) {
             finish();
           }
         };
         window.addEventListener("message", onMessage);
         fallback = setTimeout(finish, 4000);
-        iframeRef.current?.contentWindow?.postMessage({ type: "walk" }, "*");
+        iframeRef.current?.contentWindow?.postMessage({ type: "walk", band }, "*");
       }),
   }));
 

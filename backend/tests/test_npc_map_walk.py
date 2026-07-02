@@ -67,3 +67,31 @@ def test_walk_new_day_moves_npcs_again():
     r = mls.control_game_walk(game_id="npcmap_d")
     assert not r.get("cached")
     assert set(r["npcs"]) == _TRADER_IDS
+
+
+# --- T-237 · §12.1b 시간대 동기화 — 경로를 4구간(오전/점심/오후/저녁)으로 ------ #
+_BANDS = ("오전", "점심", "오후", "저녁")
+
+
+def test_walk_returns_time_band_segments():
+    _start("npcmap_e")
+    r = mls.control_game_walk(game_id="npcmap_e")
+    assert list(r["segments"].keys()) == list(_BANDS)
+    # flat steps는 구간들의 순차 연결과 정확히 일치(하위호환 정합).
+    concat = [xy for band in _BANDS for xy in r["segments"][band]]
+    assert concat == r["steps"]
+    # NPC도 같은 구간 구조.
+    assert set(r["npc_segments"]) == _TRADER_IDS
+    for bands in r["npc_segments"].values():
+        assert list(bands.keys()) == list(_BANDS)
+    for nid in _TRADER_IDS:
+        concat_n = [xy for band in _BANDS for xy in r["npc_segments"][nid][band]]
+        assert concat_n == r["npcs"][nid]
+
+
+def test_walk_segments_cached_same_day():
+    _start("npcmap_f")
+    mls.control_game_walk(game_id="npcmap_f")
+    again = mls.control_game_walk(game_id="npcmap_f")
+    assert again.get("cached") is True
+    assert all(v == [] for v in again["segments"].values())

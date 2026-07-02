@@ -170,13 +170,14 @@ async function playSteps(orig, allSteps, pan, stepMs, max, gen){
 }
 
 // T-233 — 사용자 피드백("순간이동 말고 집에서부터 한칸씩"): 샘플링 대신 전체 타일을
-// 연속 재생한다. 스텝 간격은 경로 길이에 맞춰 총 ~48초 안에 들어오게 조절(130~320ms),
+// 연속 재생한다. 스텝 간격은 경로 길이에 맞춰 목표 시간 안에 들어오게 조절(130~320ms),
 // 폭주 방지로 600타일 하드캡만 유지. 짧은 경로(NPC)는 자연히 먼저 도착해 배회로 전환.
-const WALK_TARGET_MS = 48000, STEP_MS_MIN = 130, STEP_MS_MAX = 320, HARD_CAP = 600;
+const WALK_TARGET_MS = 48000, BAND_TARGET_MS = 16000;
+const STEP_MS_MIN = 130, STEP_MS_MAX = 320, HARD_CAP = 600;
 
-function stepMsFor(n){
+function stepMsFor(n, targetMs){
   if (n <= 0) return STEP_MS_MAX;
-  return Math.max(STEP_MS_MIN, Math.min(STEP_MS_MAX, Math.floor(WALK_TARGET_MS / n)));
+  return Math.max(STEP_MS_MIN, Math.min(STEP_MS_MAX, Math.floor((targetMs || WALK_TARGET_MS) / n)));
 }
 
 async function walkToday(gameId){
@@ -190,6 +191,28 @@ async function walkToday(gameId){
   const cloneSteps = w.steps || [];
   await playSteps(CLONE_ORIG, cloneSteps, true, stepMsFor(cloneSteps.length), HARD_CAP, gen);
   window.parent.postMessage({ type: "walked" }, "*");
+}
+
+// T-237 §12.1b — 시간대 동기 재생: 부모가 {type:"walk", band:"오전"…}를 단계마다
+// 보내면 그 시간대 일과 구간만 걷고 {type:"walked", band}로 답한다. 하루치 경로는
+// 첫 구간(오전)에서 한 번만 받아 캐시(서버가 day 캐시라 재요청하면 빈값이 온다).
+let walkData = null;
+
+async function walkBand(gameId, band){
+  const gen = ++walkGen;
+  if (band === "오전" || walkData === null){
+    walkData = await api("/control/game/day/walk?game_id=" + encodeURIComponent(gameId));
+  }
+  const segs = (walkData.segments || {});
+  const npcSegs = (walkData.npc_segments || {});
+  Object.entries(npcSegs).forEach(([nid, bands]) => {
+    const seg = (bands || {})[band] || [];
+    playSteps(nid, seg, false, stepMsFor(seg.length, BAND_TARGET_MS), HARD_CAP, gen);
+  });
+  const cloneSeg = segs[band] || [];
+  await playSteps(CLONE_ORIG, cloneSeg, true, stepMsFor(cloneSeg.length, BAND_TARGET_MS), HARD_CAP, gen);
+  window.parent.postMessage({ type: "walked", band }, "*");
+  if (band === "저녁") walkData = null;   // 다음 날은 새로 받는다
 }
 
 async function boot(gameId){
@@ -215,8 +238,9 @@ window.addEventListener("message", (e) => {
   if (e.data.type === "walk"){
     // T-233 — 수신 즉시 ack: 부모(MapBackground)가 "지도 살아있음"을 알고
     // 걷기 완료(walked)까지 제대로 기다릴 수 있게 한다(기존 4초 포기 문제).
-    window.parent.postMessage({ type: "walk-ack" }, "*");
-    walkToday(GAME_ID);
+    window.parent.postMessage({ type: "walk-ack", band: e.data.band ?? null }, "*");
+    if (e.data.band) walkBand(GAME_ID, e.data.band);   // T-237 시간대 동기 재생
+    else walkToday(GAME_ID);                            // 하위호환(밴드 없는 통재생)
   }
 });
 </script>
