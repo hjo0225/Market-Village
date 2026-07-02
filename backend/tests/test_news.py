@@ -94,3 +94,33 @@ def test_signature_drama_stronger():
 def test_signature_drama_miss_none():
     pool = news.load_news_pool()
     assert news.signature_drama(pool, "nonexistent") is None
+
+
+# --- T-226 · intensity 태깅 (게시판 D2 트리거가 소비) ---
+
+_VALID_INTENSITY = {"low", "medium", "high", "extreme"}
+
+
+def test_intensity_tagging_complete():
+    # 일반 뉴스 전부가 유효한 intensity를 가진다.
+    pool = news.load_news_pool()
+    for n in pool.news:
+        assert n.get("intensity") in _VALID_INTENSITY, n["id"]
+
+
+def test_intensity_high_extreme_band():
+    # 게시판이 너무 자주/드물게 열리지 않는 대역(D1): high+extreme 25~40%
+    pool = news.load_news_pool()
+    hi = [n for n in pool.news if n["intensity"] in ("high", "extreme")]
+    ratio = len(hi) / len(pool.news)
+    assert 0.25 <= ratio <= 0.40, f"high/extreme {len(hi)}/{len(pool.news)}"
+
+
+def test_intensity_not_tone_skewed():
+    # 공포에만 high 몰빵 금지 — 세 톤 모두 high/extreme 1개 이상 보유.
+    pool = news.load_news_pool()
+    for tone in ("fear", "optimism", "uncertain"):
+        assert any(
+            n["intensity"] in ("high", "extreme")
+            for n in pool.news if n["tone"] == tone
+        ), tone
