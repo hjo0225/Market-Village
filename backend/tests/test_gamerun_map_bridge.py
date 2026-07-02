@@ -14,7 +14,10 @@ import market_live_server as mls
 
 
 def test_all_menu_locations_map_to_real_addresses():
-    for place in ("카페", "일터", "광장", "운동", "집_차트"):
+    # T-241 — 일과 메뉴 8곳 전부(펍·마켓·도서관 포함) 실주소·실타일이어야 한다.
+    from sim.game_run import _MENU
+    assert len(_MENU) == 8
+    for place in _MENU:
         addr = mls._GAME_LOCATION_ADDR.get(place)
         assert addr, f"{place} 주소 매핑 누락"
         tiles = mls._maze().address_tiles.get(addr)

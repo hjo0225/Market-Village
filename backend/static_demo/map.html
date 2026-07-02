@@ -78,7 +78,8 @@ function bootPhaser(walkers){
     }));
     // T-240 — 장소 이름 라벨(카페/일터/광장/집): 캐릭터 네임플레이트보다 연한
     // 고정 플레이트. 어디로 걸어가는지 읽을 수 있게 한다.
-    const PLACE_ICON = { "카페": "☕", "일터": "🛠", "광장": "🌳", "집": "🏠" };
+    const PLACE_ICON = { "카페": "☕", "일터": "🛠", "광장": "🌳", "집": "🏠",
+                         "펍": "🍺", "마켓": "🧺", "도서관": "📚" };
     (window.__PLACES || []).forEach((pl) => {
       const txt = this.add.text(0, 0, (PLACE_ICON[pl.name] || "📍") + " " + pl.name, {
         fontSize: "16px",

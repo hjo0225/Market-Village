@@ -39,7 +39,8 @@ TRADER_PERSONAS: list[dict] = [
         "herd": 0.5, "rumor": 0.95,
         "stim_trap": "M2",
         "sprite": "Klaus_Mueller", "portrait": "Klaus_Mueller",
-        "sched": {3: "광장", 7: "카페"},
+        # T-241 — 저녁 뒷담화 스팟은 펍(루머 전파자에게 어울리는 자리).
+        "sched": {3: "광장", 7: "펍"},
     },
     {
         "id": "value_investor", "name": "가치투자자",
@@ -86,7 +87,8 @@ TRADER_PERSONAS: list[dict] = [
         "herd": 0.4, "rumor": 0.5,
         "stim_trap": "G2",
         "sprite": "Carlos_Gomez", "portrait": "Carlos_Gomez",
-        "sched": {4: "카페", 6: "운동"},
+        # T-241 — 도박꾼의 "더 가즈아"는 펍에서(슬롯6 — 클론 기본 일과와 겹쳐 만남 발생).
+        "sched": {4: "카페", 6: "펍"},
     },
 ]
 

@@ -14,8 +14,8 @@ import pytest
 from sim import personas
 
 _VALID_TRAPS = {"F1", "F2", "G1", "G2", "M1", "M2"}
-# NPC 스케줄에 허용되는 장소 — 클론 홈 스폰(집_차트)은 제외(부속 PRD §7.1).
-_NPC_PLACES = {"카페", "일터", "광장", "운동"}
+# NPC 스케줄에 허용되는 장소 — 클론 홈 스폰(집_차트)은 제외(부속 PRD §7.1, T-241 확장).
+_NPC_PLACES = {"카페", "일터", "광장", "운동", "펍", "마켓", "도서관"}
 
 _ASSET_ROOT = os.path.join(
     os.path.dirname(__file__), "..", "..",

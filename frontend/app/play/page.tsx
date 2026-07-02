@@ -177,6 +177,7 @@ export default function PlayPage() {
   // T-240 — 지금 시간대(스테이지)의 일정 문구: 슬롯 1·2=오전 … 7·8=저녁(§12.1b).
   const PLACE_ICONS: Record<string, string> = {
     카페: "☕", 일터: "🛠", 광장: "🌳", 운동: "🏃", "집_차트": "🏠",
+    펍: "🍺", 마켓: "🧺", 도서관: "📚",
   };
   const PLACE_NAMES: Record<string, string> = { "집_차트": "집(차트 보기)" };
   const BAND_SLOTS = [[1, 2], [3, 4], [5, 6], [7, 8]];

@@ -30,7 +30,9 @@ from .traps import get_trap
 from .trap_pipeline import Intervention
 
 # 일과 행동 메뉴(고정, §12.2) — 클론의 8슬롯에 순환 배치(결정론).
-_MENU = ["카페", "일터", "광장", "운동", "집_차트"]
+# T-241 — 8슬롯=8곳(하루가 전부 다른 장소). 앞 5개 순서는 기존과 동일(슬롯 1~5
+# 배치·만남 회귀 없음), 6~8에 펍·마켓·도서관 추가(the_ville 미사용 장소 활용).
+_MENU = ["카페", "일터", "광장", "운동", "집_차트", "펍", "마켓", "도서관"]
 # NPC 풀(§9.5.3 매매 에이전트 8종, T-221) — 데이터 원본은 personas.py.
 # 일과는 고정·회차 불변(§9.2.1), stim_trap은 §9.2.1b 끌림·persuade가 재사용.
 _NPC_SCHEDS = _personas.npc_scheds()

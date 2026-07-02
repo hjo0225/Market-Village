@@ -172,6 +172,10 @@ _GAME_LOCATION_ADDR = {
     "광장": "the Ville:Johnson Park:park",
     "운동": "the Ville:Johnson Park:park",   # 전용 체육시설 자산 없음 — 공원 재사용
     "집_차트": "<spawn_loc>sp-A",
+    # T-241 — the_ville 미사용 장소 활용(일과 8곳 확장).
+    "펍": "the Ville:The Rose and Crown Pub:pub",
+    "마켓": "the Ville:The Willows Market and Pharmacy:store",
+    "도서관": "the Ville:Oak Hill College:library",
 }
 _GAME_CLONE_SPRITE = "Isabella_Rodriguez"   # interview.py의 거울 클론과 동일 스프라이트
 # game_id → {"pos": [x,y], "day": int, "npcs": {npc_id: [x,y]}} (T-221 NPC 상시 이동)
@@ -291,7 +295,7 @@ def _place_labels(walker: dict) -> list[dict]:
     """
     out: list[dict] = []
     seen_addrs: set[str] = set()
-    for place in ("카페", "일터", "광장"):
+    for place in ("카페", "일터", "광장", "펍", "마켓", "도서관"):
         addr = _GAME_LOCATION_ADDR[place]
         if addr in seen_addrs:
             continue

@@ -193,12 +193,12 @@ board_trigger = (crisis_check.trap is not None) or any(n.intensity in ("high","e
 |---|---|---|---|---|
 | 패닉셀 개미 | `panic_ant` | Eddy_Lin | {1:카페, 4:광장} | F1 |
 | FOMO 단타러 | `fomo_scalper` | Ryan_Park | {2:카페, 6:광장} | M1 |
-| 음모론 인플루언서 | `conspiracy_influencer` | Klaus_Mueller | {3:광장, 7:카페} | M2 |
+| 음모론 인플루언서 | `conspiracy_influencer` | Klaus_Mueller | {3:광장, 7:펍} | M2 |
 | 가치투자자 | `value_investor` | Adam_Smith | {2:일터, 5:카페} | — (도움) |
 | 퀀트 트레이더 | `quant_trader` | Yuriko_Yamamoto | {1:일터, 6:운동} | — (도움) |
 | 매크로 고래 | `macro_whale` | Wolfgang_Schulz | {4:운동, 7:카페} | — (도움) |
 | 역발상 투자자 | `contrarian` | Carmen_Ortiz | {2:일터, 5:광장} | — (도움) |
-| 한탕 도박꾼 | `jackpot_gambler` | Carlos_Gomez | {4:카페, 6:운동} | G2 |
+| 한탕 도박꾼 | `jackpot_gambler` | Carlos_Gomez | {4:카페, 6:펍} | G2 |
 
 - 감정 수치는 §9.5.3 표 그대로(재기재 안 함). `stim trap`은 기존 `_NPC_STIM_TRAP` 의미(1:1 시 클론에 자극하는 주 함정) — 해침 4종만 보유, 도움 4종은 None(기존 turtle과 동일).
 - 스케줄 설계 의도: 해침·도움이 같은 장소·슬롯에 섞이게 배치(클론 동선이 어느 쪽과 겹칠지가 회차마다 달라짐).
