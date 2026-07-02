@@ -38,7 +38,7 @@ export default function NewsModal({ isOpen, onClose, news, onSelect, onSkip }: P
         <div className="text-center">
           <p className="text-[11px] font-bold text-pixel-grass mb-1 tracking-widest">📰 아침 뉴스</p>
           <h2 className="text-xl font-extrabold text-white drop-shadow-md">오늘, 어떤 뉴스가 눈에 들어왔나?</h2>
-          <p className="text-xs text-white/70 mt-1">고른 뉴스가 클론의 마음을 흔든다 — 가격은 흔들지 않는다.</p>
+          <p className="text-xs text-white/70 mt-1">고른 뉴스가 클론과 마을의 마음을 흔든다.</p>
         </div>
 
         <div className="flex flex-col sm:flex-row gap-4 w-full justify-center">
@@ -68,14 +68,9 @@ export default function NewsModal({ isOpen, onClose, news, onSelect, onSkip }: P
           })}
         </div>
 
-        {onSkip ? (
-          <button
-            onClick={() => { onSkip(); onClose(); }}
-            className="text-xs text-white/60 hover:text-white underline underline-offset-4"
-          >
-            오늘 뉴스는 안 읽고 진행 ▶
-          </button>
-        ) : (
+        {/* T-247(사용자 리포트 ⑨) — 뉴스 선택은 실험 변인이라 스킵 없음. 하루를
+            진행하려면 반드시 하나를 골라야 한다(X 닫기 = 진행 취소). */}
+        {!onSkip && (
           <button
             onClick={onClose}
             className="text-xs text-white/60 hover:text-white underline underline-offset-4"

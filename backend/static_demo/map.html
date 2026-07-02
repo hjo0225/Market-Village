@@ -64,6 +64,8 @@ function bootPhaser(walkers){
   function preload(){
     this.load.image("bg", "/assets/the_ville/visuals/the_ville_full.png");
     this.load.image("fg", "/assets/the_ville/visuals/the_ville_fg.png");
+    // T-247 — 말풍선은 원본(generative agents) 에셋 사용(사용자 요청).
+    this.load.image("bubble", "/assets/speech_bubble/v3.png");
     sheets.forEach((key) => this.load.spritesheet(key, "/assets/characters/" + key + ".png",
       { frameWidth: 32, frameHeight: 32 }));
   }
@@ -119,8 +121,11 @@ function bootPhaser(walkers){
     });
     const cam = walkers.find((w) => w.cam) || walkers[0];
     this.cameras.main.setBounds(0, 0, MAPW * TILE, MAPH * TILE);
-    this.cameras.main.centerOn(cam.x * TILE, cam.y * TILE);
     this.cameras.main.setZoom(1.35);
+    // T-247 — 카메라는 목표 좌표가 아니라 실제 스프라이트를 따라간다(둘이 따로 놀지
+    // 않게, 사용자 리포트 ①). lerp 0.08로 부드럽게 밀착.
+    const camObj = sprites[cam.orig];
+    if (camObj) this.cameras.main.startFollow(camObj.s, true, 0.08, 0.08);
   }
   // T-238 — 지수 감속 보간(매 타일 도착 직전 멈칫 → 가다-서다)을 등속 이동으로.
   // o.speed(px/frame)는 스텝 간격에 맞춰 playSteps가 정해준다(다음 스텝에 맞춰 도착).
@@ -150,12 +155,16 @@ function moveSpriteToPx(o, nx, ny, pan, speed){
   else if (scene) o.s.stop();
   o.tx = nx; o.ty = ny;
   o.speed = speed || 1.2;   // T-238 — 등속 이동 속도(px/frame). 배회 기본은 느긋하게.
-  if (pan && scene) scene.cameras.main.pan(nx, ny, 300, "Linear", true);
+  // 카메라는 startFollow가 담당(T-247) — pan 사용 안 함.
 }
 
 function moveSprite(orig, x, y, pan, speed){
   const o = sprites[orig]; if (!o) return;
   o.anchor = null;   // 실제 걷기 — 배회 앵커는 도착 지점에서 다시 잡는다(T-232)
+  // T-247(벽 뚫기 수정) — 새 타일 목표를 주기 전에 이전 목표 타일로 스냅.
+  // 스프라이트가 지연으로 못 따라왔을 때 경로 밖 직선(벽 관통)으로 질러가는 것을
+  // 차단한다(원본 generative agents처럼 그리드 스냅 후 다음 칸 이동).
+  if (o.s){ o.s.x = o.tx; o.s.y = o.ty; }
   moveSpriteToPx(o, x * TILE + 16, y * TILE + 16, pan, speed);
 }
 
@@ -169,8 +178,10 @@ setInterval(() => {
   const o = sprites[keys[Math.floor(Math.random() * keys.length)]];
   if (!o.anchor) o.anchor = { x: o.tx, y: o.ty };
   const roam = Math.random() < 0.55;
-  const nx = roam ? o.anchor.x + Math.round((Math.random() * 2 - 1) * TILE) : o.anchor.x;
-  const ny = roam ? o.anchor.y + Math.round((Math.random() * 2 - 1) * TILE * 0.6) : o.anchor.y;
+  // T-247 — 배회 반경을 자기 타일 안(±10px)으로 축소: 충돌 데이터가 없는 표현
+  // 계층에서 1타일 배회는 벽·가구를 뚫어 보였다(사용자 리포트 ②).
+  const nx = roam ? o.anchor.x + Math.round((Math.random() * 2 - 1) * 10) : o.anchor.x;
+  const ny = roam ? o.anchor.y + Math.round((Math.random() * 2 - 1) * 8) : o.anchor.y;
   moveSpriteToPx(o, nx, ny, false);
   setTimeout(() => { if (walkActive === 0) o.s.stop(); }, 700);  // 제자리 걸음 방지
 }, IDLE_TICK_MS);
@@ -184,10 +195,13 @@ function sampleSteps(allSteps, max){
 
 async function playSteps(orig, allSteps, pan, stepMs, max, gen){
   walkActive += 1;
+  // T-247 — 스텝 간격에 정확히 맞는 등속(px/frame): 다음 칸이 올 때 이미 도착해
+  // 있어야 스냅이 안 보이고 카메라도 스프라이트에 밀착한다.
+  const pxPerFrame = (TILE * (1000 / 60) / stepMs) * 1.06;
   try {
     for (const [x, y] of sampleSteps(allSteps, max)){
       if (gen !== walkGen) return;   // T-229 — 새 날 걷기가 시작됨: 이전 루프 종료
-      moveSprite(orig, x, y, pan);
+      moveSprite(orig, x, y, pan, pxPerFrame);
       await new Promise((r) => setTimeout(r, stepMs));
     }
     const o = sprites[orig];
@@ -240,19 +254,16 @@ function setBubble(orig, text){
   if (!o || !scene) return;
   if (o.bubble){ o.bubble.destroy(); o.bubble = null; }
   if (!text) return;
-  const t = scene.add.text(0, 0, text, {
+  const t = scene.add.text(0, -2, text, {
     fontSize: "13px",
     fontFamily: "Pretendard, 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif",
     fontStyle: "bold", color: "#1f2937",
   }).setOrigin(0.5).setResolution(3);
-  const bw = t.width + 14, bh = t.height + 8;
-  const g = scene.add.graphics();
-  g.fillStyle(0xffffff, 0.95);
-  g.fillRoundedRect(-bw / 2, -bh / 2, bw, bh, 7);
-  g.lineStyle(1, 0x111111, 0.55);
-  g.strokeRoundedRect(-bw / 2, -bh / 2, bw, bh, 7);
-  g.fillTriangle(-4, bh / 2, 4, bh / 2, 0, bh / 2 + 6);   // 말꼬리
-  o.bubble = scene.add.container(o.s.x, o.s.y, [g, t]).setDepth(21);
+  // T-247 — 원본(generative agents) 말풍선 에셋(v3, 말꼬리 포함)을 텍스트 크기에
+  // 맞춰 늘려 쓴다(사용자 요청 — 직접 그린 도형 대신).
+  const img = scene.add.image(0, 0, "bubble");
+  img.setDisplaySize(t.width + 26, t.height + 18);
+  o.bubble = scene.add.container(o.s.x, o.s.y, [img, t]).setDepth(21);
 }
 
 // T-237 §12.1b — 시간대 동기 재생: 부모가 {type:"walk", band:"오전"…}를 단계마다
@@ -283,7 +294,12 @@ async function walkBand(gameId, band, speedup){
     setBubble(CLONE_ORIG, PLACE_DOING[plan[plan.length - 1]] || "");
   }
   window.parent.postMessage({ type: "walked", band }, "*");
-  if (band === "저녁") walkData = null;   // 다음 날은 새로 받는다
+  if (band === "저녁"){
+    walkData = null;   // 다음 날은 새로 받는다
+    // T-247 — 하루가 끝나면 활동 말풍선을 정리(잔존 방지, 사용자 리포트 ④).
+    const genAtEnd = walkGen;
+    setTimeout(() => { if (walkGen === genAtEnd) setBubble(CLONE_ORIG, null); }, 6000);
+  }
 }
 
 async function boot(gameId){

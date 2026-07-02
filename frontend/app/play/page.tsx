@@ -262,7 +262,8 @@ export default function PlayPage() {
           // T-234 — 하루진행이 뉴스 선택을 기다리던 중이면 그 뉴스로 바로 진행.
           if (pendingAdvance) { setPendingAdvance(false); void runAdvance(id); }
         }}
-        onSkip={pendingAdvance ? () => { setPendingAdvance(false); void runAdvance(null); } : undefined}
+        // T-247 ⑨ — 스킵 경로 제거: 뉴스 선택은 조작 변인의 핵심이라 필수.
+        onSkip={undefined}
       />
       <PhoneModal
         isOpen={phoneOpen} onClose={() => setPhoneOpen(false)} gameId={gameId}
