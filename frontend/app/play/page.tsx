@@ -9,10 +9,11 @@ import PhoneModal from "@/components/PhoneModal";
 import PreviewModal from "@/components/PreviewModal";
 import NewsModal from "@/components/NewsModal";
 import DayResultToast from "@/components/DayResultToast";
+import BoardEventModal from "@/components/BoardEventModal";
 import CrisisEventModal from "@/components/CrisisEventModal";
 import DayProgressOverlay from "@/components/DayProgressOverlay";
 import MapBackground, { MapBackgroundHandle } from "@/components/MapBackground";
-import { api, GameState, NewsItem, Meetings, Picks, DayResult } from "@/lib/api";
+import { api, BoardFeed, GameState, NewsItem, Meetings, Picks, DayResult } from "@/lib/api";
 import { getGameId } from "@/lib/session";
 
 // 사용자 피드백(2026-07-01) — "하루가 2분동안 진행되는 속도로". 3단계(아침·한낮·
@@ -36,6 +37,10 @@ export default function PlayPage() {
   const [advancing, setAdvancing] = useState(false);
   const [dayResult, setDayResult] = useState<DayResult | null>(null);
   const [sceneText, setSceneText] = useState("");
+  // 게시판(T-225, D1·D3) — 이벤트 날 아침 뒤에만 뜨는 블로킹 관찰 이벤트.
+  // 닫기 전엔 하루가 진행되지 않는다(resolver로 진행 재개).
+  const [boardFeed, setBoardFeed] = useState<BoardFeed | null>(null);
+  const boardCloseResolver = useRef<(() => void) | null>(null);
   // 위기가 실제 발생했을 때만 뜨는 이벤트 — 평소엔 null(상시 노출 안 함).
   const [crisisTrapName, setCrisisTrapName] = useState<string | null>(null);
   // T-216 D4 — 같은 날 2종목 이상 트리거되면 여기 전부 담김(1개면 길이 1).
@@ -56,7 +61,7 @@ export default function PlayPage() {
 
   const refresh = useCallback(async (id: string) => {
     const [st, prev, nw] = await Promise.all([
-      api.gameState(id), api.gamePreview(id), api.gameNews(id, 0),
+      api.gameState(id), api.gamePreview(id), api.gameNews(id),
     ]);
     // 프록시 네트워크 플레이크(fetchJson이 재시도 후에도 실패)로 status가
     // "ok"가 아니면 화면을 깨뜨리지 말고 기존 상태를 유지 — 다음 진행/재시도 때
@@ -81,9 +86,21 @@ export default function PlayPage() {
     setAdvancing(true);
     setDayResult(null); setSceneText("");
     const checkPromise = api.gameCrisisCheck(gameId, newsId ?? undefined);
+    // T-225(D3) — 게시판 판정도 아침 단계에서 미리 조회. 부작용 없는 판정 재사용
+    // (백엔드가 위기 프리뷰+그날 뽑힌 뉴스로 열림 여부를 정함, 같은 날 재호출=캐시).
+    const boardPromise = api.gameBoard(gameId);
 
     setDayStage(0);           // 🌅 아침
     await sleep(DAY_STAGE_MS);
+    // 이벤트 있는 날이면 📱 게시판(블로킹) — 닫을 때까지 하루가 멈춘다(D1·D3).
+    const board = await boardPromise;
+    if (board.status === "ok" && board.open) {
+      setDayStage(-1);
+      setBoardFeed(board);
+      await new Promise<void>((resolve) => { boardCloseResolver.current = resolve; });
+      setBoardFeed(null);
+      boardCloseResolver.current = null;
+    }
     setDayStage(1);           // ☀️ 한낮 — 위기가 있다면 여기서 멈춘다
     const check = await checkPromise;
     if (check.status === "ok" && check.trap && check.trap_name) {
@@ -186,6 +203,12 @@ export default function PlayPage() {
         meetings={meetings} picks={picks} onChanged={() => refresh(gameId)}
       />
       <DayResultToast result={dayResult} scene={sceneText} />
+      {boardFeed && (
+        <BoardEventModal
+          day={boardFeed.day} board={boardFeed}
+          onClose={() => boardCloseResolver.current?.()}
+        />
+      )}
       {crisisTrapName && (
         <CrisisEventModal
           trapName={crisisTrapName} bundle={crisisBundle}

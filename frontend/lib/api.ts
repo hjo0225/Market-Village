@@ -44,6 +44,23 @@ export const CATEGORY_LABELS: Record<string, string> = {
   large_stable: "대형 안정형", mid_alt: "중견 알트형", meme: "밈형", stable: "스테이블",
 };
 
+// §8.3 자금 행선지 라벨 — DayResultToast·회차 비교(T-227)가 공유하는 단일 소스.
+export const FUND_FLOW_LABELS: Record<string, string> = {
+  to_cash: "공포 매도 → 현금 도피",
+  to_stable: "공포 매도 → 스테이블 이동",
+  to_hotter: "충동 추격 → 급등 종목에 새로 태움",
+  concentrate: "몰빵 → 기존 포지션 더 매수",
+  hold_winner: "익절 거부 → 계속 보유",
+};
+
+// §9.5.3 NPC id → 표시명 (backend/sim/personas.py와 동일해야 한다).
+export const NPC_LABELS: Record<string, string> = {
+  panic_ant: "패닉셀 개미", fomo_scalper: "FOMO 단타러",
+  conspiracy_influencer: "음모론 인플루언서", value_investor: "가치투자자",
+  quant_trader: "퀀트 트레이더", macro_whale: "매크로 고래",
+  contrarian: "역발상 투자자", jackpot_gambler: "한탕 도박꾼",
+};
+
 export interface PortfolioHolding {
   category: string; quantity: number; avg_cost: number; value: number; unrealized_pnl: number;
 }
@@ -81,6 +98,21 @@ export interface DayResult {
   realized_pnl: number; stats: CloneStats; bundle: BundleItem[];
 }
 export interface Scene { commands: unknown[]; dialogue: string; monologue_open: boolean; }
+// T-227 §13.6 — GET /control/game/compare의 회차별 하루 뷰.
+export interface CompareDayView {
+  swayed: boolean; companion: string; fund_flow: string;
+  realized_pnl: number; total_asset: number;
+}
+// T-224 게시판(SNS형 FGI) — GET /control/game/day/board 계약(PRD_SOCIAL_NPC_BOARD §3.2).
+export interface BoardComment { author: string; author_id: string; text: string; }
+export interface BoardPost {
+  author: string; author_id: string; author_kind: "sns" | "clone";
+  portrait: string | null; text: string; comments: BoardComment[];
+}
+export interface BoardFeed {
+  day: number; open: boolean; context: string | null;
+  posts: BoardPost[]; crowd_mood_delta: number;
+}
 
 export const api = {
   // -- 인터뷰 --
@@ -107,8 +139,18 @@ export const api = {
   gameAvoid: (gameId: string, slotA: number, slotB: number) =>
     post<{ status: string; schedule: Record<string, string>; meetings: Meetings }>(
       "/control/game/day/avoid", { game_id: gameId, slot_a: slotA, slot_b: slotB }),
-  gameNews: (gameId: string, seed = 0) =>
+  // seed 생략 시 서버가 (game_id, day)로 파생 — 같은 날 안정, 날마다 새 3개(T-223).
+  gameNews: (gameId: string, seed?: number) =>
     get<{ status: string; news: NewsItem[] }>("/control/game/news", { game_id: gameId, seed }),
+  // T-227 §13.6 회차 비교 — 분기일 목록 + 특정 날의 두 회차 겹쳐보기.
+  gameCompareDays: (gameId: string, runA: string, runB: string) =>
+    get<{ status: string; days: number[] }>(
+      "/control/game/compare_days", { game_id: gameId, run_a: runA, run_b: runB }),
+  gameCompare: (gameId: string, runA: string, runB: string, day: number) =>
+    get<{ status: string; day: number; a: CompareDayView | null; b: CompareDayView | null }>(
+      "/control/game/compare", { game_id: gameId, run_a: runA, run_b: runB, day }),
+  gameBoard: (gameId: string, useLlm = false) =>
+    get<{ status: string } & BoardFeed>("/control/game/day/board", { game_id: gameId, use_llm: useLlm }),
   gameCrisisCheck: (gameId: string, newsId?: string) =>
     get<{ status: string; trap: string | null; trap_name: string | null;
          bundle: { category: string; trap: string; trap_name: string }[] }>(
@@ -127,9 +169,6 @@ export const api = {
     get<{ status: string; card?: ResultCard }>("/control/game/card", { game_id: gameId }),
   gameNewRun: (gameId: string, runId?: string) =>
     post<{ status: string; state: GameState }>("/control/game/newrun", { game_id: gameId, run_id: runId ?? null }),
-  gameCompare: (gameId: string, runA: string, runB: string, day: number) =>
-    get<{ status: string; a: unknown; b: unknown }>(
-      "/control/game/compare", { game_id: gameId, run_a: runA, run_b: runB, day }),
   gameSummaries: (gameId: string) =>
     get<{ status: string; summaries: RunSummary[] }>("/control/game/summaries", { game_id: gameId }),
 
