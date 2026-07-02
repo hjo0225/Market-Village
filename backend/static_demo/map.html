@@ -104,17 +104,25 @@ function bootPhaser(walkers){
     this.cameras.main.centerOn(cam.x * TILE, cam.y * TILE);
     this.cameras.main.setZoom(1.35);
   }
+  // T-238 — 지수 감속 보간(매 타일 도착 직전 멈칫 → 가다-서다)을 등속 이동으로.
+  // o.speed(px/frame)는 스텝 간격에 맞춰 playSteps가 정해준다(다음 스텝에 맞춰 도착).
   function update(){
     Object.values(sprites).forEach((o) => {
-      o.s.x += (o.tx - o.s.x) * 0.18;
-      o.s.y += (o.ty - o.s.y) * 0.18;
+      const dx = o.tx - o.s.x, dy = o.ty - o.s.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 0.1){
+        const v = o.speed || 2.0;
+        const k = Math.min(1, v / dist);
+        o.s.x += dx * k;
+        o.s.y += dy * k;
+      }
       o.label.x = o.s.x; o.label.y = o.s.y - 6 - 16 * SPRITE_SCALE;
     });
   }
   game = new Phaser.Game(config);
 }
 
-function moveSpriteToPx(o, nx, ny, pan){
+function moveSpriteToPx(o, nx, ny, pan, speed){
   const dx = nx - o.tx, dy = ny - o.ty;
   let dir = null;
   if (Math.abs(dx) > Math.abs(dy)) dir = dx > 0 ? "right" : (dx < 0 ? "left" : null);
@@ -122,13 +130,14 @@ function moveSpriteToPx(o, nx, ny, pan){
   if (dir && scene) o.s.play(o.key + "-" + dir, true);
   else if (scene) o.s.stop();
   o.tx = nx; o.ty = ny;
+  o.speed = speed || 1.2;   // T-238 — 등속 이동 속도(px/frame). 배회 기본은 느긋하게.
   if (pan && scene) scene.cameras.main.pan(nx, ny, 300, "Linear", true);
 }
 
-function moveSprite(orig, x, y, pan){
+function moveSprite(orig, x, y, pan, speed){
   const o = sprites[orig]; if (!o) return;
   o.anchor = null;   // 실제 걷기 — 배회 앵커는 도착 지점에서 다시 잡는다(T-232)
-  moveSpriteToPx(o, x * TILE + 16, y * TILE + 16, pan);
+  moveSpriteToPx(o, x * TILE + 16, y * TILE + 16, pan, speed);
 }
 
 // T-232 — 대기 중 잔잔한 배회(순수 연출): 몇 초에 한 번 임의 스프라이트가 앵커

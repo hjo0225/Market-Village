@@ -95,3 +95,15 @@ def test_walk_segments_cached_same_day():
     again = mls.control_game_walk(game_id="npcmap_f")
     assert again.get("cached") is True
     assert all(v == [] for v in again["segments"].values())
+
+
+def test_clone_returns_to_the_same_home_every_day():
+    # T-239 — 시작 집은 랜덤이어도 한 게임 안에선 매일 같은 집으로 귀가한다
+    # (기존엔 귀가 타일을 day-시드 난수로 뽑아 다른 집으로 들어가는 날이 있었다).
+    _start("npcmap_g")
+    d0 = mls.control_game_walk(game_id="npcmap_g")   # 워커는 첫 호출에서 생성됨
+    home = list(mls._GAME_WALKERS["npcmap_g"]["home"])
+    assert d0["steps"][-1] == home
+    mls.control_game_advance(mls.GameAdvanceBody(game_id="npcmap_g"))
+    d1 = mls.control_game_walk(game_id="npcmap_g")
+    assert d1["steps"][-1] == home                 # 다음 날도 같은 집

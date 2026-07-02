@@ -220,6 +220,8 @@ def _ensure_game_walker(game_id: str) -> dict:
         rng = random.Random(_walker_seed("walker", game_id))
         home_tile = _gamerun_rand_tile_for(_GAME_LOCATION_ADDR["집_차트"], rng)
         walker["pos"] = list(home_tile) if home_tile else [70, 40]
+    # T-239 — 집 타일은 게임당 1회 뽑아 박제(시작은 랜덤, 게임 내내 같은 집으로 귀가).
+    walker.setdefault("home", list(walker["pos"]))
     for p in _personas.TRADER_PERSONAS:
         if p["id"] in walker["npcs"]:
             continue
@@ -231,11 +233,15 @@ def _ensure_game_walker(game_id: str) -> dict:
     return walker
 
 
-def _walk_via(cur: tuple, addrs: list[str], rng: random.Random) -> tuple[list[list[int]], tuple]:
-    """주소들을 차례로 들르는 타일 경로(steps)와 최종 위치를 반환."""
+def _walk_via(cur: tuple, targets: list, rng: random.Random) -> tuple[list[list[int]], tuple]:
+    """목표들을 차례로 들르는 타일 경로(steps)와 최종 위치를 반환.
+
+    목표는 주소 문자열(영역 내 임의 타일) 또는 정확한 타일 tuple(T-239 — 집처럼
+    게임 내 고정이어야 하는 지점).
+    """
     steps: list[list[int]] = []
-    for addr in addrs:
-        dest = _gamerun_rand_tile_for(addr, rng)
+    for tgt in targets:
+        dest = tgt if isinstance(tgt, tuple) else _gamerun_rand_tile_for(tgt, rng)
         if dest is None:
             continue
         seg = _gamerun_path(cur, dest)
@@ -250,24 +256,30 @@ _WALK_BANDS: tuple[tuple[str, tuple[int, int]], ...] = (
 
 
 def _banded_route(
-    sched: dict[int, str], cur: tuple, rng: random.Random, home_return: bool,
+    sched: dict[int, str], cur: tuple, rng: random.Random,
+    home_tile: tuple | None = None,
 ) -> tuple[dict[str, list[list[int]]], tuple]:
     """일과를 시간대별 경로 구간으로 — 연출이 하루 단계와 동기화되도록(T-237).
 
-    저녁 구간 끝에만(클론) 귀가를 붙인다. 구간 안에서만 연속 중복 주소를 접는다.
+    home_tile이 주어지면(클론) 저녁 구간 끝에 그 타일로 귀가한다 — 주소 영역 내
+    임의 타일이 아니라 게임 내 고정된 '내 집'(T-239, 매일 같은 집으로). 일과 중
+    집_차트 슬롯도 같은 타일을 쓴다. 구간 안에서만 연속 중복 목표를 접는다.
     """
+    home_addr = _GAME_LOCATION_ADDR["집_차트"]
     segments: dict[str, list[list[int]]] = {}
     for band, slots in _WALK_BANDS:
-        addrs: list[str] = []
+        targets: list = []
         for slot in slots:
             addr = _GAME_LOCATION_ADDR.get(sched.get(slot, ""))
-            if addr and (not addrs or addrs[-1] != addr):
-                addrs.append(addr)
-        if band == "저녁" and home_return:
-            home_addr = _GAME_LOCATION_ADDR["집_차트"]
-            if not addrs or addrs[-1] != home_addr:
-                addrs.append(home_addr)
-        segments[band], cur = _walk_via(cur, addrs, rng)
+            if not addr:
+                continue
+            tgt = home_tile if (home_tile is not None and addr == home_addr) else addr
+            if not targets or targets[-1] != tgt:
+                targets.append(tgt)
+        if band == "저녁" and home_tile is not None:
+            if not targets or targets[-1] != home_tile:
+                targets.append(home_tile)
+        segments[band], cur = _walk_via(cur, targets, rng)
     return segments, cur
 
 
@@ -309,7 +321,8 @@ def control_game_walk(game_id: str):
     # T-237 — 클론·NPC 모두 시간대 4구간으로 분해(연출이 하루 단계와 동기).
     # flat(steps/npcs)은 구간의 순차 연결 — 구버전 map.html 하위호환.
     rng = random.Random(_walker_seed("walk", game_id, g.day))
-    segments, cur = _banded_route(g.schedule, tuple(walker["pos"]), rng, home_return=True)
+    segments, cur = _banded_route(g.schedule, tuple(walker["pos"]), rng,
+                                  home_tile=tuple(walker["home"]))
     walker["pos"] = list(cur)
     steps = [xy for b in band_names for xy in segments[b]]
 
@@ -318,7 +331,7 @@ def control_game_walk(game_id: str):
     for p in _personas.TRADER_PERSONAS:
         rng_n = random.Random(_walker_seed("walk", game_id, p["id"], g.day))
         segs_n, n_cur = _banded_route(
-            p["sched"], tuple(walker["npcs"][p["id"]]), rng_n, home_return=False)
+            p["sched"], tuple(walker["npcs"][p["id"]]), rng_n, home_tile=None)
         npc_segments[p["id"]] = segs_n
         npc_steps[p["id"]] = [xy for b in band_names for xy in segs_n[b]]
         walker["npcs"][p["id"]] = list(n_cur)
