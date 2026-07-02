@@ -11,6 +11,18 @@ const FGI_TONES = [
   { value: "fear_join", label: "같이 무서워하기" },
 ];
 
+// §9.5.3 매매 에이전트 8종(T-221) — id는 backend/sim/personas.py와 동일해야 한다.
+const NPCS = [
+  { value: "value_investor", label: "가치투자자 (도움·차분)" },
+  { value: "quant_trader", label: "퀀트 트레이더 (도움·냉정)" },
+  { value: "macro_whale", label: "매크로 고래 (도움·대범)" },
+  { value: "contrarian", label: "역발상 투자자 (도움·독립)" },
+  { value: "panic_ant", label: "패닉셀 개미 (자극·공포)" },
+  { value: "fomo_scalper", label: "FOMO 단타러 (자극·추격)" },
+  { value: "conspiracy_influencer", label: "음모론 인플루언서 (자극·루머)" },
+  { value: "jackpot_gambler", label: "한탕 도박꾼 (자극·탐욕)" },
+];
+
 interface Props {
   isOpen: boolean;
   onClose: () => void;
@@ -25,7 +37,7 @@ export default function PhoneModal({ isOpen, onClose, gameId, rapport, crowdMood
   const [tab, setTab] = useState<"feed" | "dm">("feed");
   const [fgiTone, setFgiTone] = useState("calm");
   const [fgiResult, setFgiResult] = useState("");
-  const [npc, setNpc] = useState<"turtle" | "frog">("turtle");
+  const [npc, setNpc] = useState(NPCS[0].value);
   const [dmResult, setDmResult] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -95,9 +107,8 @@ export default function PhoneModal({ isOpen, onClose, gameId, rapport, crowdMood
             ) : (
               <>
                 <div className="text-[11px] text-pixel-muted">1:1 대화 · 래포 <b>{Math.round(rapport)}</b> (위기개입과 같은 풀)</div>
-                <select className="border-2 border-black rounded-lg px-2 py-1.5 text-[12px]" value={npc} onChange={(e) => setNpc(e.target.value as "turtle" | "frog")}>
-                  <option value="turtle">거북이(안정)</option>
-                  <option value="frog">개구리(자극)</option>
+                <select className="border-2 border-black rounded-lg px-2 py-1.5 text-[12px]" value={npc} onChange={(e) => setNpc(e.target.value)}>
+                  {NPCS.map((n) => <option key={n.value} value={n.value}>{n.label}</option>)}
                 </select>
                 <div className="flex gap-2">
                   <PixelButton size="sm" disabled={busy} onClick={() => doPersuade("calm")}>안정으로</PixelButton>

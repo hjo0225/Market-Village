@@ -28,7 +28,7 @@ def test_round_trip_preserves_fresh_state():
 
 def test_round_trip_preserves_state_after_days_and_social():
     g = _g()
-    g.persuade("turtle", direction="calm", roll=0.0)   # 래포 변화
+    g.persuade("value_investor", direction="calm", roll=0.0)   # 래포 변화
     g.fgi_post("fear_join", roll=0.0)                   # crowd_mood 변화
     for _ in range(5):
         g.advance_day()

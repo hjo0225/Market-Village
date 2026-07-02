@@ -41,7 +41,9 @@ async function api(path){
   return { status: "error", error: "network" };
 }
 
-function bootPhaser(underscore, initial, x, y){
+// walkers: [{orig, key(스프라이트시트), initial(라벨), x, y, cam(카메라 추적 여부)}]
+// T-221 — 클론 1개 전용이던 부트를 클론+NPC 8종(§9.5.3)으로 일반화.
+function bootPhaser(walkers){
   if (game){ game.destroy(true); sprites = {}; }
   const config = {
     type: Phaser.AUTO, parent: "game", backgroundColor: "#5a7a4a",
@@ -49,27 +51,31 @@ function bootPhaser(underscore, initial, x, y){
     scale: { mode: Phaser.Scale.RESIZE, width: "100%", height: "100%" },
     scene: { preload, create, update },
   };
+  const sheets = [...new Set(walkers.map((w) => w.key))];
   function preload(){
     this.load.image("bg", "/assets/the_ville/visuals/the_ville_full.png");
     this.load.image("fg", "/assets/the_ville/visuals/the_ville_fg.png");
-    this.load.spritesheet(underscore, "/assets/characters/" + underscore + ".png",
-      { frameWidth: 32, frameHeight: 32 });
+    sheets.forEach((key) => this.load.spritesheet(key, "/assets/characters/" + key + ".png",
+      { frameWidth: 32, frameHeight: 32 }));
   }
   function create(){
     scene = this;
     this.add.image(0, 0, "bg").setOrigin(0).setDisplaySize(MAPW * TILE, MAPH * TILE);
     this.add.image(0, 0, "fg").setOrigin(0).setDisplaySize(MAPW * TILE, MAPH * TILE).setDepth(15);
     const dirs = { down: [0, 1, 2], left: [3, 4, 5], right: [6, 7, 8], up: [9, 10, 11] };
-    Object.entries(dirs).forEach(([d, fr]) => {
-      this.anims.create({ key: underscore + "-" + d,
-        frames: this.anims.generateFrameNumbers(underscore, { frames: fr }), frameRate: 6, repeat: -1 });
+    sheets.forEach((key) => Object.entries(dirs).forEach(([d, fr]) => {
+      this.anims.create({ key: key + "-" + d,
+        frames: this.anims.generateFrameNumbers(key, { frames: fr }), frameRate: 6, repeat: -1 });
+    }));
+    walkers.forEach((w) => {
+      const s = this.add.sprite(w.x * TILE + 16, w.y * TILE + 16, w.key, 1).setDepth(10);
+      const label = this.add.text(w.x * TILE + 16, w.y * TILE - 6, w.initial,
+        { fontSize: "11px", color: "#fff", backgroundColor: "#0008" }).setOrigin(0.5).setDepth(20);
+      sprites[w.orig] = { s, label, key: w.key, tx: w.x * TILE + 16, ty: w.y * TILE + 16 };
     });
-    const s = this.add.sprite(x * TILE + 16, y * TILE + 16, underscore, 1).setDepth(10);
-    const label = this.add.text(x * TILE + 16, y * TILE - 6, initial,
-      { fontSize: "11px", color: "#fff", backgroundColor: "#0008" }).setOrigin(0.5).setDepth(20);
-    sprites[CLONE_ORIG] = { s, label, key: underscore, tx: x * TILE + 16, ty: y * TILE + 16 };
+    const cam = walkers.find((w) => w.cam) || walkers[0];
     this.cameras.main.setBounds(0, 0, MAPW * TILE, MAPH * TILE);
-    this.cameras.main.centerOn(x * TILE, y * TILE);
+    this.cameras.main.centerOn(cam.x * TILE, cam.y * TILE);
     this.cameras.main.setZoom(1.35);
   }
   function update(){
@@ -82,8 +88,8 @@ function bootPhaser(underscore, initial, x, y){
   game = new Phaser.Game(config);
 }
 
-function moveSprite(x, y){
-  const o = sprites[CLONE_ORIG]; if (!o) return;
+function moveSprite(orig, x, y, pan){
+  const o = sprites[orig]; if (!o) return;
   const nx = x * TILE + 16, ny = y * TILE + 16;
   const dx = nx - o.tx, dy = ny - o.ty;
   let dir = null;
@@ -92,31 +98,50 @@ function moveSprite(x, y){
   if (dir && scene) o.s.play(o.key + "-" + dir, true);
   else if (scene) o.s.stop();
   o.tx = nx; o.ty = ny;
-  if (scene) scene.cameras.main.pan(nx, ny, 300, "Linear", true);
+  if (pan && scene) scene.cameras.main.pan(nx, ny, 300, "Linear", true);
+}
+
+// §13.3 "빠르게 지나갈 날은 빨리감기" — 수백 타일을 한 칸씩 재생하지 않고 균등 샘플링.
+function sampleSteps(allSteps, max){
+  const n = allSteps.length;
+  return n <= max ? allSteps
+    : Array.from({ length: max }, (_, i) => allSteps[Math.floor(i * (n - 1) / (max - 1))]);
+}
+
+async function playSteps(orig, allSteps, pan, stepMs, max){
+  for (const [x, y] of sampleSteps(allSteps, max)){
+    moveSprite(orig, x, y, pan);
+    await new Promise((r) => setTimeout(r, stepMs));
+  }
+  const o = sprites[orig];
+  if (o && scene) o.s.stop();
 }
 
 async function walkToday(gameId){
   const w = await api("/control/game/day/walk?game_id=" + encodeURIComponent(gameId));
-  const allSteps = w.steps || [];
-  // §13.3 "빠르게 지나갈 날은 빨리감기" — 수백 타일을 한 칸씩 재생하지 않고 균등 샘플링.
   // 사용자 피드백(2026-07-01) — 하루가 순간이동처럼 느껴지지 않게 느린 속도로
   // (waypoint 늘리고 스텝 간격 늘림, 총 ~50초 — Next.js 쪽 "하루가 흐르는" 연출
   // 1부(~60초)와 합쳐 전체 하루 진행이 약 2분이 되도록).
   const MAX_WAYPOINTS = 30, STEP_MS = 1700;
-  const n = allSteps.length;
-  const steps = n <= MAX_WAYPOINTS ? allSteps
-    : Array.from({ length: MAX_WAYPOINTS }, (_, i) => allSteps[Math.floor(i * (n - 1) / (MAX_WAYPOINTS - 1))]);
-  for (const [x, y] of steps){
-    moveSprite(x, y);
-    await new Promise((r) => setTimeout(r, STEP_MS));
-  }
+  // NPC들은 카메라 추적 없이 동시 재생(T-221 상시 이동 연출) — 완료를 기다리지 않고
+  // 클론 걸음(기존 페이싱 계약)이 끝나면 walked를 보낸다.
+  Object.entries(w.npcs || {}).forEach(([nid, steps]) => {
+    playSteps(nid, steps || [], false, STEP_MS, MAX_WAYPOINTS);
+  });
+  await playSteps(CLONE_ORIG, w.steps || [], true, STEP_MS, MAX_WAYPOINTS);
   window.parent.postMessage({ type: "walked" }, "*");
 }
 
 async function boot(gameId){
   const home = await api("/control/game/day/home?game_id=" + encodeURIComponent(gameId));
   if (home.status !== "ok") return;
-  bootPhaser(home.persona.underscore, home.persona.initial, home.pos[0], home.pos[1]);
+  const walkers = [
+    { orig: CLONE_ORIG, key: home.persona.underscore, initial: home.persona.initial,
+      x: home.pos[0], y: home.pos[1], cam: true },
+    ...(home.npcs || []).map((n) => (
+      { orig: n.id, key: n.sprite, initial: n.name, x: n.pos[0], y: n.pos[1], cam: false })),
+  ];
+  bootPhaser(walkers);
 }
 
 const params = new URLSearchParams(location.search);

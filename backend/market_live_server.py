@@ -20,6 +20,7 @@ import json
 import os
 import random
 import sys
+import zlib
 from os.path import abspath, dirname, join, normpath
 
 # Everything lives in backend/ now (no reverie folder). maze/path_finder/utils
@@ -39,6 +40,7 @@ from path_finder import path_finder  # noqa: E402  (path util)
 from utils import collision_block_id  # noqa: E402  (config)
 
 from backend.sim import news as _news  # noqa: E402
+from backend.sim import personas as _personas  # noqa: E402
 from backend.sim import clone_stats as _clone_stats  # noqa: E402
 from backend.sim import clone_spec as _clone_spec  # noqa: E402
 from backend.sim import result_card as _result_card  # noqa: E402
@@ -171,7 +173,8 @@ _GAME_LOCATION_ADDR = {
     "집_차트": "<spawn_loc>sp-A",
 }
 _GAME_CLONE_SPRITE = "Isabella_Rodriguez"   # interview.py의 거울 클론과 동일 스프라이트
-_GAME_WALKERS: dict[str, dict] = {}         # game_id → {"pos": [x,y], "day": int}
+# game_id → {"pos": [x,y], "day": int, "npcs": {npc_id: [x,y]}} (T-221 NPC 상시 이동)
+_GAME_WALKERS: dict[str, dict] = {}
 
 
 def _gamerun_walkable(tile) -> bool:
@@ -202,38 +205,68 @@ def _gamerun_path(a, b) -> list[tuple[int, int]]:
         return [tuple(a), tuple(b)]
 
 
-@app.get("/control/game/day/home")
-def control_game_home(game_id: str):
-    """GameRun 클론의 맵 스프라이트 정보 + 초기 좌표(§12.0 표현 부트스트랩)."""
-    g = _get_game(game_id)
-    if g is None:
-        return {"status": "error", "error": "no game"}
-    walker = _GAME_WALKERS.setdefault(game_id, {"pos": None, "day": -1})
+def _ensure_game_walker(game_id: str) -> dict:
+    """클론+NPC 워커 상태 초기화(결정론) — home/walk 어느 쪽이 먼저 와도 동일."""
+    walker = _GAME_WALKERS.setdefault(game_id, {"pos": None, "day": -1, "npcs": {}})
+    walker.setdefault("npcs", {})  # T-221 이전에 만들어진 워커 하위호환
     if walker["pos"] is None:
         rng = random.Random(hash(game_id) & 0xFFFFFFFF)
         home_tile = _gamerun_rand_tile_for(_GAME_LOCATION_ADDR["집_차트"], rng)
         walker["pos"] = list(home_tile) if home_tile else [70, 40]
+    for p in _personas.TRADER_PERSONAS:
+        if p["id"] in walker["npcs"]:
+            continue
+        # NPC 시작 위치 = 자기 일과의 첫 장소(결정론, game_id·npc_id 시드).
+        first_place = p["sched"][min(p["sched"])]
+        rng_n = random.Random((hash(game_id) ^ hash(p["id"])) & 0xFFFFFFFF)
+        tile = _gamerun_rand_tile_for(_GAME_LOCATION_ADDR[first_place], rng_n)
+        walker["npcs"][p["id"]] = list(tile) if tile else [70, 40]
+    return walker
+
+
+def _walk_via(cur: tuple, addrs: list[str], rng: random.Random) -> tuple[list[list[int]], tuple]:
+    """주소들을 차례로 들르는 타일 경로(steps)와 최종 위치를 반환."""
+    steps: list[list[int]] = []
+    for addr in addrs:
+        dest = _gamerun_rand_tile_for(addr, rng)
+        if dest is None:
+            continue
+        seg = _gamerun_path(cur, dest)
+        steps.extend([list(t) for t in seg[1:]] if len(seg) > 1 else [])
+        cur = dest
+    return steps, cur
+
+
+@app.get("/control/game/day/home")
+def control_game_home(game_id: str):
+    """GameRun 클론+NPC 8종의 맵 스프라이트 정보 + 초기 좌표(§12.0 부트스트랩)."""
+    g = _get_game(game_id)
+    if g is None:
+        return {"status": "error", "error": "no game"}
+    walker = _ensure_game_walker(game_id)
+    npcs = [
+        {"id": p["id"], "name": p["name"], "sprite": p["sprite"],
+         "pos": walker["npcs"][p["id"]]}
+        for p in _personas.TRADER_PERSONAS
+    ]
     return {"status": "ok",
             "persona": {"original": "gamerun_clone", "underscore": _GAME_CLONE_SPRITE, "initial": "클론"},
-            "pos": walker["pos"]}
+            "pos": walker["pos"], "npcs": npcs}
 
 
 @app.get("/control/game/day/walk")
 def control_game_walk(game_id: str):
     """그날 일과(8슬롯)를 실좌표 경로로 — 클론이 걷고 카메라가 따라간다(§12.0).
 
+    NPC 8종도 각자 고정 일과(§9.2.1)를 따라 같은 날 함께 걷는다(T-221, 순수 연출).
     하루당 1회만 새 경로를 낸다(day 캐시) — 같은 날 재호출은 빈 steps+cached.
     """
     g = _get_game(game_id)
     if g is None:
         return {"status": "error", "error": "no game"}
-    walker = _GAME_WALKERS.setdefault(game_id, {"pos": None, "day": -1})
-    if walker["pos"] is None:
-        rng0 = random.Random(hash(game_id) & 0xFFFFFFFF)
-        home_tile = _gamerun_rand_tile_for(_GAME_LOCATION_ADDR["집_차트"], rng0)
-        walker["pos"] = list(home_tile) if home_tile else [70, 40]
+    walker = _ensure_game_walker(game_id)
     if walker["day"] == g.day:
-        return {"status": "ok", "steps": [], "cached": True}
+        return {"status": "ok", "steps": [], "npcs": {}, "cached": True}
 
     rng = random.Random((hash(game_id) & 0xFFFFFFFF) + g.day)
     addrs: list[str] = []
@@ -244,19 +277,22 @@ def control_game_walk(game_id: str):
     home_addr = _GAME_LOCATION_ADDR["집_차트"]
     if not addrs or addrs[-1] != home_addr:
         addrs.append(home_addr)
-
-    steps: list[list[int]] = []
-    cur = tuple(walker["pos"])
-    for addr in addrs:
-        dest = _gamerun_rand_tile_for(addr, rng)
-        if dest is None:
-            continue
-        seg = _gamerun_path(cur, dest)
-        steps.extend([list(t) for t in seg[1:]] if len(seg) > 1 else [])
-        cur = dest
+    steps, cur = _walk_via(tuple(walker["pos"]), addrs, rng)
     walker["pos"] = list(cur)
+
+    npc_steps: dict[str, list[list[int]]] = {}
+    for p in _personas.TRADER_PERSONAS:
+        rng_n = random.Random(((hash(game_id) ^ hash(p["id"])) & 0xFFFFFFFF) + g.day)
+        npc_addrs: list[str] = []
+        for slot in sorted(p["sched"]):
+            addr = _GAME_LOCATION_ADDR.get(p["sched"][slot])
+            if addr and (not npc_addrs or npc_addrs[-1] != addr):
+                npc_addrs.append(addr)
+        n_steps, n_cur = _walk_via(tuple(walker["npcs"][p["id"]]), npc_addrs, rng_n)
+        npc_steps[p["id"]] = n_steps
+        walker["npcs"][p["id"]] = list(n_cur)
     walker["day"] = g.day
-    return {"status": "ok", "steps": steps}
+    return {"status": "ok", "steps": steps, "npcs": npc_steps}
 
 
 # --------------------------------------------------------------------------- #
@@ -355,10 +391,30 @@ def control_game_state(game_id: str):
     return {"status": "ok", "state": g.state()}
 
 
+def _news_seed(game_id: str, day: int) -> int:
+    """(game_id, day) 고정 시드 — hash()는 프로세스마다 달라 재시작 안정성이 없음."""
+    return zlib.crc32(f"news:{game_id}:{day}".encode())
+
+
+def _drawn_news_today(game_id: str, g: "_GameRun") -> list[dict]:
+    """그날 뽑힌 3지선다(서버가 정본) — /news 응답과 게시판 트리거가 공유."""
+    return _news.draw_three(_news.load_news_pool(),
+                            random.Random(_news_seed(game_id, g.day)))
+
+
 @app.get("/control/game/news")
-def control_game_news(game_id: str, seed: int = 0):
-    """§7 그날 아침 뉴스 3지선다."""
-    picked = _news.draw_three(_news.load_news_pool(), random.Random(seed))
+def control_game_news(game_id: str, seed: int | None = None):
+    """§7 그날 아침 뉴스 3지선다.
+
+    seed 미지정이면 (game_id, day)로 파생 — 같은 날엔 같은 3개, 날이 바뀌면 새 3개.
+    (T-223에서 수정: 프론트가 seed=0 고정으로 불러 43개 풀에서 매일 같은 3개만
+    나오던 결함. 명시 seed는 배치/테스트용으로 유지.)
+    """
+    g = _get_game(game_id)
+    if seed is None and g is not None:
+        picked = _drawn_news_today(game_id, g)
+    else:
+        picked = _news.draw_three(_news.load_news_pool(), random.Random(seed or 0))
     return {"status": "ok", "news": [
         {"id": n["id"], "tone": n["tone"], "headline": n["headline"],
          "triggers": n.get("triggers", [])} for n in picked]}
@@ -424,6 +480,17 @@ def control_game_fgi(body: GameFgiBody):
     out = g.fgi_post(body.tone, roll=body.roll)
     _persist_game(body.game_id, g)
     return {"status": "ok", **out}
+
+
+@app.get("/control/game/day/board")
+def control_game_board(game_id: str, use_llm: bool = False):
+    """T-223 게시판(D1~D3) — 이벤트 날만 열림, 같은 날 재호출 = 같은 피드."""
+    g = _get_game(game_id)
+    if g is None:
+        return {"status": "error", "error": "no game"}
+    board = g.board_today(_drawn_news_today(game_id, g), use_llm=use_llm)
+    _persist_game(game_id, g)
+    return {"status": "ok", **board}
 
 
 @app.get("/control/game/day/crisis_check")
@@ -497,6 +564,15 @@ def control_game_newrun(body: GameNewRunBody):
     g.new_run(run_id=body.run_id)
     _persist_game(body.game_id, g)
     return {"status": "ok", "state": g.state()}
+
+
+@app.get("/control/game/compare_days")
+def control_game_compare_days(game_id: str, run_a: str, run_b: str):
+    """T-227 §13.6 — 두 회차의 행동이 갈린 날 목록(비교 화면의 탭 소스)."""
+    g = _get_game(game_id)
+    if g is None:
+        return {"status": "error", "error": "no game"}
+    return {"status": "ok", "days": _runs.diverging_days(g.store, run_a, run_b)}
 
 
 @app.get("/control/game/compare")

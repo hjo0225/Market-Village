@@ -22,9 +22,9 @@ def _g():
 def test_preview_day_exposes_clone_pick_per_meeting_slot():
     g = _g()
     p = g.preview_day()
-    assert 3 in p["meetings"]          # 슬롯3에서 개구리(F1 자극형)와 마주침(기존 계약)
+    assert 3 in p["meetings"]          # 슬롯3 광장에서 음모론 인플루언서와 마주침(T-221)
     assert "picks" in p
-    assert p["picks"][3] == "frog"     # 후보가 frog 하나뿐이어도 선택 결과가 노출돼야 함
+    assert p["picks"][3] == "conspiracy_influencer"  # 후보가 하나뿐이어도 선택 결과 노출
 
 
 def test_preview_day_pick_matches_clone_picks_npc_pure_function():

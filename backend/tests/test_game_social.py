@@ -27,7 +27,7 @@ def test_rapport_persists_on_gamerun():
 def test_persuade_with_stable_npc_raises_rapport_on_success():
     g = _g()
     before = g.rapport
-    out = g.persuade("turtle", direction="calm", roll=0.0)
+    out = g.persuade("value_investor", direction="calm", roll=0.0)
     assert out["accepted"] is True
     assert g.rapport > before   # 래포가 세션에 실제로 누적됨
 
@@ -38,7 +38,7 @@ def test_persuasion_raises_crisis_intervention_success_next_day():
     def make(persuade_n):
         g = _g()
         for _ in range(persuade_n):
-            g.persuade("turtle", direction="calm", roll=0.0)
+            g.persuade("value_investor", direction="calm", roll=0.0)
         for _ in range(27):
             g.advance_day()
         return g
@@ -65,7 +65,7 @@ def test_fgi_post_moves_crowd_mood_and_stat():
 
 def test_new_run_resets_rapport_and_crowd_mood():
     g = _g()
-    g.persuade("turtle", direction="calm", roll=0.0)
+    g.persuade("value_investor", direction="calm", roll=0.0)
     assert g.rapport != 50.0
     g.new_run(run_id="soc2")
     assert g.rapport == 50.0

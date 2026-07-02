@@ -10,13 +10,16 @@ run_loop은 30일을 batch로 돈다. 플레이어는 하루씩 진행(전날밤
 from __future__ import annotations
 
 import random
+import zlib
 from dataclasses import asdict
 
 from .avoidance import avoid as _avoid_slots, clone_picks_npc
 from .clone_spec import CloneSpec
 from .clone_stats import MENTAL, stat_for_trap
 from .day_loop import clone_disturbance, day_slots, overlap_meetings
+from . import tuning as _T
 from .tuning import clamp
+from . import personas as _personas
 from .fate_line import CATEGORIES, FateLine, load_fate_line
 from .resistance import update_rapport
 from .result_card import evaluate
@@ -28,10 +31,10 @@ from .trap_pipeline import Intervention
 
 # 일과 행동 메뉴(고정, §12.2) — 클론의 8슬롯에 순환 배치(결정론).
 _MENU = ["카페", "일터", "광장", "운동", "집_차트"]
-# NPC 일과(고정, 회차 불변 §9.2.1). 안정형 거북이 / 자극형 개구리.
-_NPC_SCHEDS = {"turtle": {2: "일터", 5: "운동"}, "frog": {3: "광장", 7: "집_차트"}}
-# NPC가 자극하는 함정(§9.2.1b 클론이 약점 자극 NPC에 끌림에서도 재사용). None=안정형.
-_NPC_STIM_TRAP = {"turtle": None, "frog": "F1"}
+# NPC 풀(§9.5.3 매매 에이전트 8종, T-221) — 데이터 원본은 personas.py.
+# 일과는 고정·회차 불변(§9.2.1), stim_trap은 §9.2.1b 끌림·persuade가 재사용.
+_NPC_SCHEDS = _personas.npc_scheds()
+_NPC_STIM_TRAP = _personas.npc_stim_traps()
 
 
 class GameRun:
@@ -103,6 +106,7 @@ class GameRun:
         # §9.2.2/§11.4.4 — 위기개입과 1:1 권유가 공유하는 래포 풀. 회차마다 리셋.
         self.rapport: float = run_state["rapport"]
         self.crowd_mood: float = 50.0  # §9.2.3 FGI 단톡방 과열도(중립 시작)
+        self._board: dict | None = None  # T-223 오늘의 게시판(하루 1회 확정, 캐시)
 
     def new_run(self, run_id: str | None = None) -> None:
         """다음 회차 — 클론은 '처음 만남'으로 리셋, 요약은 누적(§13.8/§14.3)."""
@@ -148,6 +152,10 @@ class GameRun:
                 self.stats["멘탈회복"] = clamp(
                     self.stats["멘탈회복"] + self.last_event["delta"], 0.0, 100.0)
             self.store.record_snapshot(self.run_id, snap)
+        # §9.3 폭주 방지 — 군중 분위기는 밤사이 중립으로 일부 회귀(게시판·FGI로
+        # 올라간 과열이 영구 고착돼 M2를 상시 발동시키는 되먹임 차단, T-225).
+        self.crowd_mood = clamp(
+            50.0 + (self.crowd_mood - 50.0) * (1.0 - _T.CROWD_MOOD_REVERT), 0.0, 100.0)
         if self.day >= self.days:
             self._settle_run()
         return snap
@@ -244,6 +252,29 @@ class GameRun:
         self.stats[MENTAL] = out["clone_stat_value"]
         return out
 
+    def board_today(self, drawn_news: list[dict], use_llm: bool = False) -> dict:
+        """T-223 게시판(D1~D3) — 이벤트 날만 열리고, 하루 1회 확정 생성.
+
+        같은 날 재호출은 캐시 반환(crowd_mood도 하루 1회만 이동 — 결정론). 트리거는
+        위기(preview_crisis, 부작용 없음) 또는 그날 뽑힌 뉴스의 고강도 여부(D2).
+        시드는 (run_id, day) 고정 crc32 — 서버 재시작·재호출에도 같은 피드.
+        """
+        if self._board is not None and self._board.get("day") == self.day:
+            return self._board
+        trap = self.preview_crisis()["trap"]
+        context = _social.board_trigger(trap, drawn_news)
+        if context is None:
+            board: dict = {"day": self.day, "open": False, "context": None,
+                           "posts": [], "crowd_mood_delta": 0.0}
+        else:
+            rng = random.Random(zlib.crc32(f"{self.run_id}:{self.day}".encode()))
+            feed = _social.board_event(context, self.clone_spec, trap, rng,
+                                       use_llm=use_llm)
+            board = {"day": self.day, "open": True, **feed}
+            self.crowd_mood = clamp(self.crowd_mood + feed["crowd_mood_delta"], 0.0, 100.0)
+        self._board = board
+        return board
+
     # --- 표현 계층이 읽는 스냅샷 ----------------------------------------- #
     def _holdings_breakdown(self) -> list[dict]:
         """T-214 — 화면 표시용 종목별 분해(주력 + 2차 포지션). 순수 조회, 상태 무변경."""
@@ -320,6 +351,7 @@ class GameRun:
             "prev_realized_pnl": self._prev_realized_pnl,
             "rapport": self.rapport,
             "crowd_mood": self.crowd_mood,
+            "board": self._board,
             "store": self.store.to_dict(),
         }
 
@@ -350,4 +382,5 @@ class GameRun:
         g._prev_realized_pnl = doc["prev_realized_pnl"]
         g.rapport = doc["rapport"]
         g.crowd_mood = doc["crowd_mood"]
+        g._board = doc.get("board")   # T-223 이전 문서엔 없음 → None(하위호환)
         return g

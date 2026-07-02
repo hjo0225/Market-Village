@@ -68,6 +68,6 @@ def test_persuade_raised_rapport_is_visible_to_gamerun_state():
     mls.control_game_start(mls.GameStartBody(game_id=gid, answers={}, symbol="DOGE"))
     before = mls._get_game(gid).rapport
     mls.control_game_persuade(mls.GamePersuadeBody(
-        game_id=gid, npc_id="turtle", direction="calm", roll=0.0))
+        game_id=gid, npc_id="value_investor", direction="calm", roll=0.0))
     after = mls._get_game(gid).rapport
     assert after > before

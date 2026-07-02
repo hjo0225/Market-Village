@@ -22,14 +22,14 @@ def test_preview_returns_schedule_and_meetings():
     p = g.preview_day()
     assert len(p["slots"]) == 8
     assert len(p["schedule"]) == 8
-    assert 3 in p["meetings"]   # 슬롯3 광장에서 개구리와 마주침
+    assert 3 in p["meetings"]   # 슬롯3 광장에서 음모론 인플루언서와 마주침(T-221)
 
 
 def test_avoid_changes_meetings():
     g = _g()
-    assert 3 in g.preview_day()["meetings"]    # 회피 전: 개구리 마주침
+    assert 3 in g.preview_day()["meetings"]    # 회피 전: 슬롯3 광장 만남 존재
     after = g.avoid(3, 1)                        # 슬롯3↔1 스왑 = 동선 틀기
-    assert 3 not in after                        # 회피 성공: 개구리 안 마주침
+    assert 3 not in after                        # 회피 성공: 슬롯3 만남 사라짐
     # 활동 집합은 불변(통제변인 §12.2)
     assert sorted(g.schedule.values()) == sorted(_g().schedule.values())
 

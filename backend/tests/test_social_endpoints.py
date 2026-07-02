@@ -16,14 +16,14 @@ def _start(gid="soc_ep"):
 def test_persuade_endpoint():
     _start("soc_a")
     r = mls.control_game_persuade(mls.GamePersuadeBody(
-        game_id="soc_a", npc_id="turtle", direction="calm", roll=0.0))
+        game_id="soc_a", npc_id="value_investor", direction="calm", roll=0.0))
     assert r["status"] == "ok" and r["accepted"] is True
     assert r["rapport"] > 50.0
 
 
 def test_persuade_endpoint_missing_game():
     r = mls.control_game_persuade(mls.GamePersuadeBody(
-        game_id="nope", npc_id="turtle", direction="calm"))
+        game_id="nope", npc_id="value_investor", direction="calm"))
     assert r["status"] == "error"
 
 
