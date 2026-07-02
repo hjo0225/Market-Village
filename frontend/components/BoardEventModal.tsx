@@ -37,7 +37,8 @@ function PostCard({ post }: { post: BoardPost }) {
           <span className="w-6 h-6 rounded-full border border-black bg-pixel-grass/40 flex items-center justify-center text-[12px]">🤖</span>
         )}
         <span className="text-[12px] font-extrabold">{post.author}</span>
-        <span className="text-[10px] text-pixel-muted">· 오늘</span>
+        {/* T-246 — 이름 옆에 역할 부기(이름만으론 성격을 모르니). */}
+        <span className="text-[10px] text-pixel-muted">· {post.author_role ?? "오늘"}</span>
         {isClone && <span className="text-[10px] font-bold text-pixel-grass-dark bg-pixel-grass/20 rounded px-1">내 클론</span>}
       </div>
       <p className="text-[12px] leading-snug">{post.text}</p>

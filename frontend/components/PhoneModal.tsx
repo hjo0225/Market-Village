@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { X } from "lucide-react";
 import PixelButton from "@/components/pixel/PixelButton";
-import { api, NPC_LABELS } from "@/lib/api";
+import { api, NPC_LABELS, NPC_ROLES } from "@/lib/api";
 
 const FGI_TONES = [
   { value: "calm", label: "휩쓸리지 마" },
@@ -11,16 +11,14 @@ const FGI_TONES = [
   { value: "fear_join", label: "같이 무서워하기" },
 ];
 
-// §9.5.3 매매 에이전트 8종(T-221) — 표시명은 api.ts NPC_LABELS 단일 소스에서.
-// 역할 태그(도움/자극)만 이 화면 전용. 순서 = 도움 4 → 자극 4.
-const NPC_ROLES: [string, string][] = [
-  ["value_investor", "도움·차분"], ["quant_trader", "도움·냉정"],
-  ["macro_whale", "도움·대범"], ["contrarian", "도움·독립"],
-  ["panic_ant", "자극·공포"], ["fomo_scalper", "자극·추격"],
-  ["conspiracy_influencer", "자극·루머"], ["jackpot_gambler", "자극·탐욕"],
+// §9.5.3 매매 에이전트 8종(T-221/T-246) — 이름·역할은 api.ts 단일 소스에서.
+// 순서 = 도움 4 → 자극 4.
+const NPC_ORDER = [
+  "value_investor", "quant_trader", "macro_whale", "contrarian",
+  "panic_ant", "fomo_scalper", "conspiracy_influencer", "jackpot_gambler",
 ];
-const NPCS = NPC_ROLES.map(([value, role]) => (
-  { value, label: `${NPC_LABELS[value] ?? value} (${role})` }));
+const NPCS = NPC_ORDER.map((value) => (
+  { value, label: `${NPC_LABELS[value] ?? value} (${NPC_ROLES[value] ?? ""})` }));
 
 interface Props {
   isOpen: boolean;

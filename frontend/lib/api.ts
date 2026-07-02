@@ -53,8 +53,15 @@ export const FUND_FLOW_LABELS: Record<string, string> = {
   hold_winner: "익절 거부 → 계속 보유",
 };
 
-// §9.5.3 NPC id → 표시명 (backend/sim/personas.py와 동일해야 한다).
+// §9.5.3 NPC id → 표시명(T-246 사람 이름 — backend/sim/personas.py와 동일해야 한다).
 export const NPC_LABELS: Record<string, string> = {
+  panic_ant: "동수", fomo_scalper: "재훈",
+  conspiracy_influencer: "만식", value_investor: "정호",
+  quant_trader: "유리", macro_whale: "태산",
+  contrarian: "미나", jackpot_gambler: "도철",
+};
+// NPC id → 역할명(부기 표기용 — 이름만으론 성격을 모르니 괄호로 병기).
+export const NPC_ROLES: Record<string, string> = {
   panic_ant: "패닉셀 개미", fomo_scalper: "FOMO 단타러",
   conspiracy_influencer: "음모론 인플루언서", value_investor: "가치투자자",
   quant_trader: "퀀트 트레이더", macro_whale: "매크로 고래",
@@ -104,9 +111,9 @@ export interface CompareDayView {
   realized_pnl: number; total_asset: number;
 }
 // T-224 게시판(SNS형 FGI) — GET /control/game/day/board 계약(PRD_SOCIAL_NPC_BOARD §3.2).
-export interface BoardComment { author: string; author_id: string; text: string; }
+export interface BoardComment { author: string; author_role?: string; author_id: string; text: string; }
 export interface BoardPost {
-  author: string; author_id: string; author_kind: "sns" | "clone";
+  author: string; author_role?: string | null; author_id: string; author_kind: "sns" | "clone";
   portrait: string | null; text: string; comments: BoardComment[];
 }
 export interface BoardFeed {

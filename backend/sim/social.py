@@ -122,6 +122,7 @@ _BOARD_CAST = {
 _BOARD_MOOD_DELTA = {"fear": 3.5, "greed": 2.5, "fomo": 3.5, "unrest": 1.5}
 
 _SNS_NAME = {p["id"]: p["name"] for p in _personas.SNS_PERSONAS}
+_SNS_ROLE = {p["id"]: p["role"] for p in _personas.SNS_PERSONAS}   # T-246 부기 표기
 _SNS_PORTRAIT = {p["id"]: p["portrait"] for p in _personas.SNS_PERSONAS}
 
 
@@ -189,7 +190,8 @@ def board_event(
         if use_llm:
             style = next((p["style"] for p in _personas.SNS_PERSONAS if p["id"] == pid), "")
             text = _board_llm_rewrite(text, _SNS_NAME[pid], style) or text
-        posts.append({"author": _SNS_NAME[pid], "author_id": pid, "author_kind": "sns",
+        posts.append({"author": _SNS_NAME[pid], "author_role": _SNS_ROLE[pid],
+                      "author_id": pid, "author_kind": "sns",
                       "portrait": _SNS_PORTRAIT[pid], "text": text, "comments": []})
 
     # 댓글 1~2개 — 반대 성향 관중이 임의 글에 답글(상호작용, 결정론 규칙).
@@ -199,8 +201,8 @@ def board_event(
         for pid in commenters[:n_comments]:
             target = posts[rng.randrange(len(posts))]
             target["comments"].append(
-                {"author": _SNS_NAME[pid], "author_id": pid,
-                 "text": pick_text("comments", pid)})
+                {"author": _SNS_NAME[pid], "author_role": _SNS_ROLE[pid],
+                 "author_id": pid, "text": pick_text("comments", pid)})
 
     # D9 개정 — 클론도 이벤트에 대한 감정 반응으로 참여(함정·위기 무관, 누설 없음).
     stat_name = _STAT_FOR_CONTEXT.get(context, "멘탈마모저항")
@@ -210,7 +212,8 @@ def board_event(
         text = rng.choice(clone_variants)
         if use_llm:
             text = _board_llm_rewrite(text, "내 클론", "이벤트에 반응하는 투자 초심자") or text
-        posts.append({"author": "내 클론", "author_id": "clone", "author_kind": "clone",
+        posts.append({"author": "내 클론", "author_role": None,
+                      "author_id": "clone", "author_kind": "clone",
                       "portrait": None, "text": text, "comments": []})
 
     return {"context": context, "posts": posts,
