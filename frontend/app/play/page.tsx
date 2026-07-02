@@ -44,6 +44,8 @@ export default function PlayPage() {
   // T-234 — 하루진행이 뉴스 선택을 기다리는 중인가(모달에서 선택/스킵 시 진행 시작).
   const [pendingAdvance, setPendingAdvance] = useState(false);
   const chosenNewsRef = useRef<string | null>(null);
+  // T-235 — 아침에 발사한 걷기 연출 프라미스(정산 공개 전 대기).
+  const walkPromiseRef = useRef<Promise<void> | null>(null);
   // 위기가 실제 발생했을 때만 뜨는 이벤트 — 평소엔 null(상시 노출 안 함).
   const [crisisTrapName, setCrisisTrapName] = useState<string | null>(null);
   // T-216 D4 — 같은 날 2종목 이상 트리거되면 여기 전부 담김(1개면 길이 1).
@@ -103,6 +105,9 @@ export default function PlayPage() {
     const boardPromise = api.gameBoard(gameId);
 
     setDayStage(0);           // 🌅 아침
+    // T-235(사용자 피드백 "캐릭터가 저녁에야 움직여") — 걷기 연출을 아침부터
+    // 스테이지와 병렬 재생. 완료 대기는 finishAdvance에서(결과 공개 전 정합).
+    walkPromiseRef.current = mapRef.current?.playWalk() ?? null;
     await sleep(DAY_STAGE_MS);
     // 이벤트 있는 날이면 📱 게시판(블로킹) — 닫을 때까지 하루가 멈춘다(D1·D3).
     const board = await boardPromise;
@@ -150,8 +155,9 @@ export default function PlayPage() {
         roll: Math.random() * 100,
       });
       // 배경 지도가 오늘 하루를 실제로 다 걸을 때까지 기다린 뒤에야 결과를
-      // 드러낸다(T-FE2) — 안 그러면 화면이 순간이동처럼 느껴진다(사용자 피드백).
-      await mapRef.current?.playWalk();
+      // 드러낸다(T-FE2) — 걷기는 아침부터 병렬로 돌고 있다(T-235).
+      if (walkPromiseRef.current) await walkPromiseRef.current;
+      walkPromiseRef.current = null;
       if (r.day_result) setDayResult(r.day_result);
       // T-SVC8 테스트: 실LLM으로 클론 대사 표현만 다듬는다(수치 결정 무관, 실패 시 템플릿 폴백).
       const scene = await api.gameScene(gameId, true);
