@@ -138,9 +138,12 @@ def offline_conversation(
     agent_deltas는 규칙표(작성자 주축 ±4·댓글자 ±2), crowd_delta는 부호(T-250)
     × 뉴스 강도 스케일(⑪).
     """
-    base = _social.board_event(context, clone_stats, rng, use_llm=False)
+    # 리뷰 수정 — 아카이브(공개 트랙) 생성은 클론 스탯과 완전 무관해야 한다:
+    # 스탯이 rng 소비량을 바꾸면 첫 조회 시점(권유 전/후)에 따라 다른 대화가 박제됨.
+    # 중립 스탯(빈 dict → 전부 50)으로 생성하고 클론 발언은 버린다(inject_clone 몫).
+    _ = clone_stats
+    base = _social.board_event(context, {}, rng, use_llm=False)
     majority = _CONTEXT_STANCE.get(context, "split")
-    _ = clone_stats  # 클론 발언은 아카이브에 넣지 않는다 — inject_clone이 회차별 주입
     flip = {"up": "down", "down": "up"}.get(majority, "split")
 
     threads = []
@@ -223,7 +226,17 @@ def llm_conversation(
 threads는 2~4개, 글마다 comments 0~4개(개수를 다르게), 한국어 커뮤니티 말투."""
         raw = cli.chat(user=user, system="투자 커뮤니티 대화 시뮬레이터. JSON만 출력.",
                        temperature=0.8)
-        return validate(extract_json(raw))
+        conv = validate(extract_json(raw))
+        if conv is None:
+            return None
+        # 리뷰 수정(council F2) — LLM이 지시를 어기고 클론을 등장시켜도 아카이브
+        # (회차 불변 공개 트랙)에 박제되지 않게 strip. 클론은 inject_clone이 회차별로.
+        conv["threads"] = [
+            {**th, "comments": [c for c in th["comments"]
+                                if c["author_id"] != "clone"]}
+            for th in conv["threads"] if th["author_id"] != "clone"]
+        conv["agent_deltas"].pop("clone", None)
+        return conv if len(conv["threads"]) >= 2 else None
     except Exception:
         return None
 

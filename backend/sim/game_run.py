@@ -462,5 +462,11 @@ class GameRun:
         g.rapport = doc["rapport"]
         g.crowd_mood = doc["crowd_mood"]
         g._board = doc.get("board")   # T-223 이전 문서엔 없음 → None(하위호환)
+        # T-250 부호 전환 하위호환 — 무부호 시절(verdict 없음) 박제된 공포 게시판의
+        # +델타를 새 의미(양수=탐욕)로 적용하면 역방향 블립 → 부호 반전.
+        if (g._board and "verdict" not in g._board
+                and g._board.get("context") in ("fear", "unrest")
+                and g._board.get("crowd_mood_delta", 0) > 0):
+            g._board["crowd_mood_delta"] = -g._board["crowd_mood_delta"]
         g.board_archive = doc.get("archive") or {}   # T-252 하위호환
         return g

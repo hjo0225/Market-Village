@@ -715,9 +715,16 @@ def control_game_trades(game_id: str, day: int | None = None):
         return {"status": "error", "error": "no game"}
     d = day if day is not None else max(0, g.day - 1)
     trades = []
-    if g.last_snap is not None and g.day - 1 == d and g.last_snap.fund_flow:
-        action = "sell" if g.last_snap.fund_flow == "to_cash" else "buy"
-        trades.append({"id": "gamerun_clone", "name": "내 클론", "action": action})
+    # 리뷰 수정 — fund_flow 전체 매핑: hold_winner(익절 거부)는 거래가 없으므로
+    # 연출 생략(안 한 거래를 "매수!"로 보여주던 왜곡), 번들이면 첫 실거래 사용.
+    _FLOW_ACTION = {"to_cash": "sell", "to_stable": "sell",
+                    "to_hotter": "buy", "concentrate": "buy"}
+    if g.last_snap is not None and g.day - 1 == d:
+        flows = ([b.get("fund_flow") for b in (g.last_snap.bundle or [])]
+                 or [g.last_snap.fund_flow])
+        action = next((_FLOW_ACTION[f] for f in flows if f in _FLOW_ACTION), None)
+        if action:
+            trades.append({"id": "gamerun_clone", "name": "내 클론", "action": action})
     for p in _personas.TRADER_PERSONAS:
         action = _npc_traders.npc_action_on_day(p, g.fl, g.category, d)
         if action:
