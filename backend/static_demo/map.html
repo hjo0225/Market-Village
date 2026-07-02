@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Market Village — 배경 지도</title>
 <script src="https://cdn.jsdelivr.net/npm/phaser@3.60.0/dist/phaser.min.js"></script>
+<!-- 네임플레이트 폰트(사용자 요청) — 오프라인이면 Malgun Gothic 폴백 -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css" />
 <style>
   *{ box-sizing:border-box; }
   html,body{ margin:0; height:100%; background:#5a7a4a; overflow:hidden; }
@@ -78,7 +80,8 @@ function bootPhaser(walkers){
     // 고해상도 텍스트(setResolution)로 카메라 줌에서도 선명하고, 둥근 반투명 배경.
     const makeNameplate = (scn, x, y, text, isClone) => {
       const t = scn.add.text(0, 0, text, {
-        fontSize: "10px", fontFamily: "'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif",
+        fontSize: "20px",
+        fontFamily: "Pretendard, 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif",
         fontStyle: "bold", color: isClone ? "#baff7a" : "#ffffff",
       }).setOrigin(0.5).setResolution(3);
       const bw = t.width + 12, bh = t.height + 6;
@@ -190,6 +193,8 @@ async function walkToday(gameId){
 }
 
 async function boot(gameId){
+  // Phaser 텍스트는 캔버스 렌더라 폰트가 로드된 뒤 만들어야 한다(실패해도 폴백 폰트로 진행).
+  try { await document.fonts.load("bold 20px Pretendard"); } catch (e) { /* 폴백 */ }
   const home = await api("/control/game/day/home?game_id=" + encodeURIComponent(gameId));
   if (home.status !== "ok") return;
   const walkers = [
