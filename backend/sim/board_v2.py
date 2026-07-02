@@ -46,8 +46,21 @@ AGENT_DELTA_CLAMP = 8.0     # 이벤트당 축 이동 상한(council F4)
 
 # 컨텍스트 → 발언 스탠스 기본값(오프라인 폴백): 공포 수다는 '내린다' 우세.
 _CONTEXT_STANCE = {"fear": "down", "unrest": "down", "greed": "up", "fomo": "up"}
-# 관중 성향 → 스탠스 뒤집기(청개구리·역발상은 다수 반대편에 선다).
-_CONTRARIAN = {"contrarian_fan", "anon_veteran", "doomposter"}
+# 관중 성향 → 스탠스(문구와 스탠스 배지가 어긋나지 않게 — 라이브 검증에서 발견):
+# 낙관파는 항상 '오른다', 공포팔이는 항상 '내린다', 청개구리·익명고수는 다수 반대.
+_ALWAYS_UP = {"bull_hoper", "cheerleader"}
+_ALWAYS_DOWN = {"doomposter"}
+_CONTRARIAN = {"contrarian_fan", "anon_veteran"}
+
+
+def _stance_for(aid: str, majority: str, flip: str) -> str:
+    if aid in _ALWAYS_UP:
+        return "up"
+    if aid in _ALWAYS_DOWN:
+        return "down"
+    if aid in _CONTRARIAN:
+        return flip
+    return majority
 # 페르소나 주축(오프라인 agent_deltas 규칙표) — §9.5.2 수치는 높을수록 취약.
 _MAIN_AXIS = {"doomposter": "fear", "newbie": "fear", "bull_hoper": "excitement",
               "cheerleader": "excitement", "chart_zealot": "confidence",
@@ -135,9 +148,9 @@ def offline_conversation(
         aid = post["author_id"]
         if aid == "clone":
             continue    # 클론은 inject_clone에서 회차별로
-        stance = flip if aid in _CONTRARIAN else majority
+        stance = _stance_for(aid, majority, flip)
         comments = [{"author_id": c["author_id"],
-                     "stance": flip if c["author_id"] in _CONTRARIAN else majority,
+                     "stance": _stance_for(c["author_id"], majority, flip),
                      "text": c["text"]} for c in post.get("comments", [])]
         threads.append({"author_id": aid, "stance": stance,
                         "text": post["text"], "comments": comments})
@@ -154,7 +167,7 @@ def offline_conversation(
                 continue
             th["comments"].append({
                 "author_id": pid,
-                "stance": flip if pid in _CONTRARIAN else majority,
+                "stance": _stance_for(pid, majority, flip),
                 "text": rng.choice(variants)})
 
     deltas: dict[str, dict[str, float]] = {}

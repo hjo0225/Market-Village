@@ -129,10 +129,14 @@ export default function PlayPage() {
     const board = await boardPromise;
     if (board.status === "ok" && board.open) {
       setDayStage(-1);
+      // T-255 — 마을 전체가 걸음을 멈추고 핸드폰 알림(❗)이 뜬 뒤 피드가 올라온다.
+      mapRef.current?.signal({ type: "board_gather" });
+      await sleep(900);
       setBoardFeed(board);
       await new Promise<void>((resolve) => { boardCloseResolver.current = resolve; });
       setBoardFeed(null);
       boardCloseResolver.current = null;
+      mapRef.current?.signal({ type: "board_release" });
     }
     setDayStage(1);           // 🍜 점심 — 끝나면 위기 판정(오후 장 직전)
     await Promise.all([sleep(DAY_STAGE_MS / speedRef.current), mapRef.current?.playWalk("점심", speedRef.current) ?? sleep(0)]);
@@ -178,6 +182,11 @@ export default function PlayPage() {
       });
       // 걷기는 각 시간대 단계에서 이미 동기 재생됐다(T-237) — 여기선 대기 불필요.
       if (r.day_result) setDayResult(r.day_result);
+      // T-256 — 오늘 사고판 이들(클론 fund_flow + NPC 판정)을 맵에서 💸/📉로.
+      const tr = await api.gameTrades(gameId);
+      if (tr.status === "ok" && tr.trades.length) {
+        mapRef.current?.signal({ type: "trade_fx", trades: tr.trades });
+      }
       // T-SVC8 테스트: 실LLM으로 클론 대사 표현만 다듬는다(수치 결정 무관, 실패 시 템플릿 폴백).
       const scene = await api.gameScene(gameId, true);
       if (scene.status === "ok" && scene.scene) setSceneText(scene.scene.dialogue);

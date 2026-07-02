@@ -703,6 +703,28 @@ def control_game_leaderboard(game_id: str):
     return {"status": "ok", "board": board, "clone_rank": clone_rank, "total": len(board)}
 
 
+@app.get("/control/game/day/trades")
+def control_game_trades(game_id: str, day: int | None = None):
+    """T-256 — 그날 매매 순간 가시화용. 순수 파생(무변이).
+
+    기본 day = 마지막으로 정산된 날(g.day-1). 클론은 그날 스냅샷의 fund_flow,
+    NPC는 npc_action_on_day(수익률 규칙과 단일 소스).
+    """
+    g = _get_game(game_id)
+    if g is None:
+        return {"status": "error", "error": "no game"}
+    d = day if day is not None else max(0, g.day - 1)
+    trades = []
+    if g.last_snap is not None and g.day - 1 == d and g.last_snap.fund_flow:
+        action = "sell" if g.last_snap.fund_flow == "to_cash" else "buy"
+        trades.append({"id": "gamerun_clone", "name": "내 클론", "action": action})
+    for p in _personas.TRADER_PERSONAS:
+        action = _npc_traders.npc_action_on_day(p, g.fl, g.category, d)
+        if action:
+            trades.append({"id": p["id"], "name": p["name"], "action": action})
+    return {"status": "ok", "day": d, "trades": trades}
+
+
 @app.get("/control/game/compare_days")
 def control_game_compare_days(game_id: str, run_a: str, run_b: str):
     """T-227 §13.6 — 두 회차의 행동이 갈린 날 목록(비교 화면의 탭 소스)."""

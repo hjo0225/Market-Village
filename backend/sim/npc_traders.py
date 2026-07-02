@@ -21,6 +21,23 @@ _START_CASH = 50.0
 _START_STOCK_VALUE = 50.0
 
 
+def npc_action_on_day(persona: dict, fl: FateLine, category: str, day: int) -> str | None:
+    """T-256 — 그날 이 NPC의 매매 판정("buy"/"sell"/None). 순수·결정론.
+
+    npc_return_pct와 같은 규칙의 단일 소스 — 맵 매매 연출(💸)이 소비한다.
+    """
+    herd = float(persona["herd"])
+    fear = float(persona["fear"])
+    buy_threshold = 8.0 - 6.0 * herd            # herd .9→2.6%, .05→7.7%
+    sell_threshold = -(14.0 - fear / 10.0)      # fear 85→-5.5%, 10→-13%
+    chg = fl.change_rate(category, day)
+    if chg >= buy_threshold:
+        return "buy"
+    if chg <= sell_threshold:
+        return "sell"
+    return None
+
+
 def npc_return_pct(persona: dict, fl: FateLine, category: str, upto_day: int) -> float:
     """day0~upto_day까지 페르소나 규칙대로 산 결과 수익률(%). 순수·결정론."""
     first = fl.day_ohlc(category, 0)
@@ -30,12 +47,6 @@ def npc_return_pct(persona: dict, fl: FateLine, category: str, upto_day: int) ->
     cash = _START_CASH
     qty = _START_STOCK_VALUE / price0 if price0 else 0.0
 
-    herd = float(persona["herd"])
-    fear = float(persona["fear"])
-    greed = float(persona["greed"])
-    buy_threshold = 8.0 - 6.0 * herd            # herd .9→2.6%, .05→7.7%
-    sell_threshold = -(14.0 - fear / 10.0)      # fear 85→-5.5%, 10→-13%
-
     last_price = price0
     for day in range(1, upto_day + 1):
         ohlc = fl.day_ohlc(category, day)
@@ -43,13 +54,13 @@ def npc_return_pct(persona: dict, fl: FateLine, category: str, upto_day: int) ->
             break
         price = ohlc[3]
         last_price = price
-        chg = fl.change_rate(category, day)
-        if chg >= buy_threshold and cash > 0:
-            spend = cash * (greed / 200.0)      # greed 92 → 현금의 46% 추격
+        action = npc_action_on_day(persona, fl, category, day)
+        if action == "buy" and cash > 0:
+            spend = cash * (float(persona["greed"]) / 200.0)   # greed 92 → 현금 46% 추격
             cash -= spend
             qty += spend / price if price else 0.0
-        elif chg <= sell_threshold and qty > 0:
-            sell = qty * (fear / 200.0)         # fear 85 → 보유의 42.5% 투매
+        elif action == "sell" and qty > 0:
+            sell = qty * (float(persona["fear"]) / 200.0)      # fear 85 → 보유 42.5% 투매
             qty -= sell
             cash += sell * price
 

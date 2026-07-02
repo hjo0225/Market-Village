@@ -7,6 +7,8 @@ export interface MapBackgroundHandle {
   // {type:"walked", band}를 postMessage로 보내줌). band를 주면 그 시간대
   // 구간만(T-237 §12.1b 동기화), 없으면 하루치 통재생(하위호환).
   playWalk: (band?: string, speedup?: number) => Promise<void>;
+  // T-255/T-256 — 단방향 연출 신호(응답 없음): board_gather/board_release/trade_fx.
+  signal: (payload: Record<string, unknown>) => void;
 }
 
 // T-FE2 — the_ville 배경 지도(§12.0). 백엔드의 순수 캔버스 페이지를 iframe으로
@@ -47,6 +49,9 @@ const MapBackground = forwardRef<MapBackgroundHandle, { gameId: string }>(functi
         fallback = setTimeout(finish, 4000);
         iframeRef.current?.contentWindow?.postMessage({ type: "walk", band, speedup }, "*");
       }),
+    signal: (payload: Record<string, unknown>) => {
+      iframeRef.current?.contentWindow?.postMessage(payload, "*");
+    },
   }));
 
   useEffect(() => {

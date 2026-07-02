@@ -111,13 +111,18 @@ export interface CompareDayView {
   realized_pnl: number; total_asset: number;
 }
 // T-224 게시판(SNS형 FGI) — GET /control/game/day/board 계약(PRD_SOCIAL_NPC_BOARD §3.2).
-export interface BoardComment { author: string; author_role?: string; author_id: string; text: string; }
+export interface BoardComment {
+  author: string; author_role?: string | null; author_id: string;
+  stance?: string | null;   // T-251 — up/down/split(가격 전망)
+  text: string;
+}
 export interface BoardPost {
   author: string; author_role?: string | null; author_id: string; author_kind: "sns" | "clone";
-  portrait: string | null; text: string; comments: BoardComment[];
+  portrait: string | null; stance?: string | null; text: string; comments: BoardComment[];
 }
 export interface BoardFeed {
   day: number; open: boolean; context: string | null;
+  verdict?: "up" | "down" | "split";   // T-251 — 대화의 다수 결론
   posts: BoardPost[]; crowd_mood_delta: number;
 }
 
@@ -162,6 +167,12 @@ export const api = {
   gameCompare: (gameId: string, runA: string, runB: string, day: number) =>
     get<{ status: string; day: number; a: CompareDayView | null; b: CompareDayView | null }>(
       "/control/game/compare", { game_id: gameId, run_a: runA, run_b: runB, day }),
+  // T-256 — 그날 매매 순간(클론 fund_flow + NPC 판정). 순수 조회.
+  gameTrades: (gameId: string, day?: number) =>
+    get<{ status: string; day: number;
+         trades: { id: string; name: string; action: "buy" | "sell" }[] }>(
+      "/control/game/day/trades",
+      day === undefined ? { game_id: gameId } : { game_id: gameId, day: String(day) }),
   // T-245 §13.7 — 마을 수익률 순위(배경 정보 톤).
   gameLeaderboard: (gameId: string) =>
     get<{ status: string; board: { id: string; name: string; return_pct: number }[];

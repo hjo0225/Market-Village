@@ -50,3 +50,22 @@ def test_leaderboard_endpoint_ranks_clone_among_npcs():
 
 def test_leaderboard_endpoint_missing_game():
     assert mls.control_game_leaderboard(game_id="nope")["status"] == "error"
+
+
+def test_npc_action_single_source_with_returns():
+    """T-256 — 매매 판정 헬퍼는 수익률 규칙과 단일 소스(연출↔순위 불일치 금지)."""
+    from sim.fate_line import load_fate_line
+    fl = load_fate_line()
+    p = personas.trader_by_id("panic_ant")
+    acts = [npc_traders.npc_action_on_day(p, fl, "meme", d) for d in range(1, 26)]
+    assert any(a is not None for a in acts)          # 25일이면 매매가 나온다
+    assert set(acts) <= {"buy", "sell", None}
+
+
+def test_trades_endpoint_lists_that_days_actions():
+    mls.control_game_start(mls.GameStartBody(
+        game_id="tr_game", answers={}, symbol="DOGE", start_price=100.0))
+    r = mls.control_game_trades(game_id="tr_game", day=5)
+    assert r["status"] == "ok" and r["day"] == 5
+    for tr in r["trades"]:
+        assert tr["action"] in ("buy", "sell") and tr["id"] and tr["name"]
