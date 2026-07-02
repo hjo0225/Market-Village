@@ -29,6 +29,7 @@ export default function PlayPage() {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [meetings, setMeetings] = useState<Meetings>({});
   const [picks, setPicks] = useState<Picks>({});
+  const [schedule, setSchedule] = useState<Record<string, string>>({});
   const [newsId, setNewsId] = useState<string | null>(null);
   const [phoneOpen, setPhoneOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -71,7 +72,10 @@ export default function PlayPage() {
     // 다시 채워진다.
     if (st.status !== "ok") return;
     setState(st.state);
-    if (prev.status === "ok") { setMeetings(prev.meetings); setPicks(prev.picks); }
+    if (prev.status === "ok") {
+      setMeetings(prev.meetings); setPicks(prev.picks);
+      setSchedule(prev.schedule ?? {});   // T-240 — 진행 중 일정 안내에 사용
+    }
     if (nw.status === "ok") setNews(nw.news);
     if (st.state.finished) router.replace("/report");
   }, [router]);
@@ -170,6 +174,20 @@ export default function PlayPage() {
     }
   }
 
+  // T-240 — 지금 시간대(스테이지)의 일정 문구: 슬롯 1·2=오전 … 7·8=저녁(§12.1b).
+  const PLACE_ICONS: Record<string, string> = {
+    카페: "☕", 일터: "🛠", 광장: "🌳", 운동: "🏃", "집_차트": "🏠",
+  };
+  const PLACE_NAMES: Record<string, string> = { "집_차트": "집(차트 보기)" };
+  const BAND_SLOTS = [[1, 2], [3, 4], [5, 6], [7, 8]];
+  const stagePlan = dayStage >= 0 && dayStage < BAND_SLOTS.length
+    ? BAND_SLOTS[dayStage]
+        .map((s) => schedule[String(s)])
+        .filter(Boolean)
+        .map((p) => `${PLACE_ICONS[p] ?? "📍"} ${PLACE_NAMES[p] ?? p}`)
+        .join(" → ")
+    : undefined;
+
   if (!gameId || !state) {
     return <main className="min-h-screen flex items-center justify-center text-pixel-muted">불러오는 중…</main>;
   }
@@ -202,7 +220,7 @@ export default function PlayPage() {
         </PixelButton>
       </div>
 
-      <DayProgressOverlay stageIndex={dayStage} />
+      <DayProgressOverlay stageIndex={dayStage} plan={stagePlan} />
 
       <PixelModal isOpen={statsOpen} onClose={() => setStatsOpen(false)} title="🪞 클론 상태" size="sm">
         <StatsPanel stats={state.stats} portfolio={state.portfolio} showTitle={false} />

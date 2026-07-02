@@ -97,6 +97,17 @@ def test_walk_segments_cached_same_day():
     assert all(v == [] for v in again["segments"].values())
 
 
+def test_home_returns_place_labels():
+    # T-240 — 맵 장소 라벨: 장소명+대표 좌표. 클론 집은 박제 홈 타일과 일치.
+    _start("npcmap_h")
+    r = mls.control_game_home(game_id="npcmap_h")
+    places = {p["name"]: p["pos"] for p in r["places"]}
+    assert "카페" in places and "일터" in places and "광장" in places
+    assert places["집"] == mls._GAME_WALKERS["npcmap_h"]["home"]
+    for pos in places.values():
+        assert len(pos) == 2
+
+
 def test_clone_returns_to_the_same_home_every_day():
     # T-239 — 시작 집은 랜덤이어도 한 게임 안에선 매일 같은 집으로 귀가한다
     # (기존엔 귀가 타일을 day-시드 난수로 뽑아 다른 집으로 들어가는 날이 있었다).

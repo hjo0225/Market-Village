@@ -76,6 +76,23 @@ function bootPhaser(walkers){
       this.anims.create({ key: key + "-" + d,
         frames: this.anims.generateFrameNumbers(key, { frames: fr }), frameRate: 6, repeat: -1 });
     }));
+    // T-240 — 장소 이름 라벨(카페/일터/광장/집): 캐릭터 네임플레이트보다 연한
+    // 고정 플레이트. 어디로 걸어가는지 읽을 수 있게 한다.
+    const PLACE_ICON = { "카페": "☕", "일터": "🛠", "광장": "🌳", "집": "🏠" };
+    (window.__PLACES || []).forEach((pl) => {
+      const txt = this.add.text(0, 0, (PLACE_ICON[pl.name] || "📍") + " " + pl.name, {
+        fontSize: "16px",
+        fontFamily: "Pretendard, 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif",
+        fontStyle: "bold", color: "#fffbe8",
+      }).setOrigin(0.5).setResolution(3);
+      const bw = txt.width + 12, bh = txt.height + 6;
+      const g = this.add.graphics();
+      g.fillStyle(0x2f2a1d, 0.45);
+      g.fillRoundedRect(-bw / 2, -bh / 2, bw, bh, 5);
+      // 캐릭터 네임플레이트(중심점에 몰림)와 겹치지 않게 한 타일 위에 띄운다.
+      this.add.container(pl.pos[0] * TILE + 16, pl.pos[1] * TILE - 44, [g, txt]).setDepth(18);
+    });
+
     // T-233(사용자 요청) — 이름표는 기본 텍스트 대신 직접 그린 네임플레이트:
     // 고해상도 텍스트(setResolution)로 카메라 줌에서도 선명하고, 둥근 반투명 배경.
     const makeNameplate = (scn, x, y, text, isClone) => {
@@ -229,6 +246,7 @@ async function boot(gameId){
   try { await document.fonts.load("bold 20px Pretendard"); } catch (e) { /* 폴백 */ }
   const home = await api("/control/game/day/home?game_id=" + encodeURIComponent(gameId));
   if (home.status !== "ok") return;
+  window.__PLACES = home.places || [];   // T-240 — 장소 라벨(생성은 create()에서)
   const walkers = [
     { orig: CLONE_ORIG, key: home.persona.underscore, initial: home.persona.initial,
       x: home.pos[0], y: home.pos[1], cam: true },

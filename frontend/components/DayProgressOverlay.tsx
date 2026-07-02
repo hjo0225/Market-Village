@@ -17,7 +17,7 @@ const STAGES = [
 // 저녁 단계는 실제 서버 응답까지 더 걸림, 즉 길이가 정해져 있지 않음). 그래서
 // 고정 길이 프로그레스바 대신, 하루가 여전히 흐르고 있다는 걸 계속 보여주는
 // 무한반복 펄스(아이콘)+인디터미닛 바를 켜 둔다(§ 정확한 진행률은 알 수 없음).
-export default function DayProgressOverlay({ stageIndex }: { stageIndex: number }) {
+export default function DayProgressOverlay({ stageIndex, plan }: { stageIndex: number; plan?: string }) {
   if (stageIndex < 0 || stageIndex >= STAGES.length) return null;
   const stage = STAGES[stageIndex];
   return (
@@ -27,6 +27,8 @@ export default function DayProgressOverlay({ stageIndex }: { stageIndex: number 
           <span key={stageIndex} className="text-2xl animate-bump">{stage.icon}</span>
           <span className="text-sm font-bold animate-pulse-soft">{stage.label}</span>
         </div>
+        {/* T-240 — 지금 시간대의 일정(회피로 매일 달라질 수 있어 안내가 필요). */}
+        {plan && <p className="text-[11px] text-pixel-muted">🗓 일정: {plan}</p>}
         <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-black/10">
           <div className="absolute inset-y-0 w-1/3 rounded-full bg-pixel-greenText/70 animate-bar-indeterminate" />
         </div>

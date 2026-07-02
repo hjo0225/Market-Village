@@ -283,6 +283,29 @@ def _banded_route(
     return segments, cur
 
 
+def _place_labels(walker: dict) -> list[dict]:
+    """T-240 — 맵 장소 라벨: 장소명 + 대표 좌표(주소 타일 중심점).
+
+    운동은 광장과 같은 공원(주소 중복)이라 한 라벨로 접고, 집은 이 게임의
+    박제 홈 타일(T-239)을 그대로 쓴다.
+    """
+    out: list[dict] = []
+    seen_addrs: set[str] = set()
+    for place in ("카페", "일터", "광장"):
+        addr = _GAME_LOCATION_ADDR[place]
+        if addr in seen_addrs:
+            continue
+        seen_addrs.add(addr)
+        tiles = sorted(_maze().address_tiles.get(addr, []))
+        if not tiles:
+            continue
+        cx = round(sum(t[0] for t in tiles) / len(tiles))
+        cy = round(sum(t[1] for t in tiles) / len(tiles))
+        out.append({"name": place, "pos": [cx, cy]})
+    out.append({"name": "집", "pos": list(walker["home"])})
+    return out
+
+
 @app.get("/control/game/day/home")
 def control_game_home(game_id: str):
     """GameRun 클론+NPC 8종의 맵 스프라이트 정보 + 초기 좌표(§12.0 부트스트랩)."""
@@ -297,7 +320,7 @@ def control_game_home(game_id: str):
     ]
     return {"status": "ok",
             "persona": {"original": "gamerun_clone", "underscore": _GAME_CLONE_SPRITE, "initial": "클론"},
-            "pos": walker["pos"], "npcs": npcs}
+            "pos": walker["pos"], "npcs": npcs, "places": _place_labels(walker)}
 
 
 @app.get("/control/game/day/walk")
