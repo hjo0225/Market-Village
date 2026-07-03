@@ -118,3 +118,5 @@ environment/
 
 # production secrets (see .env.production.example for the template)
 .env.production
+qa/report/
+
