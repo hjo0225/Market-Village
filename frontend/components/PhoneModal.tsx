@@ -67,13 +67,21 @@ export default function PhoneModal({ isOpen, onClose, gameId, rapport, crowdMood
   const [busy, setBusy] = useState(false);
   // T-257 — 게시판 상시 진입점(발견성): 이벤트 날이 아니어도 지난 수다를 읽는다.
   const [board, setBoard] = useState<BoardFeed | null>(null);
+  // /review — 조회 실패 시 무한 스피너 방지: 에러 상태+재시도 버튼.
+  const [boardError, setBoardError] = useState(false);
+  const [boardTry, setBoardTry] = useState(0);
 
   useEffect(() => {
     if (!isOpen || tab !== "board") return;
     let alive = true;
-    api.gameBoard(gameId).then((b) => { if (alive && b.status === "ok") setBoard(b); });
+    setBoardError(false);
+    api.gameBoard(gameId).then((b) => {
+      if (!alive) return;
+      if (b.status === "ok") setBoard(b);
+      else setBoardError(true);
+    });
     return () => { alive = false; };
-  }, [isOpen, tab, gameId]);
+  }, [isOpen, tab, gameId, boardTry]);
 
   if (!isOpen) return null;
 
@@ -83,6 +91,12 @@ export default function PhoneModal({ isOpen, onClose, gameId, rapport, crowdMood
     // (버그: 이전엔 roll=50 고정이라 초기 래포50/성공률50%에서 1:1이 항상
     // 실패했다. 사용자 피드백 2026-07-01 "1:1대화·FGI가 제대로 진행이 안돼").
     const r = await api.fgi(gameId, fgiTone, Math.random() * 100);
+    // /review — POST는 재시도가 없으므로(T-258 멱등성) 실패를 결과로 위장하면
+    // NaN이 노출된다: 실패는 실패라고 말한다.
+    if (r.status !== "ok") {
+      setFgiResult("⚠️ 전송이 안 됐어요 — 다시 눌러주세요");
+      setBusy(false); return;
+    }
     setFgiResult(r.absorbed ? "🌊 묻힘(군중 과열)" : `📣 과열도 ${Math.round(r.crowd_mood)}로 이동`);
     setBusy(false); onChanged();
   }
@@ -91,6 +105,13 @@ export default function PhoneModal({ isOpen, onClose, gameId, rapport, crowdMood
     setBusy(true);
     setChat((c) => [...c, { who: "me", text: MY_LINE[direction] }]);
     const r = await api.persuade(gameId, npc, direction, Math.random() * 100);
+    if (r.status !== "ok") {
+      // /review — 실패를 "씹힘(NaN)"으로 위장하지 않는다: 대화는 안 일어난 것.
+      setChat((c) => [...c, { who: "npc", npcId: npc,
+        text: "…(연결이 끊겼다. 메시지가 전달되지 않았다)",
+        meta: "⚠️ 전송 실패 — 다시 시도해주세요" }]);
+      setBusy(false); return;
+    }
     const reply = NPC_REPLY[npc] ?? { ok: "…그래, 알았어.", no: "…글쎄, 난 잘 모르겠는데." };
     setChat((c) => [...c, {
       who: "npc", npcId: npc,
@@ -138,7 +159,12 @@ export default function PhoneModal({ isOpen, onClose, gameId, rapport, crowdMood
 
           <div className="flex-1 p-3 flex flex-col gap-3">
             {tab === "board" ? (
-              board === null ? (
+              boardError && board === null ? (
+                <div className="py-8 text-center flex flex-col items-center gap-2">
+                  <p className="text-[12px] text-pixel-muted">⚠️ 게시판을 못 불러왔어요.</p>
+                  <PixelButton size="sm" onClick={() => setBoardTry((n) => n + 1)}>다시 시도</PixelButton>
+                </div>
+              ) : board === null ? (
                 <div className="py-10 text-center text-[12px] text-pixel-muted animate-pulse">💬 게시판 여는 중…</div>
               ) : board.open ? (
                 <>

@@ -38,6 +38,9 @@ export default function PlayPage() {
   const [statsOpen, setStatsOpen] = useState(false);
   const [advancing, setAdvancing] = useState(false);
   const [dayResult, setDayResult] = useState<DayResult | null>(null);
+  // /review — 모달이 열리는 시점의 state.day는 refresh 전이라 하루 늦다:
+  // 서버 응답(r.state.day, 진행 후 값)에서 파생해 라벨 점프를 없앤다.
+  const [resultDay, setResultDay] = useState(0);
   const [advanceError, setAdvanceError] = useState<string | null>(null);   // T-265
   const [sceneText, setSceneText] = useState("");
   // 게시판(T-225, D1·D3) — 이벤트 날 아침 뒤에만 뜨는 블로킹 관찰 이벤트.
@@ -180,6 +183,10 @@ export default function PlayPage() {
         newsId: chosenNewsRef.current ?? undefined,
         strategy: strategy || undefined,
         roll: Math.random() * 100,
+        // T-265(/review) — 키는 (run,day) 파생: 자동 재시도든 에러 배너 후
+        // 수동 재클릭이든 같은 날엔 같은 키 → 서버가 이중 적용을 막는다.
+        // (state가 아직 없으면 랜덤 폴백 — api.gameAdvance 기본 생성 사용)
+        idemKey: state ? `adv-${gameId}-${state.run_id}-d${state.day}` : undefined,
       });
       // T-265 — 재시도(멱등키)까지 실패한 극단 케이스: 침묵하지 않는다(QA 스윕
       // Day12 실측 — 조용히 하루가 밀리면 사용자는 원인을 알 수 없다).
@@ -189,7 +196,7 @@ export default function PlayPage() {
       }
       setAdvanceError(null);
       // 걷기는 각 시간대 단계에서 이미 동기 재생됐다(T-237) — 여기선 대기 불필요.
-      if (r.day_result) setDayResult(r.day_result);
+      if (r.day_result) { setResultDay(Math.max(0, r.state.day - 1)); setDayResult(r.day_result); }
       // T-256 — 오늘 사고판 이들(클론 fund_flow + NPC 판정)을 맵에서 💸/📉로.
       const tr = await api.gameTrades(gameId);
       if (tr.status === "ok" && tr.trades.length) {
@@ -292,7 +299,7 @@ export default function PlayPage() {
         meetings={meetings} picks={picks} onChanged={() => refresh(gameId)}
       />
       <DayResultModal
-        result={dayResult} scene={sceneText} day={Math.max(0, state.day - 1)}
+        result={dayResult} scene={sceneText} day={resultDay}
         onClose={() => setDayResult(null)}
       />
       {advanceError && (

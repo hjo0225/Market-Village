@@ -188,10 +188,11 @@ export const api = {
     get<{ status: string; trap: string | null; trap_name: string | null;
          bundle: { category: string; trap: string; trap_name: string }[] }>(
       "/control/game/day/crisis_check", { game_id: gameId, news_id: newsId }),
-  gameAdvance: (gameId: string, opts: { newsId?: string; strategy?: string; rapport?: number; roll?: number } = {}) =>
+  gameAdvance: (gameId: string, opts: { newsId?: string; strategy?: string; rapport?: number; roll?: number; idemKey?: string } = {}) =>
     // T-265 — 멱등성 키 덕에 이 POST만 재시도 1회 허용(fetchJson 3번째 인자):
     // 응답이 유실돼도 서버가 같은 키를 캐시 응답으로 받아쳐 하루 이중 진행이 없다.
-    // (QA 스윕 Day12 실측 — 프록시 플레이크로 advance가 침묵 실패해 하루가 밀렸다.)
+    // /review 정정 — 키는 호출자가 (run,day)에서 파생해 넘긴다: 매 호출 랜덤이면
+    // 에러 배너 후 사용자의 수동 재시도가 새 키가 되어 이중 적용을 못 막는다.
     fetchJson<{ status: string; state: GameState; day_result?: DayResult; card?: ResultCard }>(
       "/control/game/day/advance", {
         method: "POST",
@@ -201,7 +202,8 @@ export const api = {
           // rapport를 null로 보내면 백엔드가 GameRun의 실제 공유 래포 풀을 쓴다
           // (opts.rapport를 넘기지 않는 게 일반 플레이의 기본 경로).
           rapport: opts.rapport ?? null, roll: opts.roll ?? Math.random() * 100,
-          idem_key: `adv-${gameId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          idem_key: opts.idemKey
+            ?? `adv-${gameId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         }),
       }, 1),
   gameScene: (gameId: string, useLlm = false) =>
