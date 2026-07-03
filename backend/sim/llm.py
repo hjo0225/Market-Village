@@ -64,6 +64,48 @@ class LLMError(RuntimeError):
     pass
 
 
+# --------------------------------------------------------------------------- #
+# T-SVC8(부분) · 과금 방어 3종 — 실호출의 단일 관문(LLMClient.chat)에서만 작동.
+# L3 리뷰(2026-07-02): use_llm 쿼리는 무인증 GET으로 과금을 트리거할 수 있다 —
+# 클라이언트 파라미터는 힌트일 뿐, 서버 env가 최종 결정권.
+#   MV_ALLOW_LLM      "0"이면 전면 차단(프로덕션 기본 — .env.production.example).
+#                     미설정/그 외 = 허용(로컬 현행 동작 보존).
+#   MV_LLM_DAILY_MAX  일일 실호출 상한(기본 500 — 구체 예산은 사용자 결정 대기,
+#                     초과 시 LLMError → 모든 호출부의 오프라인 폴백 작동).
+#   프롬프트 캐시      같은 (model, system, user) 재호출은 캐시 반환(과금 0).
+# FakeLLM은 chat()을 통째로 오버라이드하므로 게이트 무관(테스트 격리 유지).
+# --------------------------------------------------------------------------- #
+_DAILY_DEFAULT_MAX = 500
+_guard_state = {"date": None, "calls": 0}
+_prompt_cache: dict[tuple[str, str | None, str], str] = {}
+_PROMPT_CACHE_MAX = 512
+
+
+def reset_llm_guard() -> None:
+    """테스트/운영 리셋 — 일일 카운터·프롬프트 캐시 초기화."""
+    _guard_state["date"] = None
+    _guard_state["calls"] = 0
+    _prompt_cache.clear()
+
+
+def _guard_check_and_count() -> None:
+    """호출 직전 게이트+한도 검사(통과 시 1 카운트). 실패는 LLMError → 폴백."""
+    if os.getenv("MV_ALLOW_LLM", "") == "0":
+        raise LLMError("LLM disabled by MV_ALLOW_LLM=0 (server gate)")
+    import datetime as _dt
+    today = _dt.date.today().isoformat()
+    if _guard_state["date"] != today:
+        _guard_state["date"] = today
+        _guard_state["calls"] = 0
+    try:
+        max_calls = int(os.getenv("MV_LLM_DAILY_MAX", str(_DAILY_DEFAULT_MAX)))
+    except ValueError:
+        max_calls = _DAILY_DEFAULT_MAX
+    if _guard_state["calls"] >= max_calls:
+        raise LLMError(f"daily LLM budget exhausted ({max_calls})")
+    _guard_state["calls"] += 1
+
+
 class LLMClient:
     """Thin chat client: OpenAI SDK -> OpenRouter base_url, OpenRouter key from
     .env. Lazy-imports openai so tests need no network and no key."""
@@ -88,6 +130,20 @@ class LLMClient:
     def chat(self, user: str, system: str | None = None, temperature: float = 0.7) -> str:
         if not self.available:
             raise LLMError("OPENROUTER_API_KEY not set")
+        # T-SVC8 — 캐시 조회는 게이트보다 먼저(캐시 히트는 과금 0이라 항상 안전).
+        cache_key = (self.model, system, user)
+        cached = _prompt_cache.get(cache_key)
+        if cached is not None:
+            return cached
+        _guard_check_and_count()                     # 게이트+일일 한도(실호출만)
+        out = self._raw_chat(user, system=system, temperature=temperature)
+        if len(_prompt_cache) >= _PROMPT_CACHE_MAX:
+            _prompt_cache.pop(next(iter(_prompt_cache)))     # FIFO 축출
+        _prompt_cache[cache_key] = out
+        return out
+
+    def _raw_chat(self, user: str, system: str | None = None, temperature: float = 0.7) -> str:
+        """실제 네트워크 호출 — 게이트·캐시 없이. 테스트는 이걸 스텁한다."""
         try:
             if self._client is None:
                 from openai import OpenAI  # lazy import

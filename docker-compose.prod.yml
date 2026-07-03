@@ -31,6 +31,9 @@ services:
       MONGO_URI: mongodb://${MONGO_ROOT_USER}:${MONGO_ROOT_PASSWORD}@mongo:27017/?authSource=admin
       MONGO_DB: market_village
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      # T-SVC8 — LLM 과금 방어: 프로덕션 기본 차단(0), 한도는 예산 결정 후 조정.
+      MV_ALLOW_LLM: ${MV_ALLOW_LLM:-0}
+      MV_LLM_DAILY_MAX: ${MV_LLM_DAILY_MAX:-500}
 
   frontend:
     build:
