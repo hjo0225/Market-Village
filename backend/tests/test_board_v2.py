@@ -87,6 +87,36 @@ def test_validate_rejects_thin_conversation():
     assert board_v2.validate(None) is None
 
 
+# --- T-259 여론 정합 — verdict는 노출 발화(글+댓글) 전체 다수결 ------------- #
+# 사용자 리포트(2026-07-03): 댓글엔 "오른다"가 많은데 여론 라벨은 "내린다 우세".
+# 원인: verdict가 글 스탠스만 집계 — 화면 인상(댓글 포함)과 어긋남.
+
+def _visible_majority(conv):
+    votes = [th["stance"] for th in conv["threads"]]
+    votes += [c["stance"] for th in conv["threads"] for c in th.get("comments", [])]
+    ups, downs = votes.count("up"), votes.count("down")
+    return "up" if ups > downs else "down" if downs > ups else "split"
+
+
+def test_verdict_matches_visible_speech_majority_offline():
+    for ctx in ("fear", "greed", "fomo", "unrest"):
+        for seed in range(8):
+            conv = board_v2.offline_conversation(
+                ctx, {}, [_HIGH_FEAR], random.Random(seed))
+            assert conv["verdict"] == _visible_majority(conv), (ctx, seed)
+
+
+def test_validate_recomputes_verdict_from_speech():
+    # LLM이 verdict를 뭐라 주장하든, 노출 발화 다수결로 정정한다.
+    conv = {"verdict": "up", "threads": [
+        {"author_id": "doomposter", "stance": "down", "text": "a", "comments": [
+            {"author_id": "newbie", "stance": "down", "text": "y"}]},
+        {"author_id": "newbie", "stance": "up", "text": "b", "comments": []},
+    ], "agent_deltas": {}, "crowd_delta": -1.0}
+    out = board_v2.validate(conv)
+    assert out["verdict"] == "down"
+
+
 # --- T-252 아카이브 박제(회차 불변·재시작 안전) --------------------------- #
 
 def _g(**kw):
@@ -132,7 +162,9 @@ _LLM_JSON = ('{"verdict": "down", "threads": ['
 def test_llm_conversation_used_when_valid():
     fake = FakeLLM(handler=lambda user, system: _LLM_JSON)
     conv = board_v2.llm_conversation("fear", [_HIGH_FEAR], -9.0, {}, client=fake)
-    assert conv is not None and conv["verdict"] == "down"
+    # T-259 — LLM은 verdict를 "down"이라 주장하지만 노출 발화는 up 2:down 1 →
+    # validate가 다수결로 정정한다(여론 라벨-화면 정합 계약).
+    assert conv is not None and conv["verdict"] == "up"
     assert conv["crowd_delta"] == -5.0
     assert {th["author_id"] for th in conv["threads"]} == {"doomposter", "chart_zealot"}
 

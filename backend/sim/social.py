@@ -107,15 +107,21 @@ _STAT_FOR_CONTEXT = {"fear": "급락패닉저항", "greed": "과대베팅제어"
                      "fomo": "추격매수저항", "unrest": "멘탈마모저항"}
 
 # 컨텍스트별 출연진(§7.3) — 글 관중 / 댓글 관중(반박·부채질).
+# T-260 — 매매 에이전트(§9.5.3)도 마을 구성원으로서 댓글 캐스트에 합류(사용자
+# 피드백: 게시판엔 관중만 나오고 마을에 사는 에이전트들이 발화하지 않던 결함).
 _BOARD_CAST = {
     "fear": {"posts": ["doomposter", "newbie", "troll"],
-             "comments": ["cheerleader", "anon_veteran", "newbie"]},
+             "comments": ["cheerleader", "anon_veteran", "newbie",
+                          "panic_ant", "value_investor"]},
     "greed": {"posts": ["bull_hoper", "cheerleader", "chart_zealot"],
-              "comments": ["contrarian_fan", "anon_veteran", "troll"]},
+              "comments": ["contrarian_fan", "anon_veteran", "troll",
+                           "jackpot_gambler", "macro_whale"]},
     "fomo": {"posts": ["bull_hoper", "newbie", "chart_zealot"],
-             "comments": ["doomposter", "contrarian_fan"]},
+             "comments": ["doomposter", "contrarian_fan",
+                          "fomo_scalper", "quant_trader"]},
     "unrest": {"posts": ["chart_zealot", "newbie", "troll"],
-               "comments": ["anon_veteran", "cheerleader", "newbie"]},
+               "comments": ["anon_veteran", "cheerleader", "newbie",
+                            "conspiracy_influencer", "contrarian"]},
 }
 # 이벤트 날 군중은 들끓는다(관찰 이벤트라 §9.2.3 수동 개입보다 크게, §9.3 폭주는
 # crowd_mood 상한이 이미 clamp).
@@ -123,9 +129,12 @@ _BOARD_CAST = {
 # fgi/crowd_buying 프록시와 정합). 공포 계열은 음수(공포로), 탐욕 계열은 양수(과열로).
 _BOARD_MOOD_DELTA = {"fear": -3.5, "greed": 2.5, "fomo": 3.5, "unrest": -1.5}
 
-_SNS_NAME = {p["id"]: p["name"] for p in _personas.SNS_PERSONAS}
-_SNS_ROLE = {p["id"]: p["role"] for p in _personas.SNS_PERSONAS}   # T-246 부기 표기
-_SNS_PORTRAIT = {p["id"]: p["portrait"] for p in _personas.SNS_PERSONAS}
+# T-260 — 게시판 출연진에 매매 에이전트가 합류하면서 이름/역할/초상 테이블을
+# 관중+에이전트 통합으로(_BOARD_CAST에 trader id가 오면 KeyError 나던 구조 제거).
+_CAST_ALL = _personas.SNS_PERSONAS + _personas.TRADER_PERSONAS
+_SNS_NAME = {p["id"]: p["name"] for p in _CAST_ALL}
+_SNS_ROLE = {p["id"]: p["role"] for p in _CAST_ALL}   # T-246 부기 표기
+_SNS_PORTRAIT = {p["id"]: p.get("portrait") for p in _CAST_ALL}
 
 
 @lru_cache(maxsize=2)
@@ -149,6 +158,18 @@ def board_trigger(market_move_pct: float, drawn_news: list[dict]) -> str | None:
         if n.get("intensity") in ("high", "extreme"):
             return _TONE_CONTEXT.get(n.get("tone", ""), "unrest")
     return None
+
+
+def board_first_day_context(drawn_news: list[dict]) -> str:
+    """T-257 — day 1 첫인상 보장용 컨텍스트: 트리거가 없어도 그날 뉴스 톤으로.
+
+    (사용자 리포트 3차 — 첫 세션에서 게시판을 못 보면 "없는 기능"으로 인지된다.)
+    """
+    for n in drawn_news:
+        ctx = _TONE_CONTEXT.get(n.get("tone", ""))
+        if ctx:
+            return ctx
+    return "unrest"
 
 
 def _board_llm_rewrite(text: str, author_name: str, style: str) -> str | None:
@@ -200,6 +221,9 @@ def board_event(
     if posts:
         n_comments = 1 + rng.randrange(2)
         commenters = [pid for pid in cast["comments"] if pick_text("comments", pid)]
+        # T-260 — 앞 고정([:n])이면 리스트 뒤의 매매 에이전트가 영영 안 뽑힌다
+        # — 결정론 rng 셔플로 모든 출연진에게 발화 기회.
+        rng.shuffle(commenters)
         for pid in commenters[:n_comments]:
             target = posts[rng.randrange(len(posts))]
             target["comments"].append(

@@ -3,16 +3,18 @@
 //
 // Next.js dev의 rewrites 프록시가 Windows에서 백엔드로의 아웃바운드 연결에
 // 간헐적으로 EFAULT를 내는 걸 이 세션에서 반복 관찰(map.html에도 같은 방어가
-// 있음, RETRO 참고) — 여기서도 1회 자동 재시도한다.
-async function fetchJson<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
-  for (let attempt = 0; attempt < 2; attempt++) {
+// 있음, RETRO 참고) — 조회(GET)는 1회 자동 재시도한다.
+// T-258 — 상태 변이 POST는 재시도 금지(멱등성): 요청이 서버에 적용된 뒤 응답만
+// 유실되면 재시도가 이중 적용된다(/day/advance면 하루가 2번 감). CLAUDE.md 게이트 4c.
+async function fetchJson<T>(input: RequestInfo, init?: RequestInit, retries = 1): Promise<T> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
     try {
       const r = await fetch(input, init);
       if (r.ok) return (await r.json()) as T;
     } catch {
-      /* 네트워크 오류 — 재시도 */
+      /* 네트워크 오류 — retries 남았으면 재시도 */
     }
-    if (attempt === 0) await new Promise((res) => setTimeout(res, 400));
+    if (attempt < retries) await new Promise((res) => setTimeout(res, 400));
   }
   return { status: "error", error: "network" } as T;
 }
@@ -30,7 +32,7 @@ async function post<T>(path: string, body: Record<string, unknown>): Promise<T> 
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
-  });
+  }, 0);   // T-258 — 변이 요청은 재시도 없음
 }
 
 export interface CloneStats {
@@ -44,7 +46,7 @@ export const CATEGORY_LABELS: Record<string, string> = {
   large_stable: "대형 안정형", mid_alt: "중견 알트형", meme: "밈형", stable: "스테이블",
 };
 
-// §8.3 자금 행선지 라벨 — DayResultToast·회차 비교(T-227)가 공유하는 단일 소스.
+// §8.3 자금 행선지 라벨 — DayResultModal·회차 비교(T-227)가 공유하는 단일 소스.
 export const FUND_FLOW_LABELS: Record<string, string> = {
   to_cash: "공포 매도 → 현금 도피",
   to_stable: "공포 매도 → 스테이블 이동",
@@ -124,6 +126,8 @@ export interface BoardFeed {
   day: number; open: boolean; context: string | null;
   verdict?: "up" | "down" | "split";   // T-251 — 대화의 다수 결론
   posts: BoardPost[]; crowd_mood_delta: number;
+  // T-257 — 닫힌 날 핸드폰 게시판 탭용: 가장 최근 박제 대화(읽기 전용, 클론 미주입).
+  recent?: { day: number; posts: BoardPost[] } | null;
 }
 
 export const api = {
@@ -185,13 +189,21 @@ export const api = {
          bundle: { category: string; trap: string; trap_name: string }[] }>(
       "/control/game/day/crisis_check", { game_id: gameId, news_id: newsId }),
   gameAdvance: (gameId: string, opts: { newsId?: string; strategy?: string; rapport?: number; roll?: number } = {}) =>
-    post<{ status: string; state: GameState; day_result?: DayResult; card?: ResultCard }>(
+    // T-265 — 멱등성 키 덕에 이 POST만 재시도 1회 허용(fetchJson 3번째 인자):
+    // 응답이 유실돼도 서버가 같은 키를 캐시 응답으로 받아쳐 하루 이중 진행이 없다.
+    // (QA 스윕 Day12 실측 — 프록시 플레이크로 advance가 침묵 실패해 하루가 밀렸다.)
+    fetchJson<{ status: string; state: GameState; day_result?: DayResult; card?: ResultCard }>(
       "/control/game/day/advance", {
-        game_id: gameId, news_id: opts.newsId ?? null, strategy: opts.strategy ?? null,
-        // rapport를 null로 보내면 백엔드가 GameRun의 실제 공유 래포 풀을 쓴다
-        // (opts.rapport를 넘기지 않는 게 일반 플레이의 기본 경로).
-        rapport: opts.rapport ?? null, roll: opts.roll ?? Math.random() * 100,
-      }),
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          game_id: gameId, news_id: opts.newsId ?? null, strategy: opts.strategy ?? null,
+          // rapport를 null로 보내면 백엔드가 GameRun의 실제 공유 래포 풀을 쓴다
+          // (opts.rapport를 넘기지 않는 게 일반 플레이의 기본 경로).
+          rapport: opts.rapport ?? null, roll: opts.roll ?? Math.random() * 100,
+          idem_key: `adv-${gameId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        }),
+      }, 1),
   gameScene: (gameId: string, useLlm = false) =>
     get<{ status: string; scene?: Scene }>("/control/game/day/scene", { game_id: gameId, use_llm: useLlm }),
   gameCard: (gameId: string) =>

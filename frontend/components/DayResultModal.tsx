@@ -1,14 +1,21 @@
 "use client";
 
+import PixelButton from "@/components/pixel/PixelButton";
 import { CATEGORY_LABELS, DayResult, FUND_FLOW_LABELS as FUND_FLOW_LABEL, STAT_LABELS } from "@/lib/api";
 
-export default function DayResultToast({ result, scene }: { result: DayResult | null; scene: string }) {
+// T-261(사용자 피드백 2026-07-03) — 하루 마무리는 우하단 토스트가 아니라 블로킹
+// 모달: 맵 연출 중엔 토스트가 안 보여 "하루 결과가 안 나온다"로 인지됐다.
+// 내용은 구 DayResultToast 그대로, 닫아야 다음 조작이 자연스럽다.
+export default function DayResultModal({ result, scene, day, onClose }:
+  { result: DayResult | null; scene: string; day: number; onClose: () => void }) {
   if (!result) return null;
   const calm = result.trap === null;
   const bundled = result.bundle.length > 1;   // T-216 — 같은 날 2종목 이상 동시 트리거
   return (
-    <div className="fixed bottom-6 right-6 z-[110] max-w-sm animate-slide-up">
-      <div className={`border-2 border-black rounded-2xl shadow-pixel-lg p-4 ${calm ? "bg-white" : result.swayed ? "bg-yellow-50" : "bg-green-50"}`}>
+    <div role="dialog" aria-modal="true" className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-pixel-ink/60" />
+      <div className={`relative w-full max-w-sm border-2 border-black rounded-2xl shadow-pixel-lg p-4 animate-pixel-pop ${calm ? "bg-white" : result.swayed ? "bg-yellow-50" : "bg-green-50"}`}>
+        <p className="text-[11px] text-pixel-muted font-bold mb-1">🌙 Day {day} 마무리</p>
         <div className="flex items-center gap-2 mb-1">
           <span className="text-lg animate-bump">{calm ? "🌤" : result.swayed ? "😵" : "💪"}</span>
           <span className="font-extrabold text-sm">
@@ -35,7 +42,6 @@ export default function DayResultToast({ result, scene }: { result: DayResult | 
           )
         )}
         {scene && <p className="text-xs italic text-pixel-greenText mb-2">💭 {scene}</p>}
-        {/* 사용자 피드백(2026-07-01) — 클론 상태는 리모콘 뒤로 숨기되, 하루마무리(여기)에선 보여준다. */}
         <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 mt-2 pt-2 border-t border-black/10">
           {STAT_LABELS.map((k) => (
             <div key={k} className="flex items-center justify-between text-[10px]">
@@ -43,6 +49,9 @@ export default function DayResultToast({ result, scene }: { result: DayResult | 
               <span className="font-bold">{Math.round(result.stats[k] ?? 0)}</span>
             </div>
           ))}
+        </div>
+        <div className="mt-3 flex justify-end">
+          <PixelButton size="sm" onClick={onClose}>확인</PixelButton>
         </div>
       </div>
     </div>

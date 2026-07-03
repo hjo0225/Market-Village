@@ -50,7 +50,10 @@ _CONTEXT_STANCE = {"fear": "down", "unrest": "down", "greed": "up", "fomo": "up"
 # 낙관파는 항상 '오른다', 공포팔이는 항상 '내린다', 청개구리·익명고수는 다수 반대.
 _ALWAYS_UP = {"bull_hoper", "cheerleader"}
 _ALWAYS_DOWN = {"doomposter"}
-_CONTRARIAN = {"contrarian_fan", "anon_veteran"}
+# T-260 — 매매 에이전트 중 '이성의 목소리'(가치·퀀트·거시)와 청개구리는 다수 반대:
+# 문구가 경고/역발상 톤이라 스탠스 배지도 반대여야 정합(RETRO 2026-07-03 스탠스 규칙).
+_CONTRARIAN = {"contrarian_fan", "anon_veteran",
+               "contrarian", "value_investor", "quant_trader", "macro_whale"}
 
 
 def _stance_for(aid: str, majority: str, flip: str) -> str:
@@ -65,7 +68,12 @@ def _stance_for(aid: str, majority: str, flip: str) -> str:
 _MAIN_AXIS = {"doomposter": "fear", "newbie": "fear", "bull_hoper": "excitement",
               "cheerleader": "excitement", "chart_zealot": "confidence",
               "troll": "excitement", "anon_veteran": "confidence",
-              "contrarian_fan": "confidence"}
+              "contrarian_fan": "confidence",
+              # T-260 — 매매 에이전트(§9.5.2 성향 주축)
+              "panic_ant": "fear", "fomo_scalper": "excitement",
+              "conspiracy_influencer": "trust", "value_investor": "confidence",
+              "quant_trader": "confidence", "macro_whale": "confidence",
+              "contrarian": "confidence", "jackpot_gambler": "greed"}
 
 
 def _news_line(drawn_news: list[dict]) -> tuple[str, str]:
@@ -121,11 +129,21 @@ def validate(conv: dict | None, extra_cast: set[str] | None = None) -> dict | No
                         -T.CROWD_DELTA_CLAMP, T.CROWD_DELTA_CLAMP)
     except (TypeError, ValueError):
         crowd = 0.0
-    verdict = conv.get("verdict")
-    if verdict not in ("up", "down", "split"):
-        verdict = "split"
-    return {"verdict": verdict, "threads": threads,
+    # T-259 — LLM이 준 verdict를 신뢰하지 않고 노출 발화 다수결로 정정
+    # (여론 라벨과 화면 인상이 어긋나는 걸 구조적으로 차단).
+    return {"verdict": verdict_from_speech(threads), "threads": threads,
             "agent_deltas": deltas, "crowd_delta": crowd}
+
+
+def verdict_from_speech(threads: list[dict]) -> str:
+    """T-259 — 여론 = 화면에 보이는 발화 전체(글+댓글)의 up/down 다수결.
+
+    글만 세면 댓글이 더 많은 화면에서 체감 다수와 라벨이 어긋난다(사용자 리포트).
+    """
+    votes = [th.get("stance") for th in threads]
+    votes += [c.get("stance") for th in threads for c in th.get("comments", [])]
+    ups, downs = votes.count("up"), votes.count("down")
+    return "up" if ups > downs else "down" if downs > ups else "split"
 
 
 def offline_conversation(
@@ -186,10 +204,8 @@ def offline_conversation(
 
     crowd = T.clamp(base["crowd_mood_delta"] * _intensity_scale(drawn_news),
                     -T.CROWD_DELTA_CLAMP, T.CROWD_DELTA_CLAMP)
-    votes = [th["stance"] for th in threads]
-    verdict = ("up" if votes.count("up") > votes.count("down")
-               else "down" if votes.count("down") > votes.count("up") else "split")
-    return {"verdict": verdict, "threads": threads,
+    # T-259 — 글+댓글 전체 발화 다수결(글만 세면 화면 인상과 어긋남).
+    return {"verdict": verdict_from_speech(threads), "threads": threads,
             "agent_deltas": deltas, "crowd_delta": round(crowd, 2)}
 
 

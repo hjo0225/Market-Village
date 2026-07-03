@@ -259,6 +259,23 @@ const PLACE_DOING = {
 };
 const PLACE_SHORT = { "집_차트": "집" };
 
+// T-262 — 두 스프라이트가 서로를 바라본다(대화 연출). 방향별 정지 프레임:
+// down 1 · left 4 · right 7 · up 10 (스프라이트시트 3프레임 걷기의 가운데).
+const FACE_FRAME = { down: 1, left: 4, right: 7, up: 10 };
+function faceEachOther(origA, origB){
+  const a = sprites[origA], b = sprites[origB];
+  if (!a || !b) return;
+  const face = (from, to) => {
+    const dx = to.s.x - from.s.x, dy = to.s.y - from.s.y;
+    const dir = Math.abs(dx) >= Math.abs(dy)
+      ? (dx >= 0 ? "right" : "left") : (dy >= 0 ? "down" : "up");
+    from.s.stop();
+    from.s.setFrame(FACE_FRAME[dir]);
+  };
+  face(a, b);
+  face(b, a);
+}
+
 function setBubble(orig, text){
   const o = sprites[orig];
   if (!o || !scene) return;
@@ -308,6 +325,7 @@ async function walkBand(gameId, band, speedup){
   const met = ((walkData.meetings_by_band || {})[band]) || [];
   if (gen === walkGen && met.length){
     const m = met[0];
+    faceEachOther(CLONE_ORIG, m.id);   // T-262 — 대화는 정면으로(사용자 피드백)
     setBubble(CLONE_ORIG, "💬 " + m.name + "와 이야기 중");
     setBubble(m.id, "💬");
     setTimeout(() => {

@@ -91,3 +91,32 @@ def test_newrun_resets_and_compare_diverges():
 def test_missing_game_errors():
     assert mls.control_game_state(game_id="nope")["status"] == "error"
     assert mls.control_game_advance(mls.GameAdvanceBody(game_id="nope"))["status"] == "error"
+
+
+# --- T-265 · /day/advance 멱등성 키 (게이트 4c — QA 스윕 Day12 침묵 실패에서) --- #
+# 프록시 플레이크로 응답만 유실된 재시도가 하루를 2번 진행시키면 안 되고(중복
+# 적용), 키가 있으면 클라이언트 재시도가 안전해야 한다(캐시 응답 반환).
+
+def test_advance_same_idem_key_applies_once():
+    _start("ep_idem")
+    a = mls.control_game_advance(mls.GameAdvanceBody(
+        game_id="ep_idem", idem_key="k-day0"))
+    assert a["status"] == "ok" and a["state"]["day"] == 1
+    b = mls.control_game_advance(mls.GameAdvanceBody(
+        game_id="ep_idem", idem_key="k-day0"))       # 재전송(응답 유실 시나리오)
+    assert b == a                                     # 캐시 응답 그대로
+    assert mls.control_game_state("ep_idem")["state"]["day"] == 1   # 이중 적용 없음
+
+
+def test_advance_new_idem_key_advances():
+    _start("ep_idem2")
+    mls.control_game_advance(mls.GameAdvanceBody(game_id="ep_idem2", idem_key="k0"))
+    r = mls.control_game_advance(mls.GameAdvanceBody(game_id="ep_idem2", idem_key="k1"))
+    assert r["state"]["day"] == 2
+
+
+def test_advance_without_key_keeps_legacy_behavior():
+    _start("ep_idem3")
+    mls.control_game_advance(mls.GameAdvanceBody(game_id="ep_idem3"))
+    r = mls.control_game_advance(mls.GameAdvanceBody(game_id="ep_idem3"))
+    assert r["state"]["day"] == 2                     # 키 없으면 매 호출 적용(기존)

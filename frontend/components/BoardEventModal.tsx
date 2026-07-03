@@ -8,16 +8,24 @@ import { BoardFeed, BoardPost } from "@/lib/api";
 // T-255(플레이테스트 리포트 ③) — 단순 모달이 아니라 **핸드폰이 올라오는** 연출:
 // 마을이 걸음을 멈추고(❗, map board_gather 신호) 폰 프레임이 슬라이드업,
 // 글이 트위터 피드처럼 순차 등장. 관찰 전용(개입은 핸드폰 피드 탭, D6).
-const CONTEXT_HEAD: Record<string, string> = {
+export const CONTEXT_HEAD: Record<string, string> = {
   fear: "⚡ 마을이 공포에 술렁인다",
   greed: "🍾 마을이 축제 분위기다",
   fomo: "🔥 다들 어딘가로 몰려간다",
   unrest: "🌫 마을이 뒤숭숭하다",
 };
-const VERDICT_LABEL: Record<string, string> = {
+export const VERDICT_LABEL: Record<string, string> = {
   up: "📈 마을 여론: 오른다 우세", down: "📉 마을 여론: 내린다 우세",
   split: "⚖️ 마을 여론: 팽팽하다",
 };
+
+// T-260 — SNS 어포던스(좋아요·상대시각)는 표현 전용 결정론 파생값: 텍스트 해시
+// 기반이라 서버 상태·랜덤 없음(하이드레이션 안전, 같은 글=같은 수치).
+function seedNum(s: string, mod: number, salt = 0): number {
+  let h = salt >>> 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return h % mod;
+}
 const STANCE_BADGE: Record<string, { label: string; cls: string }> = {
   up: { label: "📈 오른다", cls: "bg-emerald-100 text-emerald-700" },
   down: { label: "📉 내린다", cls: "bg-rose-100 text-rose-700" },
@@ -35,7 +43,8 @@ function Stance({ stance }: { stance?: string | null }) {
   return <span className={`text-[9px] font-bold rounded px-1 ${b.cls}`}>{b.label}</span>;
 }
 
-function PostCard({ post, index }: { post: BoardPost; index: number }) {
+// T-257 — PhoneModal 게시판 탭에서도 재사용(export).
+export function PostCard({ post, index }: { post: BoardPost; index: number }) {
   const isClone = post.author_kind === "clone";
   return (
     <div
@@ -57,6 +66,8 @@ function PostCard({ post, index }: { post: BoardPost; index: number }) {
         <span className="text-[12px] font-extrabold">{post.author}</span>
         {/* T-246 — 이름 옆에 역할 부기(이름만으론 성격을 모르니). */}
         <span className="text-[10px] text-pixel-muted">· {post.author_role ?? "오늘"}</span>
+        {/* T-260 — SNS다움: 올린 시각(결정론 파생) */}
+        <span className="text-[9px] text-pixel-muted">· {seedNum(post.text, 50, 7) + 2}분 전</span>
         <Stance stance={post.stance} />
         {isClone && <span className="text-[10px] font-bold text-pixel-grass-dark bg-pixel-grass/20 rounded px-1">내 클론</span>}
       </div>
@@ -71,11 +82,17 @@ function PostCard({ post, index }: { post: BoardPost; index: number }) {
                 <span className="text-[9px] font-bold text-pixel-grass-dark">내 클론</span>
               )}{" "}
               <Stance stance={c.stance} /> {c.text}
+              <span className="text-[9px] text-pixel-muted"> · ❤ {seedNum(c.text, 18, 3)}</span>
             </p>
           ))}
-          <p className="text-[9px] text-pixel-muted">댓글 {post.comments.length}개</p>
         </div>
       )}
+      {/* T-260 — SNS 리액션 바(좋아요·댓글 수) */}
+      <div className="mt-1.5 flex items-center gap-3 text-[10px] text-pixel-muted">
+        <span>❤ {seedNum(post.text, 38, 1) + 3}</span>
+        <span>💬 {post.comments.length}</span>
+        <span>🔁 {seedNum(post.text, 9, 5)}</span>
+      </div>
     </div>
   );
 }

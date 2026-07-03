@@ -322,9 +322,13 @@ class GameRun:
         # 클론의 함정(preview_crisis)은 여기서 안 본다(§12.4 비공개 — 누설 금지).
         market_move = self.fl.change_rate(self.category, self.day)
         context = _social.board_trigger(market_move, drawn_news)
+        # T-257 — 첫인상 보장: day 1은 트리거 무관 반드시 한 번 열린다(발견성).
+        if context is None and self.day == 1:
+            context = _social.board_first_day_context(drawn_news)
         if context is None:
             board: dict = {"day": self.day, "open": False, "context": None,
-                           "posts": [], "crowd_mood_delta": 0.0}
+                           "posts": [], "crowd_mood_delta": 0.0,
+                           "recent": self._recent_board()}
         else:
             # T-251~253(게시판 v2) — 그날 뉴스에 대한 에이전트 대화. 공개 트랙은
             # 게임 레벨 아카이브에 박제(회차 무관 재사용 — 같은 시험지 보호),
@@ -346,12 +350,26 @@ class GameRun:
                 self.board_archive[key] = conv
             crng = random.Random(zlib.crc32(f"{self.run_id}:{self.day}".encode()))
             with_clone = _board_v2.inject_clone(conv, context, self.stats, crng)
+            # T-259 — 여론 라벨은 클론 발언까지 포함해 "화면에 보이는 그대로"의
+            # 다수결로 재계산(아카이브 verdict는 주입 전 값이라 체감과 어긋날 수 있음).
             board = {"day": self.day, "open": True, "mood_applied": False,
-                     "context": context, "verdict": with_clone["verdict"],
+                     "context": context,
+                     "verdict": _board_v2.verdict_from_speech(with_clone["threads"]),
                      "posts": _board_v2.to_posts(with_clone),
                      "crowd_mood_delta": with_clone["crowd_delta"]}
         self._board = board
         return board
+
+    def _recent_board(self) -> dict | None:
+        """T-257 — 닫힌 날 핸드폰 게시판 탭용: 가장 최근 박제 대화(읽기 전용).
+
+        공개 트랙(아카이브) 그대로 — 클론 발언은 미주입(회차 불변 보호, council F2).
+        """
+        if not self.board_archive:
+            return None
+        key = max(self.board_archive, key=lambda k: int(k.split(":", 1)[0]))
+        return {"day": int(key.split(":", 1)[0]),
+                "posts": _board_v2.to_posts(self.board_archive[key])}
 
     # --- 표현 계층이 읽는 스냅샷 ----------------------------------------- #
     def _holdings_breakdown(self) -> list[dict]:

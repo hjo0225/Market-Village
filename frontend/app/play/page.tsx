@@ -8,7 +8,7 @@ import StatsPanel from "@/components/StatsPanel";
 import PhoneModal from "@/components/PhoneModal";
 import PreviewModal from "@/components/PreviewModal";
 import NewsModal from "@/components/NewsModal";
-import DayResultToast from "@/components/DayResultToast";
+import DayResultModal from "@/components/DayResultModal";
 import BoardEventModal from "@/components/BoardEventModal";
 import CrisisEventModal from "@/components/CrisisEventModal";
 import DayProgressOverlay from "@/components/DayProgressOverlay";
@@ -38,6 +38,7 @@ export default function PlayPage() {
   const [statsOpen, setStatsOpen] = useState(false);
   const [advancing, setAdvancing] = useState(false);
   const [dayResult, setDayResult] = useState<DayResult | null>(null);
+  const [advanceError, setAdvanceError] = useState<string | null>(null);   // T-265
   const [sceneText, setSceneText] = useState("");
   // 게시판(T-225, D1·D3) — 이벤트 날 아침 뒤에만 뜨는 블로킹 관찰 이벤트.
   // 닫기 전엔 하루가 진행되지 않는다(resolver로 진행 재개).
@@ -180,6 +181,13 @@ export default function PlayPage() {
         strategy: strategy || undefined,
         roll: Math.random() * 100,
       });
+      // T-265 — 재시도(멱등키)까지 실패한 극단 케이스: 침묵하지 않는다(QA 스윕
+      // Day12 실측 — 조용히 하루가 밀리면 사용자는 원인을 알 수 없다).
+      if (r.status !== "ok") {
+        setAdvanceError("네트워크가 불안정해 하루 진행이 반영되지 않았어요. 다시 눌러주세요.");
+        return;
+      }
+      setAdvanceError(null);
       // 걷기는 각 시간대 단계에서 이미 동기 재생됐다(T-237) — 여기선 대기 불필요.
       if (r.day_result) setDayResult(r.day_result);
       // T-256 — 오늘 사고판 이들(클론 fund_flow + NPC 판정)을 맵에서 💸/📉로.
@@ -283,7 +291,15 @@ export default function PlayPage() {
         isOpen={previewOpen} onClose={() => setPreviewOpen(false)} gameId={gameId}
         meetings={meetings} picks={picks} onChanged={() => refresh(gameId)}
       />
-      <DayResultToast result={dayResult} scene={sceneText} />
+      <DayResultModal
+        result={dayResult} scene={sceneText} day={Math.max(0, state.day - 1)}
+        onClose={() => setDayResult(null)}
+      />
+      {advanceError && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[125] bg-rose-50 border-2 border-black rounded-xl shadow-pixel-lg px-4 py-2 text-xs font-bold animate-slide-up">
+          ⚠️ {advanceError}
+        </div>
+      )}
       {boardFeed && (
         <BoardEventModal
           day={boardFeed.day} board={boardFeed}

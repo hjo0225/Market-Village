@@ -451,6 +451,10 @@ class GameStartBody(BaseModel):
     allocations: dict[str, float] | None = None
 
 
+# T-265 — /day/advance 멱등성 캐시: game_id → (마지막 idem_key, 그 응답).
+_ADVANCE_IDEM: dict[str, tuple[str, dict]] = {}
+
+
 class GameAdvanceBody(BaseModel):
     game_id: str
     news_id: str | None = None
@@ -462,6 +466,9 @@ class GameAdvanceBody(BaseModel):
     rapport: float | None = None
     roll: float = 100.0
     agent_pressure: float = 0.0
+    # T-265(게이트 4c) — 클라이언트 생성 멱등성 키. 같은 키 재전송이면 하루를 다시
+    # 진행하지 않고 저장된 응답을 반환한다(응답 유실 → 재시도 → 이중 적용 차단).
+    idem_key: str | None = None
 
 
 class GameNewRunBody(BaseModel):
@@ -632,6 +639,12 @@ def control_game_advance(body: GameAdvanceBody):
     g = _get_game(body.game_id)
     if g is None:
         return {"status": "error", "error": "no game"}
+    # T-265 — 멱등성: 같은 키 재전송이면(재시도) 저장된 응답 반환, 재적용 없음.
+    # 게임당 마지막 키 1개만 보관(재시도는 초 단위 — 그 이상은 새 하루가 정상).
+    if body.idem_key is not None:
+        cached = _ADVANCE_IDEM.get(body.game_id)
+        if cached is not None and cached[0] == body.idem_key:
+            return cached[1]
     news_item = None
     if body.news_id:
         pool = _news.load_news_pool()
@@ -650,6 +663,8 @@ def control_game_advance(body: GameAdvanceBody):
                              "stats": snap.emotion_stats, "bundle": snap.bundle}
     if g.finished and g.summary is not None:
         out["card"] = _result_card.result_card(g.summary)
+    if body.idem_key is not None:
+        _ADVANCE_IDEM[body.game_id] = (body.idem_key, out)
     _persist_game(body.game_id, g)
     return out
 

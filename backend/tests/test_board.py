@@ -161,6 +161,94 @@ def test_board_today_is_pure_observation_and_caches_same_day():
     assert abs(g.crowd_mood - 50.0) < abs(mood_after - 50.0)
 
 
+# --- T-260 매매 에이전트도 게시판에서 발화한다 ------------------------------- #
+# 사용자 리포트(2026-07-03): 마을에 사는 매매 에이전트 8종이 게시판에 안 나타남
+# — 마을 구성원이면 이벤트 수다에 참여해야 한다(댓글 캐스트 합류).
+
+def test_trader_agents_appear_in_board_comments():
+    from sim import personas
+    trader_ids = {p["id"] for p in personas.TRADER_PERSONAS}
+    for ctx in ("fear", "greed", "fomo", "unrest"):
+        seen = set()
+        for seed in range(30):
+            out = social.board_event(ctx, _STEADY_STATS, rng=random.Random(seed))
+            for p in out["posts"]:
+                seen |= {c["author_id"] for c in p["comments"]}
+        assert seen & trader_ids, f"{ctx}: 매매 에이전트 댓글 0 (30시드)"
+
+
+def test_trader_comment_authors_have_real_names():
+    # 이름 테이블 미통합이면 KeyError나 id 노출 — 사람 이름으로 렌더돼야 한다.
+    from sim import personas
+    trader_ids = {p["id"] for p in personas.TRADER_PERSONAS}
+    trader_names = {p["name"] for p in personas.TRADER_PERSONAS}
+    found = False
+    for ctx in ("fear", "greed", "fomo", "unrest"):
+        for seed in range(30):
+            out = social.board_event(ctx, _STEADY_STATS, rng=random.Random(seed))
+            for p in out["posts"]:
+                for c in p["comments"]:
+                    if c["author_id"] in trader_ids:
+                        assert c["author"] in trader_names
+                        found = True
+    assert found
+
+
+# --- T-257 첫인상 보장 + 발견성 --------------------------------------------- #
+def test_board_day1_always_opens_even_without_trigger():
+    # 사용자 리포트 3차(2026-07-03) — 첫 세션에서 게시판을 못 보면 "없는 기능"이
+    # 된다. day 1은 트리거 무관 강제 오픈, 컨텍스트는 그날 뉴스 톤.
+    g = _g("first_day")
+    g.advance_day()                                 # day0 → day1 (조용한 날)
+    out = g.board_today([_MED])                     # medium 뉴스뿐, 시장도 잠잠
+    assert out["open"] is True
+    assert out["context"] == "fear"                 # _MED의 톤(fear)로 수다
+
+
+def test_board_day1_forced_context_falls_back_to_unrest():
+    g = _g("first_day2")
+    g.advance_day()
+    out = g.board_today([])
+    assert out["open"] is True and out["context"] == "unrest"
+
+
+def test_board_day0_still_respects_trigger():
+    # 강제 오픈은 day 1만 — day 0 조용한 날은 여전히 닫힘(기존 계약 유지).
+    g = _g("day0_calm")
+    assert g.board_today([_MED])["open"] is False
+
+
+def test_board_closed_day_carries_recent_archive():
+    # 닫힌 날 핸드폰 게시판 탭용 — 가장 최근 박제 대화를 읽기 전용으로 제공.
+    g = _g("recent_arch")
+    first = g.board_today([_HIGH_FEAR])             # day0 열림 → 아카이브 박제
+    assert first["open"] is True
+    g.advance_day(); g.advance_day()                # day2 (day1 강제오픈은 건너뜀)
+    out = g.board_today([_MED])
+    assert out["open"] is False
+    assert out["recent"]["day"] == 0
+    assert out["recent"]["posts"]                   # 지난 수다가 보인다
+    assert all(p["author_kind"] == "sns" for p in out["recent"]["posts"])  # 클론 미주입(공개 트랙)
+
+
+def test_board_today_verdict_matches_rendered_posts():
+    # T-259 — 여론 라벨은 클론 주입 댓글까지 포함한 "화면 그대로"의 다수결.
+    for run_id in ("vv1", "vv2", "vv3"):
+        g = _g(run_id)
+        out = g.board_today([_HIGH_FEAR])
+        votes = [p.get("stance") for p in out["posts"]]
+        votes += [c.get("stance") for p in out["posts"] for c in p["comments"]]
+        ups, downs = votes.count("up"), votes.count("down")
+        expect = "up" if ups > downs else "down" if downs > ups else "split"
+        assert out["verdict"] == expect, run_id
+
+
+def test_board_closed_day_recent_is_none_without_history():
+    g = _g("no_hist")
+    out = g.board_today([_MED])
+    assert out["open"] is False and out["recent"] is None
+
+
 def test_board_survives_serialization_without_reapplying_mood():
     g = _g()
     g.board_today([_HIGH_FEAR])
