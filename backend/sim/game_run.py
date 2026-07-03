@@ -322,8 +322,10 @@ class GameRun:
         # 클론의 함정(preview_crisis)은 여기서 안 본다(§12.4 비공개 — 누설 금지).
         market_move = self.fl.change_rate(self.category, self.day)
         context = _social.board_trigger(market_move, drawn_news)
-        # T-257 — 첫인상 보장: day 1은 트리거 무관 반드시 한 번 열린다(발견성).
-        if context is None and self.day == 1:
+        # T-257 — 첫인상 보장: 플레이어가 실제 처음 플레이하는 날(day 0)은 트리거
+        # 무관 반드시 한 번 열린다(발견성). /review 정정 — day 1로 걸면 보장이
+        # 두 번째 날에 발동해 "첫 세션에서 반드시 본다"는 DoD가 깨진다.
+        if context is None and self.day == 0:
             context = _social.board_first_day_context(drawn_news)
         if context is None:
             board: dict = {"day": self.day, "open": False, "context": None,

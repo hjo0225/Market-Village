@@ -120,3 +120,20 @@ def test_advance_without_key_keeps_legacy_behavior():
     mls.control_game_advance(mls.GameAdvanceBody(game_id="ep_idem3"))
     r = mls.control_game_advance(mls.GameAdvanceBody(game_id="ep_idem3"))
     assert r["state"]["day"] == 2                     # 키 없으면 매 호출 적용(기존)
+
+
+def test_advance_concurrent_same_key_single_apply():
+    # /review — 체크-후-쓰기 레이스: 같은 키 동시 2건이 둘 다 캐시 미스로 통과해
+    # 하루가 2번 가면 안 된다(게임별 락으로 직렬화).
+    import threading
+    _start("ep_race")
+    results = []
+    body = mls.GameAdvanceBody(game_id="ep_race", idem_key="k-race")
+    threads = [threading.Thread(target=lambda: results.append(
+        mls.control_game_advance(body))) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert mls.control_game_state("ep_race")["state"]["day"] == 1   # 정확히 1일
+    assert all(r == results[0] for r in results)                    # 전부 같은 응답

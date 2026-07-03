@@ -452,7 +452,23 @@ class GameStartBody(BaseModel):
 
 
 # T-265 — /day/advance 멱등성 캐시: game_id → (마지막 idem_key, 그 응답).
+# /review(2026-07-03): ①체크-후-쓰기 레이스 — FastAPI가 sync 핸들러를 스레드풀로
+# 돌려 같은 키 2건이 동시에 캐시 미스로 통과할 수 있다 → 게임별 락으로 직렬화.
+# ②무한 성장 — 게임당 응답 1건이 영구 잔류 → 상한 초과 시 FIFO 축출.
 _ADVANCE_IDEM: dict[str, tuple[str, dict]] = {}
+_ADVANCE_IDEM_MAX = 256
+_ADVANCE_LOCKS: dict[str, threading.Lock] = {}
+_ADVANCE_LOCKS_GUARD = threading.Lock()
+
+
+def _advance_lock(game_id: str) -> threading.Lock:
+    with _ADVANCE_LOCKS_GUARD:
+        lock = _ADVANCE_LOCKS.get(game_id)
+        if lock is None:
+            if len(_ADVANCE_LOCKS) >= _ADVANCE_IDEM_MAX:
+                _ADVANCE_LOCKS.pop(next(iter(_ADVANCE_LOCKS)))
+            lock = _ADVANCE_LOCKS[game_id] = threading.Lock()
+        return lock
 
 
 class GameAdvanceBody(BaseModel):
@@ -635,12 +651,19 @@ def control_game_crisis_check(game_id: str, news_id: str | None = None):
 
 @app.post("/control/game/day/advance")
 def control_game_advance(body: GameAdvanceBody):
-    """하루 1칸 진행 — 뉴스 선택·개입(A/B/C) 반영 후 정산. Day30이면 카드."""
+    """하루 1칸 진행 — 뉴스 선택·개입(A/B/C) 반영 후 정산. Day30이면 카드.
+
+    T-265 — 같은 idem_key 재전송이면 저장된 응답 반환(재적용 없음). 게임별 락으로
+    동시 재시도를 직렬화(체크-후-쓰기 레이스 차단, 게이트 4c-②).
+    """
+    with _advance_lock(body.game_id):
+        return _do_advance(body)
+
+
+def _do_advance(body: GameAdvanceBody):
     g = _get_game(body.game_id)
     if g is None:
         return {"status": "error", "error": "no game"}
-    # T-265 — 멱등성: 같은 키 재전송이면(재시도) 저장된 응답 반환, 재적용 없음.
-    # 게임당 마지막 키 1개만 보관(재시도는 초 단위 — 그 이상은 새 하루가 정상).
     if body.idem_key is not None:
         cached = _ADVANCE_IDEM.get(body.game_id)
         if cached is not None and cached[0] == body.idem_key:
@@ -662,8 +685,16 @@ def control_game_advance(body: GameAdvanceBody):
                              "fund_flow": snap.fund_flow, "realized_pnl": snap.realized_pnl,
                              "stats": snap.emotion_stats, "bundle": snap.bundle}
     if g.finished and g.summary is not None:
-        out["card"] = _result_card.result_card(g.summary)
+        # 게이트 4c-③(부분쓰기): advance_day(변이) 뒤에 예외가 나면 캐시 미기록
+        # 상태로 500 → 클라이언트 재시도가 하루를 이중 적용한다. 카드 실패는
+        # 응답에서 빼되 캐시·정산은 반드시 완료(카드는 /card로 재조회 가능).
+        try:
+            out["card"] = _result_card.result_card(g.summary)
+        except Exception:  # noqa: BLE001
+            pass
     if body.idem_key is not None:
+        if len(_ADVANCE_IDEM) >= _ADVANCE_IDEM_MAX:
+            _ADVANCE_IDEM.pop(next(iter(_ADVANCE_IDEM)))
         _ADVANCE_IDEM[body.game_id] = (body.idem_key, out)
     _persist_game(body.game_id, g)
     return out

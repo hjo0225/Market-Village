@@ -123,8 +123,9 @@ def _g(run_id="board_g"):
 
 
 def test_board_today_closed_on_calm_day():
-    # day0은 change_rate=0(첫날) — 시장 트리거 없음 + medium 뉴스뿐 → 닫힘.
+    # 조용한 날(비첫날)은 닫힘 — day0은 T-257 강제 오픈이라 day1로 검증.
     g = _g()
+    g.advance_day()
     out = g.board_today([_MED])
     assert out["open"] is False and out["posts"] == []
 
@@ -195,26 +196,26 @@ def test_trader_comment_authors_have_real_names():
 
 
 # --- T-257 첫인상 보장 + 발견성 --------------------------------------------- #
-def test_board_day1_always_opens_even_without_trigger():
+def test_board_day0_always_opens_even_without_trigger():
     # 사용자 리포트 3차(2026-07-03) — 첫 세션에서 게시판을 못 보면 "없는 기능"이
-    # 된다. day 1은 트리거 무관 강제 오픈, 컨텍스트는 그날 뉴스 톤.
+    # 된다. 플레이어가 실제로 처음 플레이하는 날은 day 0(/review 정정 — day 1로
+    # 걸면 보장이 두 번째 날에 발동): day 0은 트리거 무관 강제 오픈.
     g = _g("first_day")
-    g.advance_day()                                 # day0 → day1 (조용한 날)
     out = g.board_today([_MED])                     # medium 뉴스뿐, 시장도 잠잠
     assert out["open"] is True
     assert out["context"] == "fear"                 # _MED의 톤(fear)로 수다
 
 
-def test_board_day1_forced_context_falls_back_to_unrest():
+def test_board_day0_forced_context_falls_back_to_unrest():
     g = _g("first_day2")
-    g.advance_day()
     out = g.board_today([])
     assert out["open"] is True and out["context"] == "unrest"
 
 
-def test_board_day0_still_respects_trigger():
-    # 강제 오픈은 day 1만 — day 0 조용한 날은 여전히 닫힘(기존 계약 유지).
-    g = _g("day0_calm")
+def test_board_day1_respects_trigger():
+    # 강제 오픈은 첫날(day 0)만 — 이후 조용한 날은 닫힘(트리거 계약 유지).
+    g = _g("day1_calm")
+    g.advance_day()                                 # day0 → day1
     assert g.board_today([_MED])["open"] is False
 
 
@@ -223,7 +224,7 @@ def test_board_closed_day_carries_recent_archive():
     g = _g("recent_arch")
     first = g.board_today([_HIGH_FEAR])             # day0 열림 → 아카이브 박제
     assert first["open"] is True
-    g.advance_day(); g.advance_day()                # day2 (day1 강제오픈은 건너뜀)
+    g.advance_day()                                 # day1 (조용하면 닫힘)
     out = g.board_today([_MED])
     assert out["open"] is False
     assert out["recent"]["day"] == 0
@@ -245,7 +246,8 @@ def test_board_today_verdict_matches_rendered_posts():
 
 def test_board_closed_day_recent_is_none_without_history():
     g = _g("no_hist")
-    out = g.board_today([_MED])
+    g.advance_day()                                 # day0 게시판 미조회 → 아카이브 없음
+    out = g.board_today([_MED])                     # day1 조용한 날 → 닫힘
     assert out["open"] is False and out["recent"] is None
 
 
