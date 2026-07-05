@@ -232,8 +232,12 @@ def _meetings_by_band(g: "_GameRun") -> dict:
     return out
 
 
-def _ensure_game_walker(game_id: str) -> dict:
-    """클론+NPC 워커 상태 초기화(결정론) — home/walk 어느 쪽이 먼저 와도 동일."""
+def _ensure_game_walker(game_id: str, npc_scheds: dict | None = None) -> dict:
+    """클론+NPC 워커 상태 초기화(결정론) — home/walk 어느 쪽이 먼저 와도 동일.
+
+    T-273 — NPC 일과는 게임의 npc_scheds(마을 프리셋 반영)를 단일 소스로 쓴다.
+    판정(overlap_meetings)과 연출(맵 경로)이 갈라지던 잠재 불일치의 해소이기도.
+    """
     walker = _GAME_WALKERS.setdefault(game_id, {"pos": None, "day": -1, "npcs": {}})
     walker.setdefault("npcs", {})  # T-221 이전에 만들어진 워커 하위호환
     if walker["pos"] is None:
@@ -242,11 +246,13 @@ def _ensure_game_walker(game_id: str) -> dict:
         walker["pos"] = list(home_tile) if home_tile else [70, 40]
     # T-239 — 집 타일은 게임당 1회 뽑아 박제(시작은 랜덤, 게임 내내 같은 집으로 귀가).
     walker.setdefault("home", list(walker["pos"]))
+    scheds = npc_scheds or {}
     for p in _personas.TRADER_PERSONAS:
         if p["id"] in walker["npcs"]:
             continue
         # NPC 시작 위치 = 자기 일과의 첫 장소(결정론, game_id·npc_id 시드).
-        first_place = p["sched"][min(p["sched"])]
+        sched = scheds.get(p["id"], p["sched"])
+        first_place = sched[min(sched)]
         rng_n = random.Random(_walker_seed("walker", game_id, p["id"]))
         tile = _gamerun_rand_tile_for(_GAME_LOCATION_ADDR[first_place], rng_n)
         walker["npcs"][p["id"]] = list(tile) if tile else [70, 40]
@@ -332,7 +338,7 @@ def control_game_home(game_id: str):
     g = _get_game(game_id)
     if g is None:
         return {"status": "error", "error": "no game"}
-    walker = _ensure_game_walker(game_id)
+    walker = _ensure_game_walker(game_id, g.npc_scheds)
     npcs = [
         {"id": p["id"], "name": p["name"], "sprite": p["sprite"],
          "pos": walker["npcs"][p["id"]]}
@@ -353,7 +359,7 @@ def control_game_walk(game_id: str):
     g = _get_game(game_id)
     if g is None:
         return {"status": "error", "error": "no game"}
-    walker = _ensure_game_walker(game_id)
+    walker = _ensure_game_walker(game_id, g.npc_scheds)
     band_names = [b for b, _ in _WALK_BANDS]
     if walker["day"] == g.day:
         return {"status": "ok", "steps": [], "npcs": {}, "cached": True,
@@ -376,8 +382,10 @@ def control_game_walk(game_id: str):
     npc_segments: dict[str, dict[str, list[list[int]]]] = {}
     for p in _personas.TRADER_PERSONAS:
         rng_n = random.Random(_walker_seed("walk", game_id, p["id"], g.day))
+        # T-273 — 연출 경로도 게임의 npc_scheds(프리셋 반영) 단일 소스.
         segs_n, n_cur = _banded_route(
-            p["sched"], tuple(walker["npcs"][p["id"]]), rng_n, home_tile=None)
+            g.npc_scheds.get(p["id"], p["sched"]),
+            tuple(walker["npcs"][p["id"]]), rng_n, home_tile=None)
         npc_segments[p["id"]] = segs_n
         npc_steps[p["id"]] = [xy for b in band_names for xy in segs_n[b]]
         walker["npcs"][p["id"]] = list(n_cur)
@@ -450,6 +458,8 @@ class GameStartBody(BaseModel):
     # 최대 비중 카테고리가 주력, 나머지는 day0부터 2차 포지션으로 채워진다.
     # 없으면(기본) 기존 단일종목(symbol) 경로 그대로.
     allocations: dict[str, float] | None = None
+    # T-273 — 마을 분위기 프리셋(balanced|aggressive|conservative).
+    village: str = "balanced"
 
 
 # T-265 — /day/advance 멱등성 캐시: game_id → (마지막 idem_key, 그 응답).
@@ -511,10 +521,12 @@ def control_game_start(body: GameStartBody):
         }
         g = _GameRun(spec, category=primary_cat, start_price=body.start_price,
                      start_stats=body.start_stats, start_quantity=primary_qty,
-                     initial_positions=initial_positions, run_id="run1")
+                     initial_positions=initial_positions, run_id="run1",
+                     village=body.village)
     else:
         g = _GameRun(spec, category=_category_for_symbol(body.symbol),
-                     start_price=body.start_price, start_stats=body.start_stats, run_id="run1")
+                     start_price=body.start_price, start_stats=body.start_stats,
+                     run_id="run1", village=body.village)
     _GAMES[body.game_id] = g
     _persist_game(body.game_id, g)
     return {"status": "ok", "state": g.state()}

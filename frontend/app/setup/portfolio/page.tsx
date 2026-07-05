@@ -12,6 +12,13 @@ import { clearSetupAnswers, getSetupAnswers, newGameId, setGameId } from "@/lib/
 const SYMBOLS = ["DOGE", "BTC", "SOL", "USDT"];
 const CATEGORIES = ["large_stable", "mid_alt", "meme", "stable"];
 
+// T-273 — 마을 분위기 프리셋(🤖 council: 인원 불변, favored NPC 노출 빈도만 기움).
+const VILLAGES: { key: string; icon: string; label: string; desc: string }[] = [
+  { key: "balanced", icon: "⚖️", label: "균형 잡힌 마을", desc: "함정형과 도움형이 반반 (기본)" },
+  { key: "conservative", icon: "🐢", label: "신중한 마을", desc: "차분한 투자자들을 더 자주 만난다" },
+  { key: "aggressive", icon: "🔥", label: "불타는 마을", desc: "공포·FOMO를 자극하는 이웃이 늘어난다" },
+];
+
 export default function PortfolioSetupPage() {
   const router = useRouter();
   const [answers, setAnswers] = useState<Record<string, number> | null>(null);
@@ -19,6 +26,7 @@ export default function PortfolioSetupPage() {
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
 
+  const [village, setVillage] = useState("balanced");   // T-273
   // -- 분산해서 시작 (T-215 D1, 기본 꺼짐) --
   const [diversify, setDiversify] = useState(false);
   const [allocations, setAllocations] = useState<Record<string, number>>({
@@ -40,7 +48,7 @@ export default function PortfolioSetupPage() {
     setStartError(null);
     try {
       const gameId = newGameId();
-      const r = await api.gameStart(gameId, answers, symbol, 100.0, diversify ? allocations : undefined);
+      const r = await api.gameStart(gameId, answers, symbol, 100.0, diversify ? allocations : undefined, village);
       if (r.status !== "ok") {
         // 실패해도 확정 답변은 보존 — 그대로 재시도 가능(비동기 유실 방지).
         setStartError("서버 연결에 실패했어요. 잠시 후 다시 시도해주세요.");
@@ -105,6 +113,26 @@ export default function PortfolioSetupPage() {
               </p>
             </div>
           )}
+
+          {/* T-273 — 마을 분위기 선택 */}
+          <div className="mt-5 pt-4 border-t-2 border-black/10">
+            <p className="text-sm font-bold mb-2">🏘 마을 분위기</p>
+            <div className="flex flex-col sm:flex-row gap-2">
+              {VILLAGES.map((v) => (
+                <button
+                  key={v.key}
+                  onClick={() => setVillage(v.key)}
+                  className={`flex-1 text-left rounded-xl border-2 border-black p-3 cursor-pointer transition-all
+                    ${village === v.key ? "bg-black text-white shadow-pixel-sm" : "bg-white hover:bg-pixel-water"}`}
+                >
+                  <div className="text-sm font-extrabold">{v.icon} {v.label}</div>
+                  <div className={`text-[11px] mt-0.5 ${village === v.key ? "text-white/70" : "text-pixel-muted"}`}>
+                    {v.desc}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
 
           <div className="flex justify-end mt-4">
             <PixelButton size="lg" disabled={!canStart || starting} onClick={handleStart}>

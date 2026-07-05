@@ -60,6 +60,7 @@ class GameRun:
         initial_rapport: float = 50.0,
         other_categories: tuple[str, ...] | None = None,
         initial_positions: dict[str, dict] | None = None,
+        village: str = "balanced",
     ) -> None:
         self.clone_spec = clone_spec
         self.category = category
@@ -87,7 +88,10 @@ class GameRun:
         # §9.2.1/§12.2 클론 일과(8슬롯 → 장소) — 종류는 고정 메뉴, 순서는 매일
         # 결정론 셔플(T-248). 회피는 그날 일과 위에만 적용(다음 날 이월 없음).
         self.schedule = self._schedule_for_day(0)
-        self.npc_scheds = {k: dict(v) for k, v in _NPC_SCHEDS.items()}
+        # T-273 — 마을 분위기 프리셋(게임 레벨 불변, 회차 간 유지): favored NPC의
+        # 노출 빈도만 기울인다. 인원·함정 커버리지는 불변.
+        self.village = village
+        self.npc_scheds = {k: dict(v) for k, v in _personas.npc_scheds(village).items()}
         # T-252 — 게시판 대화 아카이브(공개 트랙): "day:news_id" → conversation.
         # **게임 레벨**(회차 무관) — 같은 날 같은 뉴스면 회차가 달라도 같은 대화
         # (같은 시험지 보호). new_run(_reset_run_state)에서 리셋하지 않는다.
@@ -529,6 +533,8 @@ class GameRun:
             "start_quantity": self._start_quantity,
             "start_cash": self._start_cash,
             "initial_positions": self._initial_positions,
+            "village": self.village,   # T-273
+
             "other_categories": list(self.other_categories),
             "base_stats": dict(self._base_stats),
             "run_index": self._run_index,
@@ -566,6 +572,7 @@ class GameRun:
             run_id=doc["run_id"], initial_rapport=doc["initial_rapport"],
             other_categories=tuple(doc["other_categories"]),
             initial_positions=doc.get("initial_positions") or None,
+            village=doc.get("village", "balanced"),   # T-273 — 구 문서=균형(현행 동일)
         )
         # __init__이 새 회차로 리셋해버리므로, 저장된 실제 진행 상태를 그 위에 덮는다.
         g._run_index = doc["run_index"]

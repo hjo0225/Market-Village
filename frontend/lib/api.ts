@@ -163,11 +163,12 @@ export const api = {
   // -- 게임 세션 --
   gameStart: (
     gameId: string, answers: Record<string, number>, symbol: string, startPrice = 100.0,
-    allocations?: Record<string, number>,
+    allocations?: Record<string, number>, village = "balanced",   // T-273
   ) =>
     post<{ status: string; state: GameState }>(
       "/control/game/start",
-      { game_id: gameId, answers, symbol, start_price: startPrice, allocations: allocations ?? null }),
+      { game_id: gameId, answers, symbol, start_price: startPrice,
+        allocations: allocations ?? null, village }),
   gameState: (gameId: string) =>
     get<{ status: string; state: GameState }>("/control/game/state", { game_id: gameId }),
   gamePreview: (gameId: string) =>

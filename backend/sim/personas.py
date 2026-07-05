@@ -156,10 +156,36 @@ SNS_PERSONAS: list[dict] = [
 ]
 
 
+# --- T-273 마을 분위기 프리셋 (🤖 council 2026-07-05) --------------------- #
+# 인원 구성은 불변(8종 전원 — 6함정 커버리지 코어 보존), favored 그룹에 고정
+# 슬롯 +1씩만 부여해 노출 빈도를 기울인다. 순수 파생·RNG 없음(결정론), 기존
+# 슬롯과 비충돌, 장소는 기존 사용 장소(카페/일터/광장/운동/펍) 안에서만.
+VILLAGE_PRESETS: dict[str, dict[str, dict[int, str]]] = {
+    "balanced": {},
+    "aggressive": {   # 함정 자극 4종이 마을에 더 자주 나온다
+        "panic_ant": {7: "펍"}, "fomo_scalper": {4: "카페"},
+        "conspiracy_influencer": {5: "광장"}, "jackpot_gambler": {8: "펍"},
+    },
+    "conservative": {  # 도움형 4종이 더 자주 나온다
+        "value_investor": {7: "일터"}, "quant_trader": {3: "일터"},
+        "macro_whale": {1: "운동"}, "contrarian": {6: "운동"},
+    },
+}
+
+
 # --- game_run 계약용 헬퍼 (_NPC_SCHEDS / _NPC_STIM_TRAP 대체) ------------- #
-def npc_scheds() -> dict[str, dict[int, str]]:
-    """{npc_id: {슬롯: 장소}} — 회차 불변 고정 일과(§9.2.1)."""
-    return {p["id"]: dict(p["sched"]) for p in TRADER_PERSONAS}
+def npc_scheds(village: str = "balanced") -> dict[str, dict[int, str]]:
+    """{npc_id: {슬롯: 장소}} — 회차 불변 고정 일과(§9.2.1).
+
+    T-273 — village 프리셋이 favored NPC에 슬롯 +1. 기본값은 기존과 동일.
+    """
+    extra = VILLAGE_PRESETS.get(village) or {}
+    out: dict[str, dict[int, str]] = {}
+    for p in TRADER_PERSONAS:
+        sched = dict(p["sched"])
+        sched.update(extra.get(p["id"], {}))
+        out[p["id"]] = sched
+    return out
 
 
 def npc_stim_traps() -> dict[str, str | None]:
