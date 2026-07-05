@@ -66,6 +66,53 @@ def test_inject_clone_participates_as_comment():
         for th in conv["threads"] for c in th["comments"])   # 원본(아카이브) 불변
 
 
+# --- T-280 클론 답글은 반응형(독백 금지) — 사용자 피드백(2026-07-05) ---------- #
+# "다른 사람들 의견에 대한 자신의 의견처럼": 답글 대상 글쓴이 이름을 부르고,
+# 스탠스가 같으면 동조·다르면 반박 리드인으로 시작한다.
+
+def _clone_comment(out):
+    for th in out["threads"]:
+        for c in th["comments"]:
+            if c["author_id"] == "clone":
+                return th, c
+    raise AssertionError("clone comment missing")
+
+
+def _leadins(kind: str, author: str) -> list[str]:
+    pool = board_v2._social._load_board_pool(str(board_v2._social.BOARD_POOL_PATH))
+    return [t.format(author=author) for t in pool["clone_leadin"][kind]]
+
+
+def test_clone_comment_references_thread_author():
+    out = board_v2.inject_clone(_conv(), "fear", {"급락패닉저항": 30.0},
+                                random.Random(1))
+    th, c = _clone_comment(out)
+    name = board_v2._NAME.get(th["author_id"], th["author_id"])
+    assert name in c["text"]                         # 그 글쓴이에 대한 반응
+
+
+def test_clone_leadin_agree_or_counter_matches_stance():
+    # steady(반대 스탠스)·shaken(다수 추종) 양쪽에서, 대상 글과 스탠스가 같으면
+    # 동조 리드인·다르면 반박 리드인으로 시작해야 한다.
+    for stats in ({"급락패닉저항": 80.0}, {"급락패닉저항": 30.0}):
+        for seed in range(6):
+            out = board_v2.inject_clone(_conv(), "fear", stats,
+                                        random.Random(seed))
+            th, c = _clone_comment(out)
+            name = board_v2._NAME.get(th["author_id"], th["author_id"])
+            kind = "agree" if th["stance"] == c["stance"] else "counter"
+            assert any(c["text"].startswith(l) for l in _leadins(kind, name)), \
+                f"{kind} 리드인 아님: {c['text']!r}"
+
+
+def test_clone_reactive_comment_deterministic():
+    a = board_v2.inject_clone(_conv(), "fear", {"급락패닉저항": 30.0},
+                              random.Random(5))
+    b = board_v2.inject_clone(_conv(), "fear", {"급락패닉저항": 30.0},
+                              random.Random(5))
+    assert a == b
+
+
 def test_validate_drops_foreign_authors_and_clamps():
     conv = {"verdict": "up", "threads": [
         {"author_id": "hacker", "stance": "up", "text": "x", "comments": []},

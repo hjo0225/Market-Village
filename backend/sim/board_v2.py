@@ -326,8 +326,15 @@ def inject_clone(
     majority = _CONTEXT_STANCE.get(context, "split")
     flip = {"up": "down", "down": "up"}.get(majority, "split")
     target = max(out["threads"], key=lambda th: len(th["comments"]))
+    clone_stance = flip if steady else majority
+    # T-280(사용자 피드백) — 독백 금지: 답글 대상 글쓴이를 부르고, 스탠스가
+    # 같으면 동조·다르면 반박 리드인을 본문(감정 반응) 앞에 붙인다.
+    author_name = _NAME.get(target["author_id"], target["author_id"])
+    kind = "agree" if target.get("stance") == clone_stance else "counter"
+    leadins = pool.get("clone_leadin", {}).get(kind) or []
+    lead = rng.choice(leadins).format(author=author_name) if leadins else ""
     target["comments"].append({
         "author_id": "clone",
-        "stance": (flip if steady else majority),
-        "text": rng.choice(variants)})
+        "stance": clone_stance,
+        "text": f"{lead} {rng.choice(variants)}".strip()})
     return out
