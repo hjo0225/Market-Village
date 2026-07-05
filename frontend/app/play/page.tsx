@@ -389,6 +389,7 @@ export default function PlayPage() {
       {boardFeed && (
         <BoardEventModal
           day={boardFeed.day} board={boardFeed}
+          news={news.find((n) => n.id === chosenNewsRef.current) ?? null}
           onClose={() => boardCloseResolver.current?.()}
         />
       )}

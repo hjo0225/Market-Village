@@ -6,7 +6,8 @@ import { NewsItem } from "@/lib/api";
 // 카드(T-217 팔레트 예외 준용)를 철회하고 DESIGN.md 기본(흰 카드·흑 보더·pixel
 // 섀도, 그린/옐로 액센트)으로 재스킨. 톤 구분은 토큰 내 색으로만.
 // T-234 — 하루진행 시 뉴스를 안 골랐으면 이 오버레이가 흐름 안에서 자동으로 뜬다(§7.4).
-const TONE_STYLE: Record<string, { label: string; icon: string; text: string; chip: string }> = {
+// T-279 — 게시판 NEWS 카드에서도 재사용(export).
+export const TONE_STYLE: Record<string, { label: string; icon: string; text: string; chip: string }> = {
   fear: { label: "공포", icon: "📉", text: "text-pixel-danger", chip: "bg-yellow-50" },
   optimism: { label: "낙관", icon: "🚀", text: "text-pixel-greenText", chip: "bg-green-50" },
   uncertain: { label: "불확실", icon: "🌫", text: "text-pixel-muted", chip: "bg-slate-100" },
