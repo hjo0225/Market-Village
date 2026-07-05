@@ -7,8 +7,24 @@ game_run의 NPC 풀이 personas 모듈로 대체되고, /control/game/day/home·
 
 from __future__ import annotations
 
+import os
+
+import pytest
+
 import market_live_server as mls
 from sim import game_run, personas
+
+
+# the_ville 맵 에셋(environment/)은 gitignore — 없으면(CI) 맵 의존 테스트만 스킵(T-220 패턴).
+_MAZE_META = os.path.join(
+    os.path.dirname(__file__), "..", "..",
+    "environment", "frontend_server", "static_dirs", "assets", "the_ville",
+    "matrix", "maze_meta_info.json",
+)
+requires_ville = pytest.mark.skipif(
+    not os.path.exists(_MAZE_META),
+    reason="environment/ 맵 에셋은 gitignore — 로컬 전용(CI엔 없음)",
+)
 
 _TRADER_IDS = {p["id"] for p in personas.TRADER_PERSONAS}
 
@@ -26,6 +42,7 @@ def test_game_run_npc_pool_replaced_by_personas():
     assert "frog" not in game_run._NPC_SCHEDS
 
 
+@requires_ville
 def test_home_returns_eight_npc_walkers():
     _start("npcmap_a")
     r = mls.control_game_home(game_id="npcmap_a")
@@ -37,6 +54,7 @@ def test_home_returns_eight_npc_walkers():
         assert mls._gamerun_walkable(tuple(n["pos"])), n["id"]
 
 
+@requires_ville
 def test_home_npc_positions_deterministic():
     _start("npcmap_b")
     a = mls.control_game_home(game_id="npcmap_b")
@@ -44,6 +62,7 @@ def test_home_npc_positions_deterministic():
     assert a["npcs"] == b["npcs"]
 
 
+@requires_ville
 def test_walk_returns_npc_steps_and_day_caches():
     _start("npcmap_c")
     mls.control_game_home(game_id="npcmap_c")
@@ -59,6 +78,7 @@ def test_walk_returns_npc_steps_and_day_caches():
     assert second.get("cached") is True and second["npcs"] == {}
 
 
+@requires_ville
 def test_walk_new_day_moves_npcs_again():
     _start("npcmap_d")
     mls.control_game_home(game_id="npcmap_d")
@@ -73,6 +93,7 @@ def test_walk_new_day_moves_npcs_again():
 _BANDS = ("오전", "점심", "오후", "저녁")
 
 
+@requires_ville
 def test_walk_returns_time_band_segments():
     _start("npcmap_e")
     r = mls.control_game_walk(game_id="npcmap_e")
@@ -92,6 +113,7 @@ def test_walk_returns_time_band_segments():
     assert all(isinstance(v, list) and v for v in r["plan"].values())
 
 
+@requires_ville
 def test_walk_segments_cached_same_day():
     _start("npcmap_f")
     mls.control_game_walk(game_id="npcmap_f")
@@ -100,6 +122,7 @@ def test_walk_segments_cached_same_day():
     assert all(v == [] for v in again["segments"].values())
 
 
+@requires_ville
 def test_home_returns_place_labels():
     # T-240 — 맵 장소 라벨: 장소명+대표 좌표. 클론 집은 박제 홈 타일과 일치.
     _start("npcmap_h")
@@ -111,6 +134,7 @@ def test_home_returns_place_labels():
         assert len(pos) == 2
 
 
+@requires_ville
 def test_clone_returns_to_the_same_home_every_day():
     # T-239 — 시작 집은 랜덤이어도 한 게임 안에선 매일 같은 집으로 귀가한다
     # (기존엔 귀가 타일을 day-시드 난수로 뽑아 다른 집으로 들어가는 날이 있었다).

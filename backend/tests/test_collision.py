@@ -8,9 +8,23 @@
 
 from __future__ import annotations
 
+import os
 import random
 
+import pytest
+
 import market_live_server as mls
+
+# the_ville 맵 에셋(environment/)은 gitignore — 없으면(CI) 맵 의존 테스트만 스킵(T-220 패턴).
+_MAZE_META = os.path.join(
+    os.path.dirname(__file__), "..", "..",
+    "environment", "frontend_server", "static_dirs", "assets", "the_ville",
+    "matrix", "maze_meta_info.json",
+)
+requires_ville = pytest.mark.skipif(
+    not os.path.exists(_MAZE_META),
+    reason="environment/ 맵 에셋은 gitignore — 로컬 전용(CI엔 없음)",
+)
 
 
 # game_object_blocks.csv 기준 진열대/책장 5종 (id: 32257/32250/32231/32241/32271)
@@ -37,6 +51,7 @@ def test_solid_objects_covers_five_shelf_types():
     assert mls.SOLID_OBJECTS == SHELVES
 
 
+@requires_ville
 def test_shelf_tiles_blocked_in_augmented_maze():
     blocked = mls._blocked_maze()
     raw = mls._maze().collision_maze
@@ -50,6 +65,7 @@ def test_shelf_tiles_blocked_in_augmented_maze():
         assert str(blocked[y][x]) == cid, f"shelf tile {(x, y)} not blocked"
 
 
+@requires_ville
 def test_paths_never_cross_shelves():
     blocked = mls._blocked_maze()
     cid = mls.collision_block_id

@@ -7,10 +7,26 @@
 
 from __future__ import annotations
 
+import os
+
+import pytest
+
 import market_live_server as mls
 from sim import clone_spec as CS
 from sim.clone_stats import MENTAL
 from sim.game_run import GameRun
+
+
+# the_ville 맵 에셋(environment/)은 gitignore — 없으면(CI) 맵 의존 테스트만 스킵(T-220 패턴).
+_MAZE_META = os.path.join(
+    os.path.dirname(__file__), "..", "..",
+    "environment", "frontend_server", "static_dirs", "assets", "the_ville",
+    "matrix", "maze_meta_info.json",
+)
+requires_ville = pytest.mark.skipif(
+    not os.path.exists(_MAZE_META),
+    reason="environment/ 맵 에셋은 gitignore — 로컬 전용(CI엔 없음)",
+)
 
 CLONE = CS.build_clone_spec({"q_panic": 0.9})
 
@@ -64,6 +80,7 @@ def test_meeting_effect_applies_at_night_not_before():
     assert ga.stats != gb.stats
 
 
+@requires_ville
 def test_walk_response_exposes_meetings_by_band():
     mls.control_game_start(mls.GameStartBody(
         game_id="meet_walk", answers={}, symbol="DOGE", start_price=100.0))
