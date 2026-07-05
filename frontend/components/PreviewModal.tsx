@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import PixelModal from "@/components/pixel/PixelModal";
-import PixelButton from "@/components/pixel/PixelButton";
 import { api, Designated, Meetings, NPC_LABELS, NPC_ROLES, Picks } from "@/lib/api";
 
 interface Props {
@@ -12,65 +11,73 @@ interface Props {
   meetings: Meetings;
   picks: Picks;
   designated: Designated;
+  schedule: Record<string, string>;
   onChanged: () => void;
 }
+
+const PLACE_SHORT: Record<string, string> = { "집_차트": "집(차트)" };
 
 function npcName(id: string) {
   return NPC_LABELS[id] ?? id;
 }
 
-// §9.2.1 전날밤 회피 + §9.2.1b 클론이 스스로 고른 대화 상대 노출.
-// T-272a — 후보가 여럿인 슬롯은 플레이어가 상대를 지정할 수 있다(사용자 결정
-// 2026-07-05: 참여감 강화). 기본은 여전히 클론의 선택 — 지정은 덮어쓰기.
-export default function PreviewModal({ isOpen, onClose, gameId, meetings, picks, designated, onChanged }: Props) {
-  const [slotA, setSlotA] = useState(3);
-  const [slotB, setSlotB] = useState(1);
+// §9.2.1 전날밤 — 내일 일과 8슬롯을 한 눈에.
+// T-272b — 슬롯별 행선지 지정(🤖 council: 장소지정≡스왑 등가 — 회피와 동일 파워,
+//   원하는 장소를 끌어오면 원래 장소가 그 슬롯으로 밀려난다). 구 숫자입력 스왑 UI 대체.
+// T-272a — 후보가 여럿인 슬롯은 대화 상대도 지정 가능(기본은 클론의 선택).
+export default function PreviewModal({ isOpen, onClose, gameId, meetings, picks, designated, schedule, onChanged }: Props) {
   const [busy, setBusy] = useState(false);
 
-  const rows = Object.entries(meetings);
+  const slots = Object.keys(schedule).sort((a, b) => Number(a) - Number(b));
+  const places = slots.map((s) => schedule[s]);
 
-  async function doAvoid() {
-    await api.gameAvoid(gameId, slotA, slotB);
-    onChanged();
-  }
-
-  async function doDesignate(slot: string, npcId: string | null) {
+  async function run(p: Promise<unknown>) {
     setBusy(true);
-    try {
-      await api.gameDesignate(gameId, Number(slot), npcId);
-      onChanged();
-    } finally {
-      setBusy(false);
-    }
+    try { await p; onChanged(); } finally { setBusy(false); }
   }
 
   return (
-    <PixelModal isOpen={isOpen} onClose={onClose} title="🌙 전날밤 — 내일 마주칠 NPC" size="md">
-      {rows.length === 0 ? (
-        <p className="text-sm text-pixel-muted">오늘은 마주칠 NPC가 없습니다.</p>
+    <PixelModal isOpen={isOpen} onClose={onClose} title="🌙 전날밤 — 내일 일과와 만남" size="md">
+      {slots.length === 0 ? (
+        <p className="text-sm text-pixel-muted">내일 일과를 불러오는 중…</p>
       ) : (
-        <ul className="flex flex-col gap-2 mb-4">
-          {rows.map(([slot, npcs]) => {
+        <ul className="flex flex-col gap-1.5">
+          {slots.map((slot) => {
+            const npcs = meetings[slot] ?? [];
             const pick = picks[slot] || npcs[0];
             const isMine = designated[slot] === pick;
             return (
-              <li key={slot} className="text-sm bg-pixel-path rounded-lg px-3 py-2">
-                <div>
-                  슬롯{slot}: <b>{npcName(pick)}</b>
-                  <span className="text-pixel-muted"> ({NPC_ROLES[pick] ?? "?"})</span>와 대화
-                  <span className={`ml-1.5 text-xs font-bold rounded px-1 ${
-                    isMine ? "bg-yellow-100 text-yellow-800" : "bg-green-50 text-pixel-greenText"}`}>
-                    {isMine ? "👤 내 지정" : "🪞 클론의 선택"}
-                  </span>
+              <li key={slot} className="bg-pixel-path rounded-lg px-3 py-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-pixel-muted w-10">슬롯{slot}</span>
+                  {/* T-272b — 행선지 지정: 고르면 그 장소가 있던 슬롯과 자리를 바꾼다. */}
+                  <select
+                    value={schedule[slot]} disabled={busy}
+                    onChange={(e) => void run(api.gameRelocate(gameId, Number(slot), e.target.value))}
+                    className="text-sm font-bold border-2 border-black rounded-lg px-1.5 py-0.5 bg-white cursor-pointer"
+                  >
+                    {places.map((p) => (
+                      <option key={p} value={p}>{PLACE_SHORT[p] ?? p}</option>
+                    ))}
+                  </select>
+                  {npcs.length > 0 && pick && (
+                    <span className="text-sm">
+                      🤝 <b>{npcName(pick)}</b>
+                      <span className="text-pixel-muted text-xs"> ({NPC_ROLES[pick] ?? "?"})</span>
+                      <span className={`ml-1 text-[10px] font-bold rounded px-1 ${
+                        isMine ? "bg-yellow-100 text-yellow-800" : "bg-green-50 text-pixel-greenText"}`}>
+                        {isMine ? "👤 내 지정" : "🪞 클론"}
+                      </span>
+                    </span>
+                  )}
                 </div>
-                {/* T-272a — 후보가 여럿일 때만 선택지 노출(하나뿐이면 정할 게 없다). */}
+                {/* T-272a — 후보가 여럿일 때만 상대 선택지 노출. */}
                 {npcs.length > 1 && (
-                  <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                  <div className="mt-1.5 ml-10 flex flex-wrap items-center gap-1.5">
                     {npcs.map((n) => (
                       <button
-                        key={n}
-                        disabled={busy || n === pick}
-                        onClick={() => doDesignate(slot, n)}
+                        key={n} disabled={busy || n === pick}
+                        onClick={() => void run(api.gameDesignate(gameId, Number(slot), n))}
                         className={`text-xs font-bold border-2 border-black rounded-lg px-2 py-0.5
                           ${n === pick ? "bg-black text-white" : "bg-white hover:bg-pixel-water cursor-pointer"}
                           disabled:cursor-default`}
@@ -81,7 +88,7 @@ export default function PreviewModal({ isOpen, onClose, gameId, meetings, picks,
                     {isMine && (
                       <button
                         disabled={busy}
-                        onClick={() => doDesignate(slot, null)}
+                        onClick={() => void run(api.gameDesignate(gameId, Number(slot), null))}
                         className="text-xs text-pixel-muted underline underline-offset-2 hover:text-black cursor-pointer"
                       >
                         클론에게 맡기기
@@ -94,17 +101,9 @@ export default function PreviewModal({ isOpen, onClose, gameId, meetings, picks,
           })}
         </ul>
       )}
-      <div className="border-t-2 border-black/10 pt-3">
-        <p className="text-xs text-pixel-muted mb-2">일과 항목 둘을 바꿔 동선을 튼다(하나만):</p>
-        <div className="flex items-center gap-2">
-          <input type="number" min={1} max={8} value={slotA} onChange={(e) => setSlotA(+e.target.value)}
-            className="w-14 border-2 border-black rounded-lg px-2 py-1 text-sm" />
-          <span>↔</span>
-          <input type="number" min={1} max={8} value={slotB} onChange={(e) => setSlotB(+e.target.value)}
-            className="w-14 border-2 border-black rounded-lg px-2 py-1 text-sm" />
-          <PixelButton size="sm" onClick={doAvoid}>회피</PixelButton>
-        </div>
-      </div>
+      <p className="text-xs text-pixel-muted mt-3">
+        장소를 고르면 그 장소가 있던 슬롯과 <b>자리가 바뀝니다</b> — 피한 자리에 누가 올지는 가봐야 안다.
+      </p>
     </PixelModal>
   );
 }

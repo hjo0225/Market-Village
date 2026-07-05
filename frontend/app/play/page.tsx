@@ -307,7 +307,8 @@ export default function PlayPage() {
       />
       <PreviewModal
         isOpen={previewOpen} onClose={() => setPreviewOpen(false)} gameId={gameId}
-        meetings={meetings} picks={picks} designated={designated} onChanged={() => refresh(gameId)}
+        meetings={meetings} picks={picks} designated={designated} schedule={schedule}
+        onChanged={() => refresh(gameId)}
       />
       <DayResultModal
         result={dayResult} scene={sceneText} day={resultDay}

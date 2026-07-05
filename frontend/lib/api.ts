@@ -180,6 +180,10 @@ export const api = {
   gameDesignate: (gameId: string, slot: number, npcId: string | null) =>
     post<{ status: string; meetings: Meetings; picks: Picks; designated: Designated }>(
       "/control/game/day/designate", { game_id: gameId, slot, npc_id: npcId }),
+  // T-272b — 행선지 지정(스왑 등가 — 재전송 no-op 자연 멱등).
+  gameRelocate: (gameId: string, slot: number, place: string) =>
+    post<{ status: string; schedule: Record<string, string>; meetings: Meetings; picks: Picks; designated: Designated }>(
+      "/control/game/day/relocate", { game_id: gameId, slot, place }),
   // T-269 — 발자취(일별 뉴스 선택·만남·소셜·일과). 순수 조회.
   gameHistory: (gameId: string) =>
     get<{ status: string; run_id: string; days: HistoryDay[] }>(

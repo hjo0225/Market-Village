@@ -303,6 +303,22 @@ class GameRun:
         self.schedule = _avoid_slots(self.schedule, slot_a, slot_b)
         return overlap_meetings(self.schedule, self.npc_scheds)
 
+    def relocate(self, slot: int, place: str) -> dict:
+        """T-272b — 이 슬롯의 행선지를 지정. 🤖 council: 장소지정≡스왑 등가.
+
+        일과는 항상 8장소 순열(T-241)이라 "슬롯 s를 p로"는 p가 있던 슬롯과의
+        스왑과 같다 — 기존 회피(avoid)와 동일 파워, 새로 여는 문이 없다.
+        원하는 장소를 끌어오면 원래 장소가 그 슬롯으로 밀려나는 반대급부가
+        구조적으로 보존된다. 같은 요청 재전송은 자기 스왑 = no-op(자연 멱등).
+        """
+        if slot not in self.schedule:
+            raise ValueError(f"슬롯 {slot} 없음")
+        target = next((s for s, pl in self.schedule.items() if pl == place), None)
+        if target is None:
+            raise ValueError(f"{place!r}는 오늘 일과에 없는 장소")
+        self.schedule = _avoid_slots(self.schedule, slot, target)
+        return self.preview_day()
+
     def designate(self, slot: int, npc_id: str | None) -> dict:
         """T-272a — 이 슬롯의 대화 상대를 플레이어가 지정(§9.2.1b 덮어쓰기).
 

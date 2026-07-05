@@ -591,6 +591,30 @@ def control_game_history(game_id: str):
     return {"status": "ok", "run_id": g.run_id, "days": g.history()}
 
 
+class GameRelocateBody(BaseModel):
+    game_id: str
+    slot: int
+    place: str
+
+
+@app.post("/control/game/day/relocate")
+def control_game_relocate(body: GameRelocateBody):
+    """T-272b — 전날밤: 이 슬롯의 행선지를 지정(스왑 등가 — 회피와 동일 파워).
+
+    같은 (slot, place) 재전송은 no-op(자연 멱등 — 게이트 4c ①). 스왑 대상
+    슬롯 탐색은 서버가 수행(클라이언트 stale schedule 무해 — 4c ②).
+    """
+    g = _get_game(body.game_id)
+    if g is None:
+        return {"status": "error", "error": "no game"}
+    try:
+        preview = g.relocate(body.slot, body.place)
+    except ValueError as e:
+        return {"status": "error", "error": str(e)}
+    _persist_game(body.game_id, g)
+    return {"status": "ok", **preview}
+
+
 class GameDesignateBody(BaseModel):
     game_id: str
     slot: int
