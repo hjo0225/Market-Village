@@ -6,7 +6,6 @@ import PixelButton from "@/components/pixel/PixelButton";
 import PixelModal from "@/components/pixel/PixelModal";
 import StatsPanel from "@/components/StatsPanel";
 import PhoneModal from "@/components/PhoneModal";
-import PreviewModal from "@/components/PreviewModal";
 import NewsModal from "@/components/NewsModal";
 import DayResultModal from "@/components/DayResultModal";
 import BoardEventModal from "@/components/BoardEventModal";
@@ -44,7 +43,6 @@ export default function PlayPage() {
   const [schedule, setSchedule] = useState<Record<string, string>>({});
   const [newsId, setNewsId] = useState<string | null>(null);
   const [phoneOpen, setPhoneOpen] = useState(false);
-  const [previewOpen, setPreviewOpen] = useState(false);
   const [newsOpen, setNewsOpen] = useState(false);
   const [statsOpen, setStatsOpen] = useState(false);
   const [advancing, setAdvancing] = useState(false);
@@ -337,7 +335,7 @@ export default function PlayPage() {
             size="sm" variant={newsId ? "primary" : "secondary"}
             onClick={() => setNewsOpen(true)}
           >📰 뉴스{newsId ? " ✓" : ""}</PixelButton>
-          <PixelButton size="sm" variant="secondary" onClick={() => setPreviewOpen(true)}>🌙 전날밤</PixelButton>
+          {/* T-283 — 🌙 전날밤 버튼 제거(사용자 지시), 기능은 📱 핸드폰 "일과" 탭으로 */}
           <PixelButton size="sm" variant="secondary" onClick={() => setPhoneOpen(true)}>📱 핸드폰</PixelButton>
           {/* T-243(§13.3 빨리감기) — 하루 연출 배속. 모달 선택 대기엔 영향 없음. */}
           <PixelButton
@@ -378,10 +376,6 @@ export default function PlayPage() {
       <PhoneModal
         isOpen={phoneOpen} onClose={() => setPhoneOpen(false)} gameId={gameId}
         rapport={state.rapport} crowdMood={state.crowd_mood}
-        onChanged={() => refresh(gameId)}
-      />
-      <PreviewModal
-        isOpen={previewOpen} onClose={() => setPreviewOpen(false)} gameId={gameId}
         meetings={meetings} picks={picks} designated={designated} schedule={schedule}
         onChanged={() => refresh(gameId)}
       />

@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import PixelButton from "@/components/pixel/PixelButton";
 import { CONTEXT_HEAD, PostCard, VERDICT_LABEL } from "@/components/BoardEventModal";
-import { api, BoardFeed, NPC_LABELS, NPC_ROLES } from "@/lib/api";
+import { PreviewBody } from "@/components/PreviewModal";
+import { api, BoardFeed, Designated, Meetings, NPC_LABELS, NPC_ROLES, Picks } from "@/lib/api";
 
 const FGI_TONES = [
   { value: "calm", label: "휩쓸리지 마" },
@@ -55,11 +56,17 @@ interface Props {
   rapport: number;
   crowdMood: number;
   onChanged: () => void;
+  // T-283 — 🌙 일과 탭(구 전날밤 모달 임베드)
+  meetings: Meetings;
+  picks: Picks;
+  designated: Designated;
+  schedule: Record<string, string>;
 }
 
 // DESIGN.md §2 "진짜 휴대폰" — 검정 베젤+노치+상태바+흰 화면+홈 인디케이터(§9.1b 핸드폰).
-export default function PhoneModal({ isOpen, onClose, gameId, rapport, crowdMood, onChanged }: Props) {
-  const [tab, setTab] = useState<"board" | "feed" | "dm">("board");
+export default function PhoneModal({ isOpen, onClose, gameId, rapport, crowdMood, onChanged,
+                                      meetings, picks, designated, schedule }: Props) {
+  const [tab, setTab] = useState<"board" | "feed" | "dm" | "plan">("board");
   const [fgiTone, setFgiTone] = useState("calm");
   const [fgiResult, setFgiResult] = useState("");
   const [npc, setNpc] = useState(NPCS[0].value);
@@ -156,6 +163,11 @@ export default function PhoneModal({ isOpen, onClose, gameId, rapport, crowdMood
               className={`flex-1 py-2 text-[12px] font-bold border-l-2 border-black ${tab === "dm" ? "bg-pixel-grass" : "bg-white"}`}
               onClick={() => setTab("dm")}
             >📱 1:1</button>
+            {/* T-283 — 구 전날밤 모달을 폰 탭으로(사용자: 헤더 버튼 제거, 기능 유지) */}
+            <button
+              className={`flex-1 py-2 text-[12px] font-bold border-l-2 border-black ${tab === "plan" ? "bg-pixel-grass" : "bg-white"}`}
+              onClick={() => setTab("plan")}
+            >🌙 일과</button>
           </div>
 
           <div className="flex-1 p-3 flex flex-col gap-3">
@@ -203,6 +215,14 @@ export default function PhoneModal({ isOpen, onClose, gameId, rapport, crowdMood
                 <PixelButton size="sm" disabled={busy} onClick={doFgi}>글 올리기</PixelButton>
                 {fgiResult && <div className="text-[11px] font-bold animate-fade-in">{fgiResult}</div>}
               </>
+            ) : tab === "plan" ? (
+              /* T-283 — 🌙 일과(구 전날밤): 내일 일과 8슬롯 + 행선지/만날 사람 지정 */
+              <div className="max-h-[340px] overflow-y-auto pr-1">
+                <PreviewBody
+                  gameId={gameId} meetings={meetings} picks={picks}
+                  designated={designated} schedule={schedule} onChanged={onChanged}
+                />
+              </div>
             ) : (
               <>
                 <div className="text-[11px] text-pixel-muted">1:1 대화 · 래포 <b>{Math.round(rapport)}</b> (위기개입과 같은 풀)</div>
