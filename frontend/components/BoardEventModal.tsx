@@ -129,7 +129,7 @@ export default function BoardEventModal({ day, board, onClose }: Props) {
 
           {board && (
             <p className="text-[13px] text-pixel-muted px-4 py-2 border-t border-black/10">
-              군중 과열도 <b className="text-black">{delta > 0 ? `+${delta}` : delta}</b>
+              군중온도(공포↔탐욕) <b className="text-black">{delta > 0 ? `+${delta}` : delta}</b>
               {" · "}클론을 진정시키고 싶다면 📱 핸드폰의 피드 탭에서.
             </p>
           )}

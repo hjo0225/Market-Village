@@ -62,29 +62,45 @@ def apply_persuasion(
 # PRD §11.5엔 FGI 전용 수치가 없음 — 1:1(±3)보다 확실히 작게 잡은 튜닝 출발점.
 _FGI_MAGNITUDE = 2.0
 _FGI_APPLY_CHANCE = 40.0     # 0~100 스케일. 여러 목소리 중 하나라 안 먹힐 수 있음.
-_FGI_ABSORB_THRESHOLD = 90.0  # 이미 만렙으로 들끓는 방이면 플레이어 글이 묻힘.
+_FGI_ABSORB_THRESHOLD = 90.0  # 극단(≥90 탐욕 / ≤10 공포)이면 플레이어 글이 묻힘.
 
-_TONE_DIRECTION = {"calm": -1, "clarify": -1, "fear_join": 1}
+
+def _crowd_direction(tone: str, crowd_mood: float) -> int:
+    """T-230 — crowd_mood는 방향축(0=극공포↔100=극탐욕, T-250 정본).
+
+    fear_join(같이 무서워하기)은 항상 공포 방향(−) — 구 '들끓음' 축에선 +라서
+    공포 동참이 탐욕지수를 올려 M2(막차불안)를 역점화하는 의미론 역전이 있었다.
+    calm/clarify(진정·팩트체크)는 중립(50) 복원 — 40에서 '진정'이 38(더 공포)로
+    밀리던 역전도 함께 해소.
+    """
+    if tone == "fear_join":
+        return -1
+    if tone in ("calm", "clarify"):
+        return -1 if crowd_mood > 50.0 else (1 if crowd_mood < 50.0 else 0)
+    return 0
 
 
 def fgi_post(
     tone: str, crowd_mood: float, clone_stat_value: float, roll: float = 100.0,
 ) -> dict:
-    """단톡방에 톤 하나를 얹는다. crowd_mood는 군중 과열도(높을수록 들끓음).
+    """단톡방에 톤 하나를 얹는다. crowd_mood는 방향축(0 공포↔100 탐욕).
 
-    이미 만렙(≥90)으로 들끓으면 흡수(안 먹힘, §9.3 폭주방지). 아니면 확률적으로
-    (roll<40) 군중을 톤 방향으로, 클론은 그 절반만 반대(완화)로 살짝 민다.
+    극단(≥90 or ≤10)이면 흡수(안 먹힘, §9.3 폭주방지 — T-230에서 공포 극단도
+    대칭 흡수). 아니면 확률적으로(roll<40) 군중을 방향 규칙(_crowd_direction)대로,
+    클론은 톤 기준으로(진정·팩트체크=내성↑, 공포 동참=내성↓) 살짝 민다.
     """
-    if crowd_mood >= _FGI_ABSORB_THRESHOLD:
+    if crowd_mood >= _FGI_ABSORB_THRESHOLD or crowd_mood <= 100.0 - _FGI_ABSORB_THRESHOLD:
         return {"crowd_mood": crowd_mood, "clone_stat_value": clone_stat_value,
                 "clone_delta_applied": 0.0, "absorbed": True}
     if roll >= _FGI_APPLY_CHANCE:
         return {"crowd_mood": crowd_mood, "clone_stat_value": clone_stat_value,
                 "clone_delta_applied": 0.0, "absorbed": False}
 
-    direction = _TONE_DIRECTION.get(tone, 0)
+    direction = _crowd_direction(tone, crowd_mood)
     new_crowd = T.clamp(crowd_mood + direction * _FGI_MAGNITUDE, 0.0, 100.0)
-    clone_delta = -direction * _FGI_MAGNITUDE * 0.5   # 군중 진정 → 클론 내성 소폭↑
+    # T-230 — 클론 델타는 군중 방향과 분리, 톤 기준(진정=+, 공포 동참=−).
+    clone_delta = (_FGI_MAGNITUDE * 0.5 if tone in ("calm", "clarify")
+                   else -_FGI_MAGNITUDE * 0.5 if tone == "fear_join" else 0.0)
     new_clone = T.clamp(clone_stat_value + clone_delta, T.STAT_MIN, T.STAT_MAX)
     return {"crowd_mood": new_crowd, "clone_stat_value": new_clone,
             "clone_delta_applied": clone_delta, "absorbed": False}

@@ -59,13 +59,18 @@ def test_persuasion_raises_crisis_intervention_success_next_day(monkeypatch):
 
 
 def test_fgi_post_moves_crowd_mood_and_stat():
+    # T-230 — calm은 '들끓음 낮추기'가 아니라 **중립(50) 복원**: 중립에선 무이동,
+    # 클론 멘탈은 톤 기준(진정=+)으로 여전히 오른다.
     g = _g()
-    before_mood = g.crowd_mood
     before_mental = g.stats["멘탈회복"]
     out = g.fgi_post(tone="calm", roll=0.0)
-    assert out["crowd_mood"] < before_mood
+    assert out["crowd_mood"] == 50.0          # 중립에서 calm = 무이동
     assert g.crowd_mood == out["crowd_mood"]
-    assert g.stats["멘탈회복"] >= before_mental
+    assert g.stats["멘탈회복"] > before_mental
+    g.crowd_mood = 60.0
+    assert g.fgi_post(tone="calm", roll=0.0)["crowd_mood"] < 60.0   # 탐욕→중립
+    g.crowd_mood = 40.0
+    assert g.fgi_post(tone="calm", roll=0.0)["crowd_mood"] > 40.0   # 공포→중립
 
 
 def test_new_run_resets_rapport_and_crowd_mood():

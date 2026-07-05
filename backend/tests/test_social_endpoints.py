@@ -28,10 +28,14 @@ def test_persuade_endpoint_missing_game():
 
 
 def test_fgi_endpoint():
+    # T-230 — calm은 중립(50) 복원 의미론: 중립에선 무이동, 공포 쪽(40)에선 +방향.
     _start("soc_b")
     r = mls.control_game_fgi(mls.GameFgiBody(game_id="soc_b", tone="calm", roll=0.0))
     assert r["status"] == "ok"
-    assert r["crowd_mood"] < 50.0
+    assert r["crowd_mood"] == 50.0
+    mls._get_game("soc_b").crowd_mood = 40.0
+    r2 = mls.control_game_fgi(mls.GameFgiBody(game_id="soc_b", tone="calm", roll=0.0))
+    assert r2["crowd_mood"] > 40.0
 
 
 def test_state_exposes_rapport_and_crowd_mood():

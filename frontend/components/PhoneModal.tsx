@@ -97,7 +97,7 @@ export default function PhoneModal({ isOpen, onClose, gameId, rapport, crowdMood
       setFgiResult("⚠️ 전송이 안 됐어요 — 다시 눌러주세요");
       setBusy(false); return;
     }
-    setFgiResult(r.absorbed ? "🌊 묻힘(군중 과열)" : `📣 과열도 ${Math.round(r.crowd_mood)}로 이동`);
+    setFgiResult(r.absorbed ? "🌊 묻힘(군중 극단)" : `📣 군중온도 ${Math.round(r.crowd_mood)}로 이동`);
     setBusy(false); onChanged();
   }
 
@@ -195,7 +195,7 @@ export default function PhoneModal({ isOpen, onClose, gameId, rapport, crowdMood
               )
             ) : tab === "feed" ? (
               <>
-                <div className="text-[11px] text-pixel-muted">FGI 단톡방 · 과열도 <b>{Math.round(crowdMood)}</b> (래포 무관, 약함)</div>
+                <div className="text-[11px] text-pixel-muted">FGI 단톡방 · 군중온도 <b>{Math.round(crowdMood)}</b> (0 공포↔100 탐욕 · 래포 무관, 약함)</div>
                 <select className="border-2 border-black rounded-lg px-2 py-1.5 text-[12px]" value={fgiTone} onChange={(e) => setFgiTone(e.target.value)}>
                   {FGI_TONES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                 </select>

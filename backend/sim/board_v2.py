@@ -94,8 +94,13 @@ def _intensity_scale(drawn_news: list[dict]) -> float:
     return 1.0
 
 
-def validate(conv: dict | None, extra_cast: set[str] | None = None) -> dict | None:
-    """LLM 출력 검증(신뢰 금지) — 화이트리스트 밖 발언 drop·델타 클램프·구조 강제."""
+def validate(conv: dict | None, extra_cast: set[str] | None = None,
+             context: str | None = None) -> dict | None:
+    """LLM 출력 검증(신뢰 금지) — 화이트리스트 밖 발언 drop·델타 클램프·구조 강제.
+
+    T-230 — context가 주어지면 crowd_delta의 **부호**도 컨텍스트와 대조해 클램프
+    (공포 게시판에 +6을 줘도 소비 값은 ≤0 — 방향축 의미론을 LLM이 못 깨게).
+    """
     if not isinstance(conv, dict):
         return None
     cast = _ALL_CAST | {"clone"} | (extra_cast or set())
@@ -129,6 +134,11 @@ def validate(conv: dict | None, extra_cast: set[str] | None = None) -> dict | No
                         -T.CROWD_DELTA_CLAMP, T.CROWD_DELTA_CLAMP)
     except (TypeError, ValueError):
         crowd = 0.0
+    # T-230 — 부호 가드: 공포/뒤숭숭은 음수만, 탐욕/포모는 양수만.
+    if context in ("fear", "unrest"):
+        crowd = min(crowd, 0.0)
+    elif context in ("greed", "fomo"):
+        crowd = max(crowd, 0.0)
     # T-259 — LLM이 준 verdict를 신뢰하지 않고 노출 발화 다수결로 정정
     # (여론 라벨과 화면 인상이 어긋나는 걸 구조적으로 차단).
     return {"verdict": verdict_from_speech(threads), "threads": threads,
@@ -238,11 +248,11 @@ def llm_conversation(
 {cast_lines}
 (클론 발언은 시스템이 따로 주입한다 — 위 목록의 관중들만 등장시켜라.)
 
-출력(JSON만): {{"verdict": "up|down|split", "threads": [{{"author_id", "stance": "up|down|split", "text", "comments": [{{"author_id", "stance", "text"}}]}}], "agent_deltas": {{author_id: {{"fear|greed|confidence|excitement|trust": -8~8}}}}, "crowd_delta": -6~6}}
+출력(JSON만): {{"verdict": "up|down|split", "threads": [{{"author_id", "stance": "up|down|split", "text", "comments": [{{"author_id", "stance", "text"}}]}}], "agent_deltas": {{author_id: {{"fear|greed|confidence|excitement|trust": -8~8}}}}, "crowd_delta": -6~6 (음수=공포 심화, 양수=탐욕 과열)}}
 threads는 2~4개, 글마다 comments 0~4개(개수를 다르게), 한국어 커뮤니티 말투."""
         raw = cli.chat(user=user, system="투자 커뮤니티 대화 시뮬레이터. JSON만 출력.",
                        temperature=0.8)
-        conv = validate(extract_json(raw))
+        conv = validate(extract_json(raw), context=context)
         if conv is None:
             return None
         # 리뷰 수정(council F2) — LLM이 지시를 어기고 클론을 등장시켜도 아카이브
