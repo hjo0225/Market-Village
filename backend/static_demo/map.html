@@ -144,8 +144,13 @@ function bootPhaser(walkers){
         o.s.x += dx * k;
         o.s.y += dy * k;
       }
-      o.label.x = o.s.x; o.label.y = o.s.y - 6 - 16 * SPRITE_SCALE;
-      if (o.bubble){ o.bubble.x = o.s.x; o.bubble.y = o.label.y - 26; }   // T-242
+      o.label.x = Math.round(o.s.x); o.label.y = Math.round(o.s.y - 6 - 16 * SPRITE_SCALE);
+      if (o.bubble){
+        // T-278 — 말꼬리 끝이 네임플레이트 바로 위(머리 위)에 닿게: 높이 기반 정렬.
+        // 좌표 반올림은 setResolution 텍스트의 서브픽셀 블러(깨져 보임) 방지.
+        o.bubble.x = Math.round(o.s.x);
+        o.bubble.y = Math.round(o.label.y - 10 - (o.bubbleH || 34) / 2);
+      }
     });
   }
   game = new Phaser.Game(config);
@@ -297,16 +302,22 @@ function setBubble(orig, text){
   if (!o || !scene) return;
   if (o.bubble){ o.bubble.destroy(); o.bubble = null; }
   if (!text) return;
-  const t = scene.add.text(0, -2, text, {
+  const t = scene.add.text(0, 0, text, {
     fontSize: "13px",
     fontFamily: "Pretendard, 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif",
     fontStyle: "bold", color: "#1f2937",
+    padding: { x: 2, y: 4 },   // T-278 — 이모지가 폰트 메트릭보다 커서 잘리던 것 방지
   }).setOrigin(0.5).setResolution(3);
   // T-247 — 원본(generative agents) 말풍선 에셋(v3, 말꼬리 포함)을 텍스트 크기에
   // 맞춰 늘려 쓴다(사용자 요청 — 직접 그린 도형 대신).
+  // T-278(사용자 리포트 "깨져 보임") — 세로를 덜 눌러 본체가 뭉개지지 않게 하고,
+  // 텍스트는 꼬리(원본 55px 중 아래 ~12px) 위 본체 중앙에 앉힌다.
   const img = scene.add.image(0, 0, "bubble");
-  img.setDisplaySize(t.width + 26, t.height + 18);
+  const w = t.width + 26, h = t.height + 22;
+  img.setDisplaySize(w, h);
+  t.y = -(h * (12 / 55)) / 2;
   o.bubble = scene.add.container(o.s.x, o.s.y, [img, t]).setDepth(21);
+  o.bubbleH = h;   // T-278 — update 루프가 머리 위 정렬에 사용
 }
 
 // T-237 §12.1b — 시간대 동기 재생: 부모가 {type:"walk", band:"오전"…}를 단계마다
