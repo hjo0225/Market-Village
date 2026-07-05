@@ -7,15 +7,18 @@
 있는 것)만 전경에 넣어야 한다.
 
 T-263은 "Interior Furniture L2 " 레이어 전체를 전경에 넣어 카펫·침대·의자 같은
-바닥 데코까지 캐릭터를 덮었다(몸 뚫림 리포트). T-277: 아래 규칙으로 선별한다.
+바닥 데코까지 캐릭터를 덮었다(몸 뚫림 리포트). T-277이 1차 선별, T-282(사용자
+리포트 "여전히 지형지물이 에이전트 위에")가 규칙을 v2로 강화했다.
 
-선별 규칙(조건부 레이어의 타일 (x,y)):
-  keep = blocked(x,y) or blocked(x,y+1)
+선별 규칙 v2(FG L1/L2 + Interior Furniture L2 전부, 타일 (x,y)):
+  keep = blocked(x,y+1) or tileset == Room_Builder_32x32
   - blocked = 게임 실충돌(collision_maze ∪ SOLID_OBJECTS 가구, market_live_server와
-    동일 정의). 캐릭터가 설 수 없는 칸의 타일은 전경에 둬도 무해하고(원래 모습 유지),
-    바로 아래 칸이 막힌 타일은 "키 큰 가구의 상단"(캐릭터가 그 뒤에 서는 칸)이다.
-  - 둘 다 아니면(자기 칸도 아래 칸도 걸을 수 있음) 바닥 데코(카펫·러그·의자·침대
-    발치 등) → 전경 제외(배경 the_ville_full.png에는 이미 베이크돼 있어 그대로 보임).
+    동일 정의). 바로 아래 칸이 막힌 타일 = "키 큰 가구의 모자"(그 칸에 선 캐릭터는
+    가구 뒤이므로 하반신이 가려지는 게 올바른 깊이).
+  - Room_Builder = 벽 상단·문 상인방 등 구조물 — 문 아래를 지나며 가려지는 게 올바름.
+  - 그 외는 전경 제외(배경 the_ville_full.png에 이미 베이크돼 있어 그대로 보임):
+    바닥 데코(카펫·의자·바 카운터·안락의자 — 전신 덮임)와 가구 앞면(blocked인데
+    남쪽이 통행 칸 — 앞에 선 스프라이트는 자기 칸 위로 8px 침범하므로 머리가 잘림).
 
 실행:  python backend/tools/render_fg.py
 출력:  environment/.../visuals/the_ville_fg.png (기존 파일은 백업 후 덮어씀)
@@ -164,15 +167,26 @@ def main():
     def blit(x, y, gid):
         canvas.alpha_composite(fetch(gid), (x * TILE, y * TILE))
 
-    for name in FULL_LAYERS:
-        for i, gid in enumerate(layers[name]["data"]):
-            if not gid:
-                continue
-            blit(i % W, i // W, gid)
-            stats[f"{name}: 포함"] += 1
-
+    # T-282(사용자 리포트 "여전히 지형지물이 에이전트보다 위에") — 규칙 v2.
+    # T-277의 v1은 ①FG L1/L2를 전량 포함(바 카운터·안락의자 등 바닥 데코 18타일이
+    # 스프라이트 전신을 덮음) ②blocked 칸을 무해로 봤으나, 스프라이트가 자기 칸
+    # 위로 8px 침범하므로 남쪽이 통행 칸인 가구 앞면은 머리를 잘랐다.
+    # v2: 3레이어 공통 — 전경 유지 = "바로 아래 칸이 막힘"(가구의 모자 — 그 칸에
+    # 선 캐릭터는 가구 뒤이므로 가려지는 게 올바른 깊이) 또는 Room_Builder 구조물
+    # (벽 상단·문 상인방 — 문 아래를 지나며 가려지는 게 올바름). 나머지는 배경에만.
     excluded_by_gid = Counter()
-    for name in CONDITIONAL_LAYERS:
+    tileset_ordered = sorted(d["tilesets"], key=lambda t: t["firstgid"])
+
+    def tileset_name(raw):
+        ts = None
+        for t in tileset_ordered:
+            if raw >= t["firstgid"]:
+                ts = t
+            else:
+                break
+        return os.path.basename(ts["image"]) if ts else ""
+
+    for name in list(FULL_LAYERS) + list(CONDITIONAL_LAYERS):
         for i, gid in enumerate(layers[name]["data"]):
             if not gid:
                 continue
@@ -183,14 +197,13 @@ def main():
             elif raw in FORCE_EXCLUDE_GIDS:
                 keep = False
             else:
-                # 자기 칸이 막혔거나(캐릭터가 못 서는 칸 — 무해) 바로 아래 칸이
-                # 막혔으면(키 큰 가구 상단 — 캐릭터가 뒤에 섬) 전경 유지.
-                keep = is_blocked(x, y) or is_blocked(x, y + 1)
+                keep = (is_blocked(x, y + 1)
+                        or tileset_name(raw) == "Room_Builder_32x32.png")
             if keep:
                 blit(x, y, gid)
                 stats[f"{name}: 포함"] += 1
             else:
-                stats[f"{name}: 제외(바닥 데코)"] += 1
+                stats[f"{name}: 제외"] += 1
                 excluded_by_gid[raw] += 1
 
     # 기존 파일 백업(최초 1회만 — 재실행이 백업을 덮어쓰지 않게)
