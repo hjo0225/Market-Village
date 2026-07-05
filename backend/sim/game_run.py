@@ -182,10 +182,12 @@ class GameRun:
         if res is not None:
             snap, self.holding, self.last_price = res
             # T-269 발자취 — 그날의 뉴스 선택·만남·일과를 스냅샷에 남긴다(이력 패널).
+            # schedule 키는 str로 — BSON은 int 키 문서를 거부해 _persist_game이
+            # 조용히 실패하고 재시작 복원이 옛 문서로 떨어진다(T-277 검증 중 발견).
             snap.news_id = (news or {}).get("id", "")
             snap.news_tone = (news or {}).get("tone", "")
             snap.met = list(met)
-            snap.schedule = dict(self.schedule)
+            snap.schedule = {str(k): v for k, v in self.schedule.items()}
             self.stats = snap.emotion_stats
             self.last_snap = snap
             self._prev_realized_pnl = snap.realized_pnl

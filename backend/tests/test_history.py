@@ -25,7 +25,10 @@ def test_snapshot_records_news_met_schedule():
     snap = g.advance_day(news=NEWS)
     assert snap.news_id == "n1"
     assert snap.news_tone == "fear"
-    assert snap.schedule == sched_before          # 진행 시점(회피 반영)의 일과
+    # 진행 시점(회피 반영)의 일과 — 키는 str(BSON은 int 키 거부: DB-off 테스트가
+    # 못 잡는 저장 실패를 여기서 구조적으로 봉인).
+    assert snap.schedule == {str(k): v for k, v in sched_before.items()}
+    assert all(isinstance(k, str) for k in snap.schedule)
     assert isinstance(snap.met, list)
     if snap.met:                                   # 만남이 있던 날이면 주 교류=첫 만남
         assert snap.companion == snap.met[0]
