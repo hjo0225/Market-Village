@@ -54,6 +54,7 @@ from backend.sim import presentation as _presentation  # noqa: E402
 from backend.sim import interview_llm as _interview_llm  # noqa: E402
 from backend.sim.interview import question_by_id as _question_by_id  # noqa: E402
 from backend.sim.fate_line import category_for_symbol as _category_for_symbol  # noqa: E402
+from backend.sim import tuning as _T  # noqa: E402
 
 # §12.4 step-able GameRun 세션 맵 (game_id → GameRun). 신 엔진 정본 플레이 경로.
 # 이게 항상 1차 진실 소스 — MongoDB(T-DB)는 서버 재시작 후 재개용 보조 저장소일 뿐.
@@ -580,6 +581,47 @@ def control_game_avoid(body: GameAvoidBody):
     meetings = g.avoid(body.slot_a, body.slot_b)
     _persist_game(body.game_id, g)
     return {"status": "ok", "schedule": dict(g.schedule), "meetings": meetings}
+
+
+def _siren_today(game_id: str, day: int) -> bool:
+    """T-271 — 사이렌 발생 판정. game_id 시드 결정론(회차 무관 — §13.6 거울:
+    run이 달라도 같은 날 떠야 회차 비교가 같은 시험지가 된다)."""
+    return zlib.crc32(f"siren:{game_id}:{day}".encode()) % 100 < _T.SIREN_PROB_PCT
+
+
+@app.get("/control/game/day/siren")
+def control_game_siren(game_id: str):
+    """T-271 — 오늘 사이렌이 뜨는 날인지 + 이미 소비했는지. 순수 조회(무변이)."""
+    g = _get_game(game_id)
+    if g is None:
+        return {"status": "error", "error": "no game"}
+    return {"status": "ok", "day": g.day,
+            "active": _siren_today(game_id, g.day) and not g.finished,
+            "used": g.day in g._siren_log}
+
+
+class GameSirenBody(BaseModel):
+    game_id: str
+    day: int
+    choice: str   # bad | good | skip
+
+
+@app.post("/control/game/day/siren")
+def control_game_siren_choose(body: GameSirenBody):
+    """T-271 — 사이렌 선택 적용. 그날의 사이렌 1개(자연 멱등, 4c ①),
+    _advance_lock으로 동시 POST·advance와 직렬화(4c ②)."""
+    g = _get_game(body.game_id)
+    if g is None:
+        return {"status": "error", "error": "no game"}
+    with _advance_lock(body.game_id):
+        if not _siren_today(body.game_id, body.day):
+            return {"status": "error", "error": "no siren today"}
+        try:
+            eff = g.siren_choice(body.day, body.choice)
+        except ValueError as e:
+            return {"status": "error", "error": str(e)}
+    _persist_game(body.game_id, g)
+    return {"status": "ok", **eff, "state": g.state()}
 
 
 @app.get("/control/game/history")

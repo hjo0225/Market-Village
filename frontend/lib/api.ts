@@ -184,6 +184,14 @@ export const api = {
   gameRelocate: (gameId: string, slot: number, place: string) =>
     post<{ status: string; schedule: Record<string, string>; meetings: Meetings; picks: Picks; designated: Designated }>(
       "/control/game/day/relocate", { game_id: gameId, slot, place }),
+  // T-271 — 긴급 속보 사이렌: 오늘 활성 여부 조회(GET, 무변이) + 선택(POST, 자연 멱등).
+  gameSiren: (gameId: string) =>
+    get<{ status: string; day: number; active: boolean; used: boolean }>(
+      "/control/game/day/siren", { game_id: gameId }),
+  gameSirenChoose: (gameId: string, day: number, choice: "bad" | "good" | "skip") =>
+    post<{ status: string; applied?: boolean; duplicate?: boolean; kind?: string;
+          stat?: string | null; stat_delta?: number; crowd_delta?: number }>(
+      "/control/game/day/siren", { game_id: gameId, day, choice }),
   // T-269 — 발자취(일별 뉴스 선택·만남·소셜·일과). 순수 조회.
   gameHistory: (gameId: string) =>
     get<{ status: string; run_id: string; days: HistoryDay[] }>(

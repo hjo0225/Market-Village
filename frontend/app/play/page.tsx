@@ -15,6 +15,7 @@ import DayProgressOverlay from "@/components/DayProgressOverlay";
 import MapBackground, { MapBackgroundHandle } from "@/components/MapBackground";
 import { api, BoardFeed, Designated, GameState, HistoryDay, NewsItem, Meetings, Picks, DayResult } from "@/lib/api";
 import HistoryPanel from "@/components/HistoryPanel";
+import SirenEventModal from "@/components/SirenEventModal";
 import { getGameId } from "@/lib/session";
 
 // 사용자 피드백(2026-07-01) — "하루가 2분동안 진행되는 속도로". 4단계 × 20초 기본.
@@ -33,6 +34,12 @@ export default function PlayPage() {
   const [picks, setPicks] = useState<Picks>({});
   const [designated, setDesignated] = useState<Designated>({});   // T-272a
   const [history, setHistory] = useState<HistoryDay[]>([]);       // T-269 발자취
+  // T-271 — 긴급 속보 사이렌: 오후 스테이지에 한시(20초/배속) 등장, 놓치면 소멸.
+  const [sirenVisible, setSirenVisible] = useState(false);
+  const [sirenModalOpen, setSirenModalOpen] = useState(false);
+  const [sirenBusy, setSirenBusy] = useState(false);
+  const [sirenToast, setSirenToast] = useState<string | null>(null);
+  const sirenTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [schedule, setSchedule] = useState<Record<string, string>>({});
   const [newsId, setNewsId] = useState<string | null>(null);
   const [phoneOpen, setPhoneOpen] = useState(false);
@@ -163,9 +170,47 @@ export default function PlayPage() {
   // 오후·저녁 구간(위기 유무와 무관한 하루의 꼬리) — 위기 선택 후에도 재사용.
   async function playAfternoonEvening() {
     setDayStage(2);           // ☀️ 오후
+    void maybeShowSiren();    // T-271 — 오후 장에 사이렌(뜨는 날만, 놓치면 소멸)
     await Promise.all([sleep(DAY_STAGE_MS / speedRef.current), mapRef.current?.playWalk("오후", speedRef.current) ?? sleep(0)]);
     setDayStage(3);           // 🌇 저녁
     await Promise.all([sleep(DAY_STAGE_MS / speedRef.current), mapRef.current?.playWalk("저녁", speedRef.current) ?? sleep(0)]);
+    // T-271 — 사이렌 창은 하루의 꼬리에서 정리(선택 모달이 열려 있으면 그대로 두고,
+    // 밤 정산(finishAdvance)에서 stale day가 자연 차단한다).
+    if (sirenTimerRef.current) clearTimeout(sirenTimerRef.current);
+    setSirenVisible(false);
+  }
+
+  // T-271 — 사이렌 판정(GET, 무변이): 뜨는 날 + 미소비면 20초(배속 반영) 창을 연다.
+  async function maybeShowSiren() {
+    if (!gameId) return;
+    const s = await api.gameSiren(gameId);
+    if (s.status !== "ok" || !s.active || s.used) return;
+    setSirenVisible(true);
+    if (sirenTimerRef.current) clearTimeout(sirenTimerRef.current);
+    sirenTimerRef.current = setTimeout(
+      () => setSirenVisible(false), 20000 / speedRef.current);
+  }
+
+  async function handleSirenChoose(choice: "bad" | "good" | "skip") {
+    if (!gameId || !state || sirenBusy) return;
+    setSirenBusy(true);
+    try {
+      const r = await api.gameSirenChoose(gameId, state.day, choice);
+      if (r.status === "ok" && r.applied) {
+        setSirenToast(
+          choice === "bad" ? `🚨 갑작스런 악재가 퍼졌다 — 마을이 술렁인다 (저항 ${r.stat_delta})`
+          : choice === "good" ? `🚨 갑작스런 호재가 퍼졌다 — 마을이 들뜬다 (저항 ${r.stat_delta})`
+          : "🤫 이번 속보는 조용히 넘겼다.");
+      } else if (r.status !== "ok") {
+        setSirenToast("속보가 이미 지나갔어요.");
+      }
+      setTimeout(() => setSirenToast(null), 4000);
+      setSirenModalOpen(false);
+      setSirenVisible(false);
+      await refresh(gameId);
+    } finally {
+      setSirenBusy(false);
+    }
   }
 
   async function handleCrisisChoice(strategy: string | null) {
@@ -314,6 +359,28 @@ export default function PlayPage() {
         result={dayResult} scene={sceneText} day={resultDay}
         onClose={() => setDayResult(null)}
       />
+      {/* T-271 — 우하단 사이렌(한시 등장, 클릭=속보 선택) */}
+      {sirenVisible && (
+        <button
+          onClick={() => setSirenModalOpen(true)}
+          aria-label="긴급 속보"
+          className="fixed bottom-6 right-6 z-[130] w-16 h-16 flex items-center justify-center
+            text-3xl bg-white border-2 border-black rounded-2xl shadow-pixel-lg
+            animate-pulse cursor-pointer hover:scale-110 transition-transform"
+        >
+          🚨
+        </button>
+      )}
+      <SirenEventModal
+        isOpen={sirenModalOpen} busy={sirenBusy}
+        onChoose={(c) => void handleSirenChoose(c)}
+        onClose={() => setSirenModalOpen(false)}
+      />
+      {sirenToast && (
+        <div className="fixed bottom-24 right-6 z-[130] bg-white border-2 border-black rounded-xl shadow-pixel-md px-4 py-2 text-sm font-bold animate-slide-up">
+          {sirenToast}
+        </div>
+      )}
       {advanceError && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[125] bg-rose-50 border-2 border-black rounded-xl shadow-pixel-lg px-4 py-2 text-xs font-bold animate-slide-up">
           ⚠️ {advanceError}

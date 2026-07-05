@@ -15,7 +15,7 @@ from dataclasses import asdict
 
 from .avoidance import avoid as _avoid_slots, clone_picks_npc
 from .clone_spec import CloneSpec
-from .clone_stats import MENTAL, stat_for_trap
+from .clone_stats import F1_RES, M1_RES, MENTAL, stat_for_trap
 from .day_loop import clone_disturbance, day_slots, overlap_meetings, shuffle_schedule
 from . import tuning as _T
 from .tuning import clamp
@@ -128,6 +128,8 @@ class GameRun:
         self._designated: dict[int, str] = {}
         # T-269 — 플레이어 소셜 액션 로그(권유·FGI). 이력 패널의 데이터 소스.
         self._social_log: list[dict] = []
+        # T-271 — 그날의 사이렌 소비 기록(day→선택). 싱글턴이라 자연 멱등(4c ①).
+        self._siren_log: dict[int, str] = {}
 
     def new_run(self, run_id: str | None = None) -> None:
         """다음 회차 — 클론은 '처음 만남'으로 리셋, 요약은 누적(§13.8/§14.3)."""
@@ -375,6 +377,33 @@ class GameRun:
             "social": [e for e in self._social_log if e.get("day") == day],
         } for day, s in sorted(snaps.items())]
 
+    def siren_choice(self, day: int, kind: str) -> dict:
+        """T-271 — 긴급 속보 선택 적용(심리 전용 — 가격·운명선 불가침 §7.1).
+
+        그날의 사이렌은 1개(싱글턴) — 이미 소비됐으면 재적용 없이 기록을
+        반환한다(자연 멱등, 4c ①). 지난 날 늦은 POST는 거부(레이스 꼬리).
+        """
+        if self.finished or day != self.day:
+            raise ValueError(f"사이렌은 오늘(day {self.day})만 유효")
+        if day in self._siren_log:
+            return {"applied": False, "duplicate": True, "kind": self._siren_log[day]}
+        if kind == "bad":
+            stat, crowd_delta = F1_RES, -_T.SIREN_CROWD_DELTA   # 공포 축
+        elif kind == "good":
+            stat, crowd_delta = M1_RES, _T.SIREN_CROWD_DELTA    # FOMO 축
+        elif kind == "skip":
+            stat, crowd_delta = None, 0.0                        # 절제 — 효과 0
+        else:
+            raise ValueError(f"unknown siren choice {kind!r}")
+        if stat is not None:
+            self.stats[stat] = clamp(
+                self.stats.get(stat, 50.0) + _T.SIREN_STAT_DELTA, 0.0, 100.0)
+            self.crowd_mood = clamp(self.crowd_mood + crowd_delta, 0.0, 100.0)
+        self._siren_log[day] = kind
+        return {"applied": True, "kind": kind, "stat": stat,
+                "stat_delta": _T.SIREN_STAT_DELTA if stat else 0.0,
+                "crowd_delta": crowd_delta}
+
     def board_today(self, drawn_news: list[dict], use_llm: bool = False) -> dict:
         """T-223 게시판(D1~D3) — 이벤트 날만 열리고, 하루 1회 확정 생성.
 
@@ -521,6 +550,7 @@ class GameRun:
             "board": self._board,
             "designated": {str(k): v for k, v in self._designated.items()},  # T-272a
             "social_log": list(self._social_log),   # T-269
+            "siren_log": {str(k): v for k, v in self._siren_log.items()},  # T-271
             "archive": self.board_archive,   # T-252 — 대화 박제(재시작 안전)
             "store": self.store.to_dict(),
         }
@@ -556,6 +586,7 @@ class GameRun:
         # T-272a 이전 문서엔 없음 → {}(하위호환)
         g._designated = {int(k): v for k, v in (doc.get("designated") or {}).items()}
         g._social_log = doc.get("social_log") or []   # T-269 하위호환
+        g._siren_log = {int(k): v for k, v in (doc.get("siren_log") or {}).items()}  # T-271
         # T-250 부호 전환 하위호환 — 무부호 시절(verdict 없음) 박제된 공포 게시판의
         # +델타를 새 의미(양수=탐욕)로 적용하면 역방향 블립 → 부호 반전.
         if (g._board and "verdict" not in g._board
