@@ -240,12 +240,12 @@ export default function PlayPage() {
           버튼 뒤로 숨긴다. 지도가 화면 대부분을 차지하게. */}
       <div className="relative z-10 p-5">
         <header className="flex items-center gap-4 mb-4 flex-wrap bg-white/90 backdrop-blur-sm border-2 border-black rounded-2xl shadow-pixel-md px-4 py-3">
-          <h1 className="text-lg font-extrabold">🪞 {state.run_id}</h1>
-          <span className="text-sm">Day <b>{state.day}</b>/{state.days}</span>
-          <span className="text-sm">총자산 <b>{Math.round(state.total_asset)}</b></span>
+          {/* T-266 — run_id는 내부 식별자라 비노출(사용자 피드백), 핵심 수치는 크게. */}
+          <span className="text-base font-bold">🗓 Day <b className="text-xl">{state.day}</b><span className="text-pixel-muted">/{state.days}</span></span>
+          <span className="text-base font-bold">💰 총자산 <b className="text-xl">{Math.round(state.total_asset)}</b></span>
           {/* T-245 — 마을 순위(배경 정보 톤, 버튼 아님 — 목표는 순위가 아니라 카드 등급 §13.7) */}
           {rank && (
-            <span className="text-xs text-pixel-muted">
+            <span className="text-sm text-pixel-muted">
               🏘 마을 {rank.rank}위/{rank.total}
               {rank.delta > 0 && <b className="text-pixel-greenText"> ▲{rank.delta}</b>}
               {rank.delta < 0 && <b className="text-red-500"> ▼{-rank.delta}</b>}
