@@ -13,7 +13,7 @@ import BoardEventModal from "@/components/BoardEventModal";
 import CrisisEventModal from "@/components/CrisisEventModal";
 import DayProgressOverlay from "@/components/DayProgressOverlay";
 import MapBackground, { MapBackgroundHandle } from "@/components/MapBackground";
-import { api, BoardFeed, GameState, NewsItem, Meetings, Picks, DayResult } from "@/lib/api";
+import { api, BoardFeed, Designated, GameState, NewsItem, Meetings, Picks, DayResult } from "@/lib/api";
 import { getGameId } from "@/lib/session";
 
 // 사용자 피드백(2026-07-01) — "하루가 2분동안 진행되는 속도로". 4단계 × 20초 기본.
@@ -30,6 +30,7 @@ export default function PlayPage() {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [meetings, setMeetings] = useState<Meetings>({});
   const [picks, setPicks] = useState<Picks>({});
+  const [designated, setDesignated] = useState<Designated>({});   // T-272a
   const [schedule, setSchedule] = useState<Record<string, string>>({});
   const [newsId, setNewsId] = useState<string | null>(null);
   const [phoneOpen, setPhoneOpen] = useState(false);
@@ -86,6 +87,7 @@ export default function PlayPage() {
     setState(st.state);
     if (prev.status === "ok") {
       setMeetings(prev.meetings); setPicks(prev.picks);
+      setDesignated(prev.designated ?? {});   // T-272a — 구서버 응답엔 없음 → {}
       setSchedule(prev.schedule ?? {});   // T-240 — 진행 중 일정 안내에 사용
     }
     if (nw.status === "ok") setNews(nw.news);
@@ -296,7 +298,7 @@ export default function PlayPage() {
       />
       <PreviewModal
         isOpen={previewOpen} onClose={() => setPreviewOpen(false)} gameId={gameId}
-        meetings={meetings} picks={picks} onChanged={() => refresh(gameId)}
+        meetings={meetings} picks={picks} designated={designated} onChanged={() => refresh(gameId)}
       />
       <DayResultModal
         result={dayResult} scene={sceneText} day={resultDay}

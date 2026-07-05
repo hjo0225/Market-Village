@@ -61,6 +61,7 @@ python -m pytest -q
 | GET | `/control/game/state` | 현재 회차 상태 |
 | GET | `/control/game/news` | 아침 뉴스 3지선다 |
 | POST | `/control/game/day/avoid` | 전날밤 회피 |
+| POST | `/control/game/day/designate` | 전날밤 대화 상대 지정(T-272a) |
 | POST | `/control/game/day/advance` | 하루 진행(개입 A/B/C 포함) |
 | GET | `/control/game/day/scene` | 정산 연출 |
 | GET | `/control/game/card` | 결과 카드 |

@@ -582,6 +582,30 @@ def control_game_avoid(body: GameAvoidBody):
     return {"status": "ok", "schedule": dict(g.schedule), "meetings": meetings}
 
 
+class GameDesignateBody(BaseModel):
+    game_id: str
+    slot: int
+    npc_id: str | None = None   # None = 지정 해제(클론에게 맡김)
+
+
+@app.post("/control/game/day/designate")
+def control_game_designate(body: GameDesignateBody):
+    """T-272a — 전날밤: 이 슬롯의 대화 상대를 플레이어가 지정(§9.2.1b 덮어쓰기).
+
+    같은 (slot, npc) 재전송은 같은 결과(자연 멱등 — 게이트 4c ①). 후보 밖
+    NPC는 거부. 지정은 그날 하루만 유효.
+    """
+    g = _get_game(body.game_id)
+    if g is None:
+        return {"status": "error", "error": "no game"}
+    try:
+        preview = g.designate(body.slot, body.npc_id)
+    except ValueError as e:
+        return {"status": "error", "error": str(e)}
+    _persist_game(body.game_id, g)
+    return {"status": "ok", **preview}
+
+
 class GamePersuadeBody(BaseModel):
     game_id: str
     npc_id: str

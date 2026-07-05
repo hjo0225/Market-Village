@@ -90,6 +90,8 @@ export interface GameState {
 export interface NewsItem { id: string; tone: string; headline: string; }
 export interface Meetings { [slot: string]: string[]; }
 export interface Picks { [slot: string]: string | null; }
+// T-272a — 플레이어가 지정한 대화 상대(슬롯→npc id). 없으면 클론이 고른다.
+export interface Designated { [slot: string]: string; }
 export interface ResultCard {
   return_pct: number; grade: string; emotion_overall: CloneStats; evaluation: string;
 }
@@ -156,11 +158,15 @@ export const api = {
   gameState: (gameId: string) =>
     get<{ status: string; state: GameState }>("/control/game/state", { game_id: gameId }),
   gamePreview: (gameId: string) =>
-    get<{ status: string; slots: unknown[]; schedule: Record<string, string>; meetings: Meetings; picks: Picks }>(
+    get<{ status: string; slots: unknown[]; schedule: Record<string, string>; meetings: Meetings; picks: Picks; designated: Designated }>(
       "/control/game/day/preview", { game_id: gameId }),
   gameAvoid: (gameId: string, slotA: number, slotB: number) =>
     post<{ status: string; schedule: Record<string, string>; meetings: Meetings }>(
       "/control/game/day/avoid", { game_id: gameId, slot_a: slotA, slot_b: slotB }),
+  // T-272a — 대화 상대 지정(npc_id=null이면 해제=클론에게 맡김). 자연 멱등.
+  gameDesignate: (gameId: string, slot: number, npcId: string | null) =>
+    post<{ status: string; meetings: Meetings; picks: Picks; designated: Designated }>(
+      "/control/game/day/designate", { game_id: gameId, slot, npc_id: npcId }),
   // seed 생략 시 서버가 (game_id, day)로 파생 — 같은 날 안정, 날마다 새 3개(T-223).
   gameNews: (gameId: string, seed?: number) =>
     get<{ status: string; news: NewsItem[] }>("/control/game/news", { game_id: gameId, seed }),

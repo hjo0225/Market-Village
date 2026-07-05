@@ -123,6 +123,9 @@ class GameRun:
         self.rapport: float = run_state["rapport"]
         self.crowd_mood: float = 50.0  # §9.2.3 FGI 단톡방 과열도(중립 시작)
         self._board: dict | None = None  # T-223 오늘의 게시판(하루 1회 확정, 캐시)
+        # T-272a — 플레이어의 대화 상대 지정(슬롯→npc). 그날 하루만 유효(§9.2.1b
+        # 기본은 여전히 클론의 선택 — 지정은 후보 안에서의 덮어쓰기).
+        self._designated: dict[int, str] = {}
 
     def new_run(self, run_id: str | None = None) -> None:
         """다음 회차 — 클론은 '처음 만남'으로 리셋, 요약은 누적(§13.8/§14.3)."""
@@ -151,8 +154,10 @@ class GameRun:
         met: list[str] = []
         meetings = overlap_meetings(self.schedule, self.npc_scheds)
         for slot in sorted(meetings):
-            pick = clone_picks_npc(meetings[slot], self.clone_spec.trap_scores,
-                                   _NPC_STIM_TRAP)
+            # T-272a — 플레이어 지정이 있고 여전히 후보 안이면 그쪽 우선.
+            desig = self._designated.get(slot)
+            pick = desig if desig in meetings[slot] else clone_picks_npc(
+                meetings[slot], self.clone_spec.trap_scores, _NPC_STIM_TRAP)
             if pick:
                 met.append(pick)
         self._met_today = met
@@ -203,6 +208,7 @@ class GameRun:
                 self.stats[MENTAL] = clamp(
                     self.stats.get(MENTAL, 50.0) + _T.MEETING_CALM_DELTA, 0.0, 100.0)
         self._met_today = []
+        self._designated = {}  # T-272a — 지정은 그날 하루만(일일 셔플 T-248과 동일 수명)
         # §9.3 폭주 방지 — 군중 분위기는 밤사이 중립으로 일부 회귀(게시판·FGI로
         # 올라간 과열이 영구 고착돼 M2를 상시 발동시키는 되먹임 차단, T-225).
         self.crowd_mood = clamp(
@@ -238,8 +244,12 @@ class GameRun:
         비공개 §12.4)
         """
         meetings = overlap_meetings(self.schedule, self.npc_scheds)
+        # T-272a — 플레이어 지정(후보 안일 때만 유효)이 클론의 선택을 덮어쓴다.
         picks = {
-            slot: clone_picks_npc(candidates, self.clone_spec.trap_scores, _NPC_STIM_TRAP)
+            slot: (self._designated[slot]
+                   if self._designated.get(slot) in candidates
+                   else clone_picks_npc(candidates, self.clone_spec.trap_scores,
+                                        _NPC_STIM_TRAP))
             for slot, candidates in meetings.items()
         }
         return {
@@ -247,6 +257,8 @@ class GameRun:
             "schedule": dict(self.schedule),
             "meetings": meetings,
             "picks": picks,
+            "designated": {s: n for s, n in self._designated.items()
+                           if n in meetings.get(s, [])},
         }
 
     def preview_crisis(self, *, news: dict | None = None) -> dict:
@@ -283,6 +295,22 @@ class GameRun:
         """일과 항목 하나의 순서만 변경(두 슬롯 스왑) → 마주칠 NPC가 달라진다."""
         self.schedule = _avoid_slots(self.schedule, slot_a, slot_b)
         return overlap_meetings(self.schedule, self.npc_scheds)
+
+    def designate(self, slot: int, npc_id: str | None) -> dict:
+        """T-272a — 이 슬롯의 대화 상대를 플레이어가 지정(§9.2.1b 덮어쓰기).
+
+        npc_id=None이면 지정 해제(클론에게 맡김). 그 슬롯 후보가 아닌 NPC는
+        거부 — 클론의 동선 밖 인물과 억지로 만나게 할 수는 없다(회피와 대칭:
+        플레이어 개입은 언제나 '이미 가능한 것' 안에서만).
+        """
+        if npc_id is None:
+            self._designated.pop(slot, None)
+            return self.preview_day()
+        meetings = overlap_meetings(self.schedule, self.npc_scheds)
+        if npc_id not in meetings.get(slot, []):
+            raise ValueError(f"npc {npc_id!r}는 슬롯 {slot}의 후보가 아님")
+        self._designated[slot] = npc_id
+        return self.preview_day()
 
     # --- §9.2.2 1:1 권유 + §9.2.3 FGI 단톡방 ------------------------------ #
     def persuade(self, npc_id: str, direction: str, roll: float = 100.0,
@@ -450,6 +478,7 @@ class GameRun:
             "rapport": self.rapport,
             "crowd_mood": self.crowd_mood,
             "board": self._board,
+            "designated": {str(k): v for k, v in self._designated.items()},  # T-272a
             "archive": self.board_archive,   # T-252 — 대화 박제(재시작 안전)
             "store": self.store.to_dict(),
         }
@@ -482,6 +511,8 @@ class GameRun:
         g.rapport = doc["rapport"]
         g.crowd_mood = doc["crowd_mood"]
         g._board = doc.get("board")   # T-223 이전 문서엔 없음 → None(하위호환)
+        # T-272a 이전 문서엔 없음 → {}(하위호환)
+        g._designated = {int(k): v for k, v in (doc.get("designated") or {}).items()}
         # T-250 부호 전환 하위호환 — 무부호 시절(verdict 없음) 박제된 공포 게시판의
         # +델타를 새 의미(양수=탐욕)로 적용하면 역방향 블립 → 부호 반전.
         if (g._board and "verdict" not in g._board
