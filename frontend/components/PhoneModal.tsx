@@ -115,7 +115,8 @@ export default function PhoneModal({ isOpen, onClose, gameId, rapport, crowdMood
     const reply = NPC_REPLY[npc] ?? { ok: "…그래, 알았어.", no: "…글쎄, 난 잘 모르겠는데." };
     setChat((c) => [...c, {
       who: "npc", npcId: npc,
-      text: r.accepted ? reply.ok : reply.no,
+      // T-c — 서버가 기억·개별 래포를 반영한 응답(npc_line)을 주면 우선.
+      text: r.npc_line ?? (r.accepted ? reply.ok : reply.no),
       meta: `${r.accepted ? "✅ 먹힘" : "❌ 씹힘"} · 성공률 ${Math.round(r.success_prob)}% · 래포 ${Math.round(r.rapport)}`,
     }]);
     setBusy(false); onChanged();

@@ -253,7 +253,9 @@ export const api = {
 
   // -- 핸드폰(§9.1b) --
   persuade: (gameId: string, npcId: string, direction: "calm" | "escalate", roll = 50.0) =>
-    post<{ status: string; accepted: boolean; success_prob: number; rapport: number }>(
+    // T-c — npc_rapport/npc_line: NPC별 래포·기억 반영 응답(구 서버 호환 optional).
+    post<{ status: string; accepted: boolean; success_prob: number; rapport: number;
+           npc_rapport?: number; npc_line?: string }>(
       "/control/game/social/persuade", { game_id: gameId, npc_id: npcId, direction, roll }),
   fgi: (gameId: string, tone: string, roll = 20.0) =>
     post<{ status: string; crowd_mood: number; clone_delta_applied: number; absorbed: boolean }>(

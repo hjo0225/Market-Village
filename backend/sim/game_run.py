@@ -354,10 +354,18 @@ class GameRun:
                                        self.rapport, roll=roll, escalation=escalation)
         self.stats = out["stats"]
         self.rapport = out["rapport"]
+        # T-c — 대화 기억은 이번 항목을 기록하기 **전**(과거만)에 읽는다.
+        memory = _agent_state.npc_chat_memory(npc_id, self._social_log, self.day)
         # T-269 — 발자취: 플레이어의 권유 시도를 일자와 함께 기록.
         self._social_log.append({"day": self.day, "kind": "persuade",
                                  "npc_id": npc_id, "direction": direction,
                                  "accepted": bool(out.get("accepted"))})
+        # T-c — 개별 래포는 기록 **후**(이번 대화 반영값). 기존 키 계약 불변,
+        # 신규 키 2개만 추가(공유 rapport 풀 §11.4.4는 위에서 그대로 갱신됨).
+        npc_rapport_v = _agent_state.npc_rapport(npc_id, self._social_log, self.day)
+        out["npc_rapport"] = round(npc_rapport_v, 2)
+        out["npc_line"] = _agent_state.npc_reply_line(
+            npc_id, direction, bool(out.get("accepted")), npc_rapport_v, memory)
         return out
 
     def fgi_post(self, tone: str, roll: float = 100.0) -> dict:
@@ -449,8 +457,10 @@ class GameRun:
                 if conv is None:
                     rng = random.Random(
                         zlib.crc32(f"board:{self.run_id}:{self.day}".encode()))
+                    # T-e — 아카이브(지난 대화)를 넘겨 작성자 발화에 기억 향미.
                     conv = _board_v2.offline_conversation(
-                        context, self.stats, drawn_news, rng)
+                        context, self.stats, drawn_news, rng,
+                        archive=self.board_archive, day=self.day)
                 self.board_archive[key] = conv
             crng = random.Random(zlib.crc32(f"{self.run_id}:{self.day}".encode()))
             with_clone = _board_v2.inject_clone(conv, context, self.stats, crng)

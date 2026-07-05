@@ -158,13 +158,17 @@ def verdict_from_speech(threads: list[dict]) -> str:
 
 def offline_conversation(
     context: str, clone_stats: dict[str, float], drawn_news: list[dict],
-    rng: random.Random,
+    rng: random.Random, archive: dict | None = None, day: int = 0,
 ) -> dict:
     """오프라인 결정론 폴백 — 기존 board_pool 문구를 대화 스키마로 조립.
 
     글 2~3개·글마다 댓글 0~3개 가변(리포트 ③), 스탠스는 컨텍스트+성향 규칙,
     agent_deltas는 규칙표(작성자 주축 ±4·댓글자 ±2), crowd_delta는 부호(T-250)
     × 뉴스 강도 스케일(⑪).
+
+    T-e — archive(공개 트랙 박제)를 주면 글 작성자에게 지난 대화 기억/감정
+    여운 접두(speech_flavor)를 붙인다. rng 소비 이후의 순수 텍스트 가공이라
+    결정론·기존 호출(archive 미지정) 계약은 불변.
     """
     # 리뷰 수정 — 아카이브(공개 트랙) 생성은 클론 스탯과 완전 무관해야 한다:
     # 스탯이 rng 소비량을 바꾸면 첫 조회 시점(권유 전/후)에 따라 다른 대화가 박제됨.
@@ -200,6 +204,14 @@ def offline_conversation(
                 "author_id": pid,
                 "stance": _stance_for(pid, majority, flip),
                 "text": rng.choice(variants)})
+
+    # T-e 기억 발화 — 글 작성자만(댓글 제외), 발화당 향미 최대 1개.
+    if archive:
+        from . import agent_state as _agent_state   # 지연 import(순환 차단)
+        for th in threads:
+            flavor = _agent_state.speech_flavor(th["author_id"], archive, day)
+            if flavor:
+                th["text"] = flavor + th["text"]
 
     deltas: dict[str, dict[str, float]] = {}
     for th in threads:

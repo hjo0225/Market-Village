@@ -73,6 +73,13 @@ SIREN_STAT_DELTA = -5.0     # 관련 저항 스탯 델타
 SIREN_CROWD_DELTA = 5.0     # 마을 여론 델타(악재는 −, 호재는 +)
 CONFIRMATION_BIAS_IGNORE_STREAK = 3   # 손실 포지션 중 비관 정보 3회 연속 무시
 
+# T-a(에이전트 메모리) — 에이전트 감정 파생의 R6 3칸(감쇠·클램프·평형=baseline).
+# R6/R7 표준화: crowd_mood 선례(0.20)는 M2=75 임계를 먹이는 기계 변수라
+# 평형<임계 강제가 필요했지만, agent 감정은 v1 기계 소비처 0(발화 전용)
+# + 밴드 하드클램프(±25)라 표현 여운을 위해 더 느긋한 0.15로 둔다.
+AGENT_EMOTION_DECAY = 0.15   # 밤마다 baseline 편차의 15% 회귀
+AGENT_EMOTION_BAND = 25.0    # baseline ± 밴드 하드클램프
+
 # T-210 — 다자산 자금흐름(§8.3 to_hotter/concentrate 충동매매의 실제 이동 비율)
 CHASE_FRACTION = 0.5        # M1/M2 충동: 보유 현금의 몇 %를 급등 종목에 새로 태우나
 CONCENTRATE_FRACTION = 0.5  # G2 충동: 보유 현금의 몇 %를 기존 포지션에 더 넣나(몰빵)
