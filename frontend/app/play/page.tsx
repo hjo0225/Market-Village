@@ -10,6 +10,7 @@ import PreviewModal from "@/components/PreviewModal";
 import NewsModal from "@/components/NewsModal";
 import DayResultModal from "@/components/DayResultModal";
 import BoardEventModal from "@/components/BoardEventModal";
+import MeetingChatModal, { MeetingLine, MeetingNpc } from "@/components/MeetingChatModal";
 import CrisisEventModal from "@/components/CrisisEventModal";
 import DayProgressOverlay from "@/components/DayProgressOverlay";
 import MapBackground, { MapBackgroundHandle } from "@/components/MapBackground";
@@ -56,6 +57,13 @@ export default function PlayPage() {
   // 게시판(T-225, D1·D3) — 이벤트 날 아침 뒤에만 뜨는 블로킹 관찰 이벤트.
   // 닫기 전엔 하루가 진행되지 않는다(resolver로 진행 재개).
   const [boardFeed, setBoardFeed] = useState<BoardFeed | null>(null);
+  // T-281 — 만남 폰 채팅(맵 iframe이 meeting_talk로 올림, 닫으면 meeting_done)
+  const [meetingTalk, setMeetingTalk] = useState<{ npc: MeetingNpc; lines: MeetingLine[] } | null>(null);
+  // 만남 모달이 열려 있는 동안 하루 흐름을 세우는 게이트 — playWalk의 밴드
+  // 타임아웃(맵 무응답 폴백)이 만료돼도 게시판/위기가 채팅 위로 겹치지 않게.
+  const meetingWaitRef = useRef<Promise<void> | null>(null);
+  const meetingDoneRef = useRef<(() => void) | null>(null);
+  const waitMeetingClosed = () => meetingWaitRef.current ?? Promise.resolve();
   const boardCloseResolver = useRef<(() => void) | null>(null);
   // T-234 — 하루진행이 뉴스 선택을 기다리는 중인가(모달에서 선택/스킵 시 진행 시작).
   const [pendingAdvance, setPendingAdvance] = useState(false);
@@ -115,6 +123,24 @@ export default function PlayPage() {
     if (gameId) refresh(gameId);
   }, [gameId, refresh]);
 
+  // T-281 — 만남 1:1 대화는 핸드폰 채팅창으로(사용자 반복 피드백). map iframe이
+  // meeting_talk를 올리면 즉시 ack(수신 확인 — 구버전 폴백 차단)하고 폰을 띄운다.
+  // 닫을 때 meeting_done을 보내야 map이 걷기를 재개한다(T-275 순서 계승).
+  useEffect(() => {
+    const onMsg = (ev: MessageEvent) => {
+      const d = ev.data as { type?: string; npc?: MeetingNpc; lines?: MeetingLine[] };
+      if (d?.type === "meeting_talk" && d.npc) {
+        mapRef.current?.signal({ type: "meeting_ack" });
+        meetingWaitRef.current = new Promise<void>((resolve) => {
+          meetingDoneRef.current = resolve;
+        });
+        setMeetingTalk({ npc: d.npc, lines: d.lines ?? [] });
+      }
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, []);
+
   // "하루 진행" 클릭 — 사용자 피드백(2026-07-01): 하루가 순간이동처럼 느껴지지
   // 않게 2분 가량에 걸쳐 아침→한낮→저녁 순으로 흘러간다. 위기가 실제 발생한
   // 날이면(시장조건만으로 결정, 뉴스/개입과 무관하므로 미리 조용히 조회해도
@@ -141,6 +167,7 @@ export default function PlayPage() {
     // 그 시간대 일과 구간을 걷는다(단계 길이 = max(연출 최소시간, 그 구간 걷기)).
     setDayStage(0);           // 🌅 오전
     await Promise.all([sleep(DAY_STAGE_MS / speedRef.current), mapRef.current?.playWalk("오전", speedRef.current) ?? sleep(0)]);
+    await waitMeetingClosed();   // T-281 — 만남 채팅이 열려 있으면 게시판보다 먼저 닫는다
     // 이벤트 있는 날이면 📱 게시판(블로킹) — 닫을 때까지 하루가 멈춘다(D1·D3).
     const board = await boardPromise;
     if (board.status === "ok" && board.open) {
@@ -156,6 +183,7 @@ export default function PlayPage() {
     }
     setDayStage(1);           // 🍜 점심 — 끝나면 위기 판정(오후 장 직전)
     await Promise.all([sleep(DAY_STAGE_MS / speedRef.current), mapRef.current?.playWalk("점심", speedRef.current) ?? sleep(0)]);
+    await waitMeetingClosed();   // T-281 — 위기 카드가 채팅 위로 겹치지 않게
     const check = await checkPromise;
     if (check.status === "ok" && check.trap && check.trap_name) {
       setDayStage(-1);
@@ -172,8 +200,10 @@ export default function PlayPage() {
     setDayStage(2);           // ☀️ 오후
     void maybeShowSiren();    // T-271 — 오후 장에 사이렌(뜨는 날만, 놓치면 소멸)
     await Promise.all([sleep(DAY_STAGE_MS / speedRef.current), mapRef.current?.playWalk("오후", speedRef.current) ?? sleep(0)]);
+    await waitMeetingClosed();   // T-281
     setDayStage(3);           // 🌇 저녁
     await Promise.all([sleep(DAY_STAGE_MS / speedRef.current), mapRef.current?.playWalk("저녁", speedRef.current) ?? sleep(0)]);
+    await waitMeetingClosed();   // T-281 — 밤 정산(결과 모달)도 채팅 뒤에
     // T-271 — 사이렌 창은 하루의 꼬리에서 정리(선택 모달이 열려 있으면 그대로 두고,
     // 밤 정산(finishAdvance)에서 stale day가 자연 차단한다).
     if (sirenTimerRef.current) clearTimeout(sirenTimerRef.current);
@@ -391,6 +421,18 @@ export default function PlayPage() {
           day={boardFeed.day} board={boardFeed}
           news={news.find((n) => n.id === chosenNewsRef.current) ?? null}
           onClose={() => boardCloseResolver.current?.()}
+        />
+      )}
+      {meetingTalk && (
+        <MeetingChatModal
+          npc={meetingTalk.npc} lines={meetingTalk.lines}
+          onClose={() => {
+            setMeetingTalk(null);
+            mapRef.current?.signal({ type: "meeting_done" });
+            meetingDoneRef.current?.();
+            meetingDoneRef.current = null;
+            meetingWaitRef.current = null;
+          }}
         />
       )}
       {crisisTrapName && (

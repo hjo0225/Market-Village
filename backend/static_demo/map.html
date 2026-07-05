@@ -364,12 +364,35 @@ async function walkBand(gameId, band, speedup){
       return;
     }
     faceEachOther(CLONE_ORIG, m.id);   // T-262 — 대화는 정면으로(사용자 피드백)
-    setBubble(CLONE_ORIG, "💬 " + m.name + "와 이야기 중");
+    setBubble(CLONE_ORIG, "💬");
     setBubble(m.id, "💬");
-    // T-275(사용자 리포트) — 대화가 끝나기 전에 walked를 보내면 부모가 게시판/
-    // 위기 모달을 즉시 열어 대화를 끊는다. 대화 시간만큼 **await**(배속 반영)한
-    // 뒤에 walked를 보낸다 — 게시판은 대화가 끝난 뒤에 열린다.
-    await new Promise((r) => setTimeout(r, 4500 / Math.max(1, speedup || 1)));
+    // T-281(사용자 반복 피드백) — 대화 내용은 맵 말풍선이 아니라 **부모의 핸드폰
+    // 채팅창**에서. meeting_talk를 올리고 부모가 닫을 때까지(meeting_done) 대기.
+    // T-275의 순서 보장(대화 끝난 뒤 walked)은 이 대기가 그대로 계승한다.
+    // 부모가 구버전 번들이면(ack 3초 무응답) 기존 4.5초 말풍선으로 폴백.
+    await new Promise((resolve) => {
+      let acked = false, done = false;
+      const finish = () => {
+        if (done) return;
+        done = true;
+        window.removeEventListener("message", onMsg);
+        resolve();
+      };
+      const onMsg = (ev) => {
+        const t = ev.data && ev.data.type;
+        if (t === "meeting_ack") acked = true;
+        else if (t === "meeting_done") finish();
+      };
+      window.addEventListener("message", onMsg);
+      window.parent.postMessage({
+        type: "meeting_talk", band,
+        npc: { id: m.id, name: m.name, role: m.role || "", portrait: m.portrait || null },
+        lines: m.lines || [],
+      }, "*");
+      setTimeout(() => {
+        if (!acked) setTimeout(finish, 4500 / Math.max(1, speedup || 1));   // 구버전 부모 폴백
+      }, 3000);
+    });
     if (gen === walkGen && bubbleGen === bg){
       setBubble(m.id, null);
       if (plan.length) setBubble(CLONE_ORIG, PLACE_DOING[plan[plan.length - 1]] || "");

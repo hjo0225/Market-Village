@@ -41,6 +41,7 @@ from utils import collision_block_id  # noqa: E402  (config)
 
 from backend.sim import news as _news  # noqa: E402
 from backend.sim import personas as _personas  # noqa: E402
+from backend.sim import meeting_talk as _meeting_talk  # noqa: E402  (T-281)
 from backend.sim import npc_traders as _npc_traders  # noqa: E402
 from backend.sim import clone_stats as _clone_stats  # noqa: E402
 from backend.sim import clone_spec as _clone_spec  # noqa: E402
@@ -218,17 +219,27 @@ def _walker_seed(*parts) -> int:
     return zlib.crc32(":".join(str(p) for p in parts).encode())
 
 
-def _meetings_by_band(g: "_GameRun") -> dict:
-    """T-249 — 오늘의 만남(픽)을 시간대별로(맵 대화 연출용). 순수 조회."""
+def _meetings_by_band(g: "_GameRun", game_id: str = "") -> dict:
+    """T-249 — 오늘의 만남(픽)을 시간대별로(맵 대화 연출용). 순수 조회.
+
+    T-281 — 폰 채팅창용 role·portrait·lines(결정론 대사) 동봉(사용자 반복
+    피드백: 1:1 대화는 맵 말풍선이 아니라 핸드폰 채팅으로).
+    """
     band_names = [b for b, _ in _WALK_BANDS]
     out: dict[str, list] = {b: [] for b in band_names}
     prev = g.preview_day()
+    stats = dict(getattr(g, "stats", None) or {})
     for slot, pick in (prev.get("picks") or {}).items():
         if not pick:
             continue
         band = band_names[(int(slot) - 1) // 2]
         p = _personas.trader_by_id(pick)
-        out[band].append({"id": pick, "name": p["name"] if p else pick})
+        out[band].append({
+            "id": pick,
+            "name": p["name"] if p else pick,
+            "role": p["role"] if p else "",
+            "portrait": p["portrait"] if p else None,
+            "lines": _meeting_talk.dialogue(game_id, g.day, pick, stats)})
     return out
 
 
@@ -368,7 +379,7 @@ def control_game_walk(game_id: str):
                                  for p in _personas.TRADER_PERSONAS},
                 "plan": {band: [g.schedule[s] for s in slots if g.schedule.get(s)]
                          for band, slots in _WALK_BANDS},
-                "meetings_by_band": _meetings_by_band(g)}
+                "meetings_by_band": _meetings_by_band(g, game_id)}
 
     # T-237 — 클론·NPC 모두 시간대 4구간으로 분해(연출이 하루 단계와 동기).
     # flat(steps/npcs)은 구간의 순차 연결 — 구버전 map.html 하위호환.
@@ -395,7 +406,7 @@ def control_game_walk(game_id: str):
             for band, slots in _WALK_BANDS}
     return {"status": "ok", "steps": steps, "npcs": npc_steps,
             "segments": segments, "npc_segments": npc_segments, "plan": plan,
-            "meetings_by_band": _meetings_by_band(g)}
+            "meetings_by_band": _meetings_by_band(g, game_id)}
 
 
 # --------------------------------------------------------------------------- #
