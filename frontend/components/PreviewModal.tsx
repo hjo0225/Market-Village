@@ -24,13 +24,28 @@ export function PreviewBody({ gameId, meetings, picks, designated, schedule, onC
   onChanged: () => void;
 }) {
   const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
 
   const slots = Object.keys(schedule).sort((a, b) => Number(a) - Number(b));
   const places = slots.map((s) => schedule[s]);
 
-  async function run(p: Promise<unknown>) {
+  // T-283 후속(사용자 리포트 "동작을 안 하던데") — 실패를 조용히 삼키지 않는다:
+  // 서버 거부(status!=ok)·네트워크 실패 둘 다 화면에 사유를 표시.
+  async function run(p: Promise<{ status: string; error?: string }>) {
     setBusy(true);
-    try { await p; onChanged(); } finally { setBusy(false); }
+    setErr("");
+    try {
+      const r = await p;
+      if (r.status !== "ok") {
+        setErr(`⚠️ 반영 안 됨 — ${r.error ?? "서버가 거부했어요"}`);
+        return;
+      }
+      onChanged();
+    } catch {
+      setErr("⚠️ 네트워크 오류 — 잠시 후 다시 시도해 주세요.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   if (slots.length === 0) {
@@ -38,6 +53,7 @@ export function PreviewBody({ gameId, meetings, picks, designated, schedule, onC
   }
   return (
     <>
+      {err && <p className="text-xs font-bold text-pixel-danger mb-1.5">{err}</p>}
       <ul className="flex flex-col gap-1.5">
         {slots.map((slot) => {
           const npcs = meetings[slot] ?? [];
