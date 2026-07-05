@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Image from "next/image";
 import PixelButton from "@/components/pixel/PixelButton";
 import { BoardFeed, BoardPost } from "@/lib/api";
@@ -44,12 +45,18 @@ function Stance({ stance }: { stance?: string | null }) {
 }
 
 // T-257 — PhoneModal 게시판 탭에서도 재사용(export).
-export function PostCard({ post, index }: { post: BoardPost; index: number }) {
+// T-276 — compact: 트위터식 목록 카드(댓글 접힘·클릭하면 onOpen으로 상세 진입).
+export function PostCard({ post, index, compact = false, onOpen }: {
+  post: BoardPost; index: number; compact?: boolean; onOpen?: () => void;
+}) {
   const isClone = post.author_kind === "clone";
   return (
     <div
+      onClick={compact ? onOpen : undefined}
+      role={compact ? "button" : undefined}
       className={`rounded-xl border p-3 bg-white animate-pixel-pop ${
-        isClone ? "border-pixel-grass shadow-[0_0_0_2px_rgba(74,222,128,0.4)]" : "border-black/20"}`}
+        isClone ? "border-pixel-grass shadow-[0_0_0_2px_rgba(74,222,128,0.4)]" : "border-black/20"}
+        ${compact ? "cursor-pointer hover:bg-slate-50 active:translate-y-[1px]" : ""}`}
       style={{ animationDelay: `${index * 0.28}s`, animationFillMode: "backwards" }}
     >
       <div className="flex items-center gap-2 mb-1.5">
@@ -72,7 +79,7 @@ export function PostCard({ post, index }: { post: BoardPost; index: number }) {
         {isClone && <span className="text-[12px] font-bold text-pixel-grass-dark bg-pixel-grass/20 rounded px-1">내 클론</span>}
       </div>
       <p className="text-sm leading-snug">{post.text}</p>
-      {post.comments.length > 0 && (
+      {!compact && post.comments.length > 0 && (
         <div className="mt-2 pl-3 border-l-2 border-black/15 flex flex-col gap-1.5">
           {post.comments.map((c, i) => (
             <p key={i} className={`text-[13px] ${
@@ -90,7 +97,10 @@ export function PostCard({ post, index }: { post: BoardPost; index: number }) {
       {/* T-260 — SNS 리액션 바(좋아요·댓글 수) */}
       <div className="mt-1.5 flex items-center gap-3 text-[12px] text-pixel-muted">
         <span>❤ {seedNum(post.text, 38, 1) + 3}</span>
-        <span>💬 {post.comments.length}</span>
+        <span className={compact && post.comments.length > 0 ? "font-bold text-black" : ""}>
+          💬 {post.comments.length}
+          {compact && post.comments.length > 0 && <span className="ml-1 underline underline-offset-2">댓글 보기</span>}
+        </span>
         <span>🔁 {seedNum(post.text, 9, 5)}</span>
       </div>
     </div>
@@ -98,7 +108,10 @@ export function PostCard({ post, index }: { post: BoardPost; index: number }) {
 }
 
 export default function BoardEventModal({ day, board, onClose }: Props) {
+  // T-276 — 트위터식: 목록(댓글 접힘) ↔ 글 상세(댓글 전체 + ← 뒤로).
+  const [openPost, setOpenPost] = useState<number | null>(null);
   const delta = board ? Math.round(board.crowd_mood_delta) : 0;
+  const detail = board && openPost !== null ? board.posts[openPost] : null;
   return (
     <div role="dialog" aria-modal="true" className="fixed inset-0 z-[135] flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="absolute inset-0 bg-pixel-ink/70" />
@@ -121,9 +134,26 @@ export default function BoardEventModal({ day, board, onClose }: Props) {
 
           {board === null ? (
             <div className="py-12 text-center text-sm text-pixel-muted animate-pulse">💬 글이 올라오고 있어요…</div>
+          ) : detail ? (
+            /* T-276 — 글 상세: 댓글 전체 + 뒤로가기 */
+            <div className="max-h-[60vh] overflow-y-auto bg-slate-50">
+              <button
+                onClick={() => setOpenPost(null)}
+                className="sticky top-0 z-10 w-full text-left px-3 py-2 bg-white border-b border-black/10
+                  text-sm font-extrabold cursor-pointer hover:bg-slate-50"
+              >
+                ← 목록으로
+              </button>
+              <div className="p-2.5">
+                <PostCard post={detail} index={0} />
+              </div>
+            </div>
           ) : (
+            /* T-276 — 목록: 댓글 접힘, 글 클릭 → 상세 */
             <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto p-2.5 bg-slate-50">
-              {board.posts.map((p, i) => <PostCard key={i} post={p} index={i} />)}
+              {board.posts.map((p, i) => (
+                <PostCard key={i} post={p} index={i} compact onOpen={() => setOpenPost(i)} />
+              ))}
             </div>
           )}
 

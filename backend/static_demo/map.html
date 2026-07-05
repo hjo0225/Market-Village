@@ -355,11 +355,14 @@ async function walkBand(gameId, band, speedup){
     faceEachOther(CLONE_ORIG, m.id);   // T-262 — 대화는 정면으로(사용자 피드백)
     setBubble(CLONE_ORIG, "💬 " + m.name + "와 이야기 중");
     setBubble(m.id, "💬");
-    setTimeout(() => {
-      if (walkGen !== gen || bubbleGen !== bg) return;   // 게시판/FX가 상태를 바꿨으면 양보
+    // T-275(사용자 리포트) — 대화가 끝나기 전에 walked를 보내면 부모가 게시판/
+    // 위기 모달을 즉시 열어 대화를 끊는다. 대화 시간만큼 **await**(배속 반영)한
+    // 뒤에 walked를 보낸다 — 게시판은 대화가 끝난 뒤에 열린다.
+    await new Promise((r) => setTimeout(r, 4500 / Math.max(1, speedup || 1)));
+    if (gen === walkGen && bubbleGen === bg){
       setBubble(m.id, null);
       if (plan.length) setBubble(CLONE_ORIG, PLACE_DOING[plan[plan.length - 1]] || "");
-    }, 5000);
+    }
   }
   window.parent.postMessage({ type: "walked", band }, "*");
   if (band === "저녁"){
