@@ -46,6 +46,12 @@ class DailySnapshot:
     # [{category, trap, trap_name, resisted, reason, fund_flow, realized_pnl}, ...]
     # 트리거가 0/1개일 때도 채워짐(0개=[], 1개=[그 항목]) — bundle이 항상 정답.
     bundle: list = field(default_factory=list)
+    # T-269 발자취 — 그날의 뉴스 선택·전체 만남·일과(회피 반영). 기본값이 있어
+    # 구 문서 하위호환 안전(from_dict의 **unpack에 키가 없어도 됨).
+    news_id: str = ""
+    news_tone: str = ""                     # fear | optimism | uncertain | ""(미선택)
+    met: list = field(default_factory=list)  # 그날 만난 NPC 전원(첫 항목=companion)
+    schedule: dict = field(default_factory=dict)  # 슬롯→장소(진행 시점, 회피 반영)
 
 
 class RunStore:
@@ -86,6 +92,10 @@ class RunStore:
 
     def record_snapshot(self, run_id: str, snap: DailySnapshot) -> None:
         self._snapshots.setdefault(run_id, {})[snap.day] = snap
+
+    def snapshots(self, run_id: str) -> dict[int, DailySnapshot]:
+        """T-269 — 회차의 전체 일별 스냅샷(day→snap). 순수 조회."""
+        return self._snapshots.get(run_id, {})
 
     def record_crisis(self, run_id: str, day: int, log: dict) -> None:
         if run_id in self._crisis:

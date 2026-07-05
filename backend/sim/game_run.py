@@ -126,6 +126,8 @@ class GameRun:
         # T-272a — 플레이어의 대화 상대 지정(슬롯→npc). 그날 하루만 유효(§9.2.1b
         # 기본은 여전히 클론의 선택 — 지정은 후보 안에서의 덮어쓰기).
         self._designated: dict[int, str] = {}
+        # T-269 — 플레이어 소셜 액션 로그(권유·FGI). 이력 패널의 데이터 소스.
+        self._social_log: list[dict] = []
 
     def new_run(self, run_id: str | None = None) -> None:
         """다음 회차 — 클론은 '처음 만남'으로 리셋, 요약은 누적(§13.8/§14.3)."""
@@ -173,6 +175,11 @@ class GameRun:
         snap = None
         if res is not None:
             snap, self.holding, self.last_price = res
+            # T-269 발자취 — 그날의 뉴스 선택·만남·일과를 스냅샷에 남긴다(이력 패널).
+            snap.news_id = (news or {}).get("id", "")
+            snap.news_tone = (news or {}).get("tone", "")
+            snap.met = list(met)
+            snap.schedule = dict(self.schedule)
             self.stats = snap.emotion_stats
             self.last_snap = snap
             self._prev_realized_pnl = snap.realized_pnl
@@ -325,6 +332,10 @@ class GameRun:
                                        self.rapport, roll=roll, escalation=escalation)
         self.stats = out["stats"]
         self.rapport = out["rapport"]
+        # T-269 — 발자취: 플레이어의 권유 시도를 일자와 함께 기록.
+        self._social_log.append({"day": self.day, "kind": "persuade",
+                                 "npc_id": npc_id, "direction": direction,
+                                 "accepted": bool(out.get("accepted"))})
         return out
 
     def fgi_post(self, tone: str, roll: float = 100.0) -> dict:
@@ -332,7 +343,21 @@ class GameRun:
         out = _social.fgi_post(tone, self.crowd_mood, self.stats.get(MENTAL, 50.0), roll=roll)
         self.crowd_mood = out["crowd_mood"]
         self.stats[MENTAL] = out["clone_stat_value"]
+        # T-269 — 발자취: 단톡방 글도 기록.
+        self._social_log.append({"day": self.day, "kind": "fgi", "tone": tone})
         return out
+
+    def history(self) -> list[dict]:
+        """T-269 — 이 회차의 일별 발자취(뉴스 선택·만남·소셜·일과). 순수 조회."""
+        snaps = self.store.snapshots(self.run_id)
+        return [{
+            "day": day,
+            "news_id": s.news_id, "news_tone": s.news_tone,
+            "met": list(s.met), "companion": s.companion,
+            "schedule": {str(k): v for k, v in (s.schedule or {}).items()},
+            "swayed": s.swayed, "trap": s.trap,
+            "social": [e for e in self._social_log if e.get("day") == day],
+        } for day, s in sorted(snaps.items())]
 
     def board_today(self, drawn_news: list[dict], use_llm: bool = False) -> dict:
         """T-223 게시판(D1~D3) — 이벤트 날만 열리고, 하루 1회 확정 생성.
@@ -479,6 +504,7 @@ class GameRun:
             "crowd_mood": self.crowd_mood,
             "board": self._board,
             "designated": {str(k): v for k, v in self._designated.items()},  # T-272a
+            "social_log": list(self._social_log),   # T-269
             "archive": self.board_archive,   # T-252 — 대화 박제(재시작 안전)
             "store": self.store.to_dict(),
         }
@@ -513,6 +539,7 @@ class GameRun:
         g._board = doc.get("board")   # T-223 이전 문서엔 없음 → None(하위호환)
         # T-272a 이전 문서엔 없음 → {}(하위호환)
         g._designated = {int(k): v for k, v in (doc.get("designated") or {}).items()}
+        g._social_log = doc.get("social_log") or []   # T-269 하위호환
         # T-250 부호 전환 하위호환 — 무부호 시절(verdict 없음) 박제된 공포 게시판의
         # +델타를 새 의미(양수=탐욕)로 적용하면 역방향 블립 → 부호 반전.
         if (g._board and "verdict" not in g._board

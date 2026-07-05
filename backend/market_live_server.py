@@ -582,6 +582,15 @@ def control_game_avoid(body: GameAvoidBody):
     return {"status": "ok", "schedule": dict(g.schedule), "meetings": meetings}
 
 
+@app.get("/control/game/history")
+def control_game_history(game_id: str):
+    """T-269 — 진행 이력(발자취): 일별 뉴스 선택·만남·소셜 액션·일과. 순수 조회."""
+    g = _get_game(game_id)
+    if g is None:
+        return {"status": "error", "error": "no game"}
+    return {"status": "ok", "run_id": g.run_id, "days": g.history()}
+
+
 class GameDesignateBody(BaseModel):
     game_id: str
     slot: int

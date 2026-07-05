@@ -92,6 +92,19 @@ export interface Meetings { [slot: string]: string[]; }
 export interface Picks { [slot: string]: string | null; }
 // T-272a — 플레이어가 지정한 대화 상대(슬롯→npc id). 없으면 클론이 고른다.
 export interface Designated { [slot: string]: string; }
+
+// T-269 — 발자취(진행 이력 패널).
+export interface SocialAction {
+  day: number; kind: "persuade" | "fgi";
+  npc_id?: string; direction?: string; accepted?: boolean; tone?: string;
+}
+export interface HistoryDay {
+  day: number; news_id: string; news_tone: string;
+  met: string[]; companion: string;
+  schedule: Record<string, string>;
+  swayed: boolean; trap: string | null;
+  social: SocialAction[];
+}
 export interface ResultCard {
   return_pct: number; grade: string; emotion_overall: CloneStats; evaluation: string;
 }
@@ -167,6 +180,10 @@ export const api = {
   gameDesignate: (gameId: string, slot: number, npcId: string | null) =>
     post<{ status: string; meetings: Meetings; picks: Picks; designated: Designated }>(
       "/control/game/day/designate", { game_id: gameId, slot, npc_id: npcId }),
+  // T-269 — 발자취(일별 뉴스 선택·만남·소셜·일과). 순수 조회.
+  gameHistory: (gameId: string) =>
+    get<{ status: string; run_id: string; days: HistoryDay[] }>(
+      "/control/game/history", { game_id: gameId }),
   // seed 생략 시 서버가 (game_id, day)로 파생 — 같은 날 안정, 날마다 새 3개(T-223).
   gameNews: (gameId: string, seed?: number) =>
     get<{ status: string; news: NewsItem[] }>("/control/game/news", { game_id: gameId, seed }),

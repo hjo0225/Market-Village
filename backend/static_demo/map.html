@@ -259,6 +259,22 @@ const PLACE_DOING = {
 };
 const PLACE_SHORT = { "집_차트": "집" };
 
+// T-270 — 만남 연출 전 인접 접근(사용자 피드백 ⑤ "가까이 있어야 대화").
+// 표현 계층이라 충돌 데이터가 없다 — 만남은 같은 장소에서만 발생하므로 L자
+// 직선 경로(가로 먼저)로 인접(맨해튼 ≤1)까지 걷고, 폭주 방지 12타일 캡.
+function tileOf(o){ return [Math.round((o.tx - 16) / TILE), Math.round((o.ty - 16) / TILE)]; }
+function approachPath(from, to){
+  const steps = [];
+  let [x, y] = from;
+  const [gx, gy] = to;
+  while (Math.abs(x - gx) + Math.abs(y - gy) > 1 && steps.length < 12){
+    if (x !== gx) x += x < gx ? 1 : -1;
+    else y += y < gy ? 1 : -1;
+    steps.push([x, y]);
+  }
+  return steps;
+}
+
 // T-262 — 두 스프라이트가 서로를 바라본다(대화 연출). 방향별 정지 프레임:
 // down 1 · left 4 · right 7 · up 10 (스프라이트시트 3프레임 걷기의 가운데).
 const FACE_FRAME = { down: 1, left: 4, right: 7, up: 10 };
@@ -325,6 +341,17 @@ async function walkBand(gameId, band, speedup){
   const met = ((walkData.meetings_by_band || {})[band]) || [];
   if (gen === walkGen && met.length){
     const m = met[0];
+    // T-270 — 만남은 붙어서(사용자 피드백 ⑤): NPC가 클론의 인접 타일까지 걸어온
+    // 뒤에 대화를 시작한다. 같은 장소라 경로는 몇 타일 수준(12타일 캡).
+    const a = sprites[CLONE_ORIG], b = sprites[m.id];
+    if (a && b){
+      const path = approachPath(tileOf(b), tileOf(a));
+      if (path.length) await playSteps(m.id, path, false, 170, HARD_CAP, gen);
+    }
+    if (gen !== walkGen || bubbleGen !== bg){
+      window.parent.postMessage({ type: "walked", band }, "*");
+      return;
+    }
     faceEachOther(CLONE_ORIG, m.id);   // T-262 — 대화는 정면으로(사용자 피드백)
     setBubble(CLONE_ORIG, "💬 " + m.name + "와 이야기 중");
     setBubble(m.id, "💬");

@@ -13,7 +13,8 @@ import BoardEventModal from "@/components/BoardEventModal";
 import CrisisEventModal from "@/components/CrisisEventModal";
 import DayProgressOverlay from "@/components/DayProgressOverlay";
 import MapBackground, { MapBackgroundHandle } from "@/components/MapBackground";
-import { api, BoardFeed, Designated, GameState, NewsItem, Meetings, Picks, DayResult } from "@/lib/api";
+import { api, BoardFeed, Designated, GameState, HistoryDay, NewsItem, Meetings, Picks, DayResult } from "@/lib/api";
+import HistoryPanel from "@/components/HistoryPanel";
 import { getGameId } from "@/lib/session";
 
 // 사용자 피드백(2026-07-01) — "하루가 2분동안 진행되는 속도로". 4단계 × 20초 기본.
@@ -31,6 +32,7 @@ export default function PlayPage() {
   const [meetings, setMeetings] = useState<Meetings>({});
   const [picks, setPicks] = useState<Picks>({});
   const [designated, setDesignated] = useState<Designated>({});   // T-272a
+  const [history, setHistory] = useState<HistoryDay[]>([]);       // T-269 발자취
   const [schedule, setSchedule] = useState<Record<string, string>>({});
   const [newsId, setNewsId] = useState<string | null>(null);
   const [phoneOpen, setPhoneOpen] = useState(false);
@@ -77,8 +79,8 @@ export default function PlayPage() {
   }, [router]);
 
   const refresh = useCallback(async (id: string) => {
-    const [st, prev, nw] = await Promise.all([
-      api.gameState(id), api.gamePreview(id), api.gameNews(id),
+    const [st, prev, nw, hist] = await Promise.all([
+      api.gameState(id), api.gamePreview(id), api.gameNews(id), api.gameHistory(id),
     ]);
     // 프록시 네트워크 플레이크(fetchJson이 재시도 후에도 실패)로 status가
     // "ok"가 아니면 화면을 깨뜨리지 말고 기존 상태를 유지 — 다음 진행/재시도 때
@@ -91,6 +93,7 @@ export default function PlayPage() {
       setSchedule(prev.schedule ?? {});   // T-240 — 진행 중 일정 안내에 사용
     }
     if (nw.status === "ok") setNews(nw.news);
+    if (hist.status === "ok") setHistory(hist.days);   // T-269
     // T-245 — 마을 순위(실패해도 화면 안 깨짐 — 칩만 안 뜸).
     const lb = await api.gameLeaderboard(id);
     if (lb.status === "ok") {
@@ -276,6 +279,12 @@ export default function PlayPage() {
       </div>
 
       <DayProgressOverlay stageIndex={dayStage} plan={stagePlan} />
+
+      {/* T-269 — 좌측 발자취 패널(오늘 일정+지금 이동 중+지난 날 이력) */}
+      <HistoryPanel
+        history={history} todaySchedule={schedule} today={state.day}
+        heading={stagePlan ?? null}
+      />
 
       <PixelModal isOpen={statsOpen} onClose={() => setStatsOpen(false)} title="🪞 클론 상태" size="sm">
         <StatsPanel stats={state.stats} portfolio={state.portfolio} showTitle={false} />
