@@ -39,6 +39,9 @@ services:
     build:
       context: .
       dockerfile: frontend/Dockerfile
+      args:
+        # T-311 — rewrites가 빌드에 구워지므로 build arg로 주입(runtime env 아님).
+        BACKEND_ORIGIN: http://backend:8100
     restart: unless-stopped
     depends_on:
       - backend

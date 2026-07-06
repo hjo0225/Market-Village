@@ -3,8 +3,11 @@ WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json ./
 RUN npm ci
 COPY frontend/ .
-# Next.js reads BACKEND_ORIGIN server-side at runtime (see next.config.js rewrites),
-# not at build time — no build-time ARG needed.
+# T-311 — next.config.js의 rewrites는 standalone 빌드 시점에 라우트 매니페스트로
+# 구워진다(런타임 env 무시). 빌드 ARG로 반드시 주입 — 없으면 127.0.0.1 기본값이
+# 박혀 컨테이너 안에서 백엔드를 못 찾는다(라이브 API 전체 500의 원인이었음).
+ARG BACKEND_ORIGIN=http://backend:8100
+ENV BACKEND_ORIGIN=$BACKEND_ORIGIN
 RUN npm run build
 
 FROM node:20-slim AS runner
