@@ -375,9 +375,9 @@ export default function PlayPage() {
       />
       <PhoneModal
         isOpen={phoneOpen} onClose={() => setPhoneOpen(false)} gameId={gameId}
-        rapport={state.rapport} crowdMood={state.crowd_mood}
+        day={state.day} rapport={state.rapport} crowdMood={state.crowd_mood}
         meetings={meetings} picks={picks} designated={designated} schedule={schedule}
-        onChanged={() => refresh(gameId)}
+        history={history} onChanged={() => refresh(gameId)}
       />
       <DayResultModal
         result={dayResult} scene={sceneText} day={resultDay}

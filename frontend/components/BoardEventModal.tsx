@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import PixelButton from "@/components/pixel/PixelButton";
+import PhoneFrame from "@/components/PhoneFrame";
 import { TONE_STYLE } from "@/components/NewsModal";
 import { BoardFeed, BoardPost, NewsItem } from "@/lib/api";
 
@@ -146,15 +147,8 @@ export default function BoardEventModal({ day, board, news, onClose }: Props) {
   return (
     <div role="dialog" aria-modal="true" className="fixed inset-0 z-[135] flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="absolute inset-0 bg-pixel-ink/70" />
-      {/* T-255 — 핸드폰 프레임: 하단에서 슬라이드업, 노치·상태바·피드 헤더. */}
-      {/* T-268 — 사용자 피드백 "커뮤 창 너무 작음": max-w-sm→max-w-lg, 본문 폰트 확대. */}
-      <div className="relative w-full max-w-lg bg-slate-900 border-2 border-black rounded-t-[28px] sm:rounded-[32px] shadow-pixel-md pt-2 pb-4 px-2 animate-[phoneup_0.45s_ease-out]">
-        <style>{`@keyframes phoneup { from { transform: translateY(60%); opacity: 0.4; } to { transform: translateY(0); opacity: 1; } }`}</style>
-        <div className="mx-auto w-24 h-1.5 rounded-full bg-slate-700 mb-1.5" />
-        <div className="flex items-center justify-between px-4 text-[10px] text-slate-400 font-bold mb-1">
-          <span>Day {day}</span><span>마을넷 📶 🔋</span>
-        </div>
-        <div className="bg-white rounded-2xl overflow-hidden">
+      {/* T-255 폰 연출 · T-268 max-w-lg · T-288 프레임을 PhoneFrame으로 공용화 */}
+      <PhoneFrame day={day}>
           <div className="px-4 py-2.5 border-b-2 border-black">
             <h2 className="text-base font-extrabold">💬 마을 게시판</h2>
             <p className="text-[13px] text-pixel-muted">
@@ -178,15 +172,14 @@ export default function BoardEventModal({ day, board, news, onClose }: Props) {
           {board && (
             <p className="text-[13px] text-pixel-muted px-4 py-2 border-t border-black/10">
               군중온도(공포↔탐욕) <b className="text-black">{delta > 0 ? `+${delta}` : delta}</b>
-              {" · "}클론을 진정시키고 싶다면 📱 핸드폰의 피드 탭에서.
+              {" · "}클론에게 말을 걸고 싶다면 📱 핸드폰의 메시지 탭에서.
             </p>
           )}
 
           <div className="px-3 pb-3 flex justify-end">
             <PixelButton size="sm" disabled={board === null} onClick={onClose}>닫고 계속 ▶</PixelButton>
           </div>
-        </div>
-      </div>
+      </PhoneFrame>
     </div>
   );
 }

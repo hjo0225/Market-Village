@@ -70,6 +70,14 @@ export const NPC_ROLES: Record<string, string> = {
   contrarian: "역발상 투자자", jackpot_gambler: "한탕 도박꾼",
 };
 
+// T-288 — 메신저 아바타(초상 파일명, backend personas.portrait와 동일).
+export const NPC_PORTRAITS: Record<string, string> = {
+  panic_ant: "Eddy_Lin", fomo_scalper: "Ryan_Park",
+  conspiracy_influencer: "Klaus_Mueller", value_investor: "Adam_Smith",
+  quant_trader: "Yuriko_Yamamoto", macro_whale: "Wolfgang_Schulz",
+  contrarian: "Carmen_Ortiz", jackpot_gambler: "Carlos_Gomez",
+};
+
 export interface PortfolioHolding {
   category: string; quantity: number; avg_cost: number; value: number; unrealized_pnl: number;
 }
@@ -105,6 +113,13 @@ export interface HistoryDay {
   swayed: boolean; trap: string | null;
   social: SocialAction[];
 }
+export interface ChatLogEntry {
+  kind: "meeting" | "persuade";
+  lines?: { who: "npc" | "clone"; text: string }[];
+  direction?: string; accepted?: boolean;
+}
+export interface ChatLogDay { day: number; entries: ChatLogEntry[] }
+
 export interface ResultCard {
   return_pct: number; grade: string; emotion_overall: CloneStats; evaluation: string;
 }
@@ -186,6 +201,10 @@ export const api = {
     post<{ status: string; schedule: Record<string, string>; meetings: Meetings; picks: Picks; designated: Designated }>(
       "/control/game/day/relocate", { game_id: gameId, slot, place }),
   // T-271 — 긴급 속보 사이렌: 오늘 활성 여부 조회(GET, 무변이) + 선택(POST, 자연 멱등).
+  // T-288 — 메신저 대화방: NPC별 일자별 대화 로그(만남 대사+권유 요약). 순수 조회.
+  gameChatLog: (gameId: string, npcId: string) =>
+    get<{ status: string; npc_id: string; days: ChatLogDay[] }>(
+      "/control/game/chat_log", { game_id: gameId, npc_id: npcId }),
   gameSiren: (gameId: string) =>
     get<{ status: string; day: number; active: boolean; used: boolean }>(
       "/control/game/day/siren", { game_id: gameId }),

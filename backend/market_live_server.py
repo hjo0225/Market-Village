@@ -656,6 +656,41 @@ def control_game_history(game_id: str):
     return {"status": "ok", "run_id": g.run_id, "days": g.history()}
 
 
+@app.get("/control/game/chat_log")
+def control_game_chat_log(game_id: str, npc_id: str):
+    """T-288 — 메신저 대화방: 이 NPC와의 일자별 대화 로그. 순수 조회.
+
+    만남 대사는 결정론 재생성(meeting_talk, 그날 밤 스탯 스냅샷 기준 —
+    표시 당시와 동일 시드), 권유는 방향·성패 요약(당시 문장은 래포/기억
+    의존이라 박제하지 않았음 — 요약으로 충분, §9.2.2).
+    """
+    g = _get_game(game_id)
+    if g is None:
+        return {"status": "error", "error": "no game"}
+    snaps = g.store.snapshots(g.run_id)
+    # 오늘(아직 스냅샷 없음)의 권유도 보여야 한다 — 소셜 로그 날짜와 합집합.
+    social_days = {e.get("day") for e in g._social_log
+                   if e.get("kind") == "persuade" and e.get("npc_id") == npc_id}
+    days = []
+    for day in sorted(set(snaps) | social_days):
+        s = snaps.get(day)
+        entries = []
+        if s is not None and npc_id in (s.met or []):
+            entries.append({
+                "kind": "meeting",
+                "lines": _meeting_talk.dialogue(
+                    game_id, day, npc_id, dict(s.emotion_stats or {}))})
+        for e in g._social_log:
+            if (e.get("day") == day and e.get("kind") == "persuade"
+                    and e.get("npc_id") == npc_id):
+                entries.append({"kind": "persuade",
+                                "direction": e.get("direction"),
+                                "accepted": bool(e.get("accepted"))})
+        if entries:
+            days.append({"day": day, "entries": entries})
+    return {"status": "ok", "npc_id": npc_id, "days": days}
+
+
 class GameRelocateBody(BaseModel):
     game_id: str
     slot: int
