@@ -37,9 +37,12 @@ const MapBackground = forwardRef<MapBackgroundHandle, { gameId: string }>(functi
           resolve();
         };
         const onMessage = (e: MessageEvent) => {
-          if (e.data?.type === "walk-ack") {
+          if (e.data?.type === "walk-ack" || e.data?.type === "walk-tick") {
+            // T-287 — 고정 상한이 아니라 **유휴 타임아웃**: 맵이 밴드 재생 중
+            // 4초마다 walk-tick을 보내므로 살아있는 한 계속 기다린다(긴 걷기·
+            // 만남 채팅). 신호가 30초 끊기면(죽은 iframe) 포기. 예전 고정 30초
+            // 상한이 저녁 걷기 도중 만료돼 정산이 귀가 전에 뜨던 문제의 수정.
             clearTimeout(fallback);
-            // T-237 — 밴드 재생은 한 구간(≤16초+여유), 통재생은 하루치 상한.
             fallback = setTimeout(finish, band ? 30000 : 75000);
           } else if (e.data?.type === "walked" && (!band || e.data?.band === band)) {
             finish();

@@ -363,7 +363,7 @@ export default function PlayPage() {
         <StatsPanel stats={state.stats} portfolio={state.portfolio} showTitle={false} />
       </PixelModal>
       <NewsModal
-        isOpen={newsOpen} news={news}
+        isOpen={newsOpen} news={news} chosenId={newsId}
         onClose={() => { setNewsOpen(false); setPendingAdvance(false); }}
         onSelect={(id) => {
           setNewsId(id);

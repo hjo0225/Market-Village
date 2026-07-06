@@ -326,6 +326,19 @@ function setBubble(orig, text){
 let walkData = null;
 
 async function walkBand(gameId, band, speedup){
+  // T-287(사용자 리포트 "집에 도착 전에 마감 레포트") — 부모의 고정 30초 상한이
+  // 긴 걷기+만남 채팅 중 만료돼 정산이 걷기 도중 뜨던 문제. 밴드가 살아있는 동안
+  // 4초마다 생존 신호를 보내 부모가 "신호 끊긴 지 30초"일 때만 포기하게 한다.
+  const tick = setInterval(
+    () => window.parent.postMessage({ type: "walk-tick", band }, "*"), 4000);
+  try {
+    await _walkBandInner(gameId, band, speedup);
+  } finally {
+    clearInterval(tick);
+  }
+}
+
+async function _walkBandInner(gameId, band, speedup){
   const gen = ++walkGen;
   const bg = ++bubbleGen;
   const target = BAND_TARGET_MS / Math.max(1, speedup || 1);   // T-243 배속
