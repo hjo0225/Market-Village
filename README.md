@@ -116,8 +116,9 @@ main 머지 → deploy.yml: 테스트 게이트 → EC2에 SSH → docker compos
 
 `/control/game/*`가 게임 진행 경로, `/map`은 그 state를 보여주는 배경 연출
 경로다(단방향 — 기둥 6). Generative Agents는 맵·이동·행동 **표현만** 차용,
-인지 엔진은 차용하지 않았다. 상세 설계는 `Market_Village_PRD_FINAL.md`,
-조립 흐름은 `ASSEMBLY_PRD.md`.
+인지 엔진은 차용하지 않았다. 상세 설계는 `Market_Village_PRD_FINAL.md`(마스터
+PRD — 유일한 정본), 완료된 에픽별 부속 PRD(조립·게시판·거울비교·다자산·위기카드
+·에이전트 메모리)는 `docs/archive/`에 보관.
 
 ## 시뮬레이션 모듈 (`backend/sim/`)
 
