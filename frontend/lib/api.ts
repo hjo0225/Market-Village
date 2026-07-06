@@ -90,6 +90,7 @@ export interface Portfolio {
 
 export interface GameState {
   run_id: string; day: number; days: number; finished: boolean;
+  clone_name?: string;   // T-303 — 플레이어가 지은 에이전트 이름
   stats: CloneStats; portfolio: Portfolio; total_asset: number;
   category: string; last_event: { delta: number; text?: string } | null;
   rapport: number; crowd_mood: number;
@@ -112,6 +113,15 @@ export interface HistoryDay {
   schedule: Record<string, string>;
   swayed: boolean; trap: string | null;
   social: SocialAction[];
+  // T-300 — 매매 서사(감정 원인→행동→시세→수익률) + 그날 매매한 다른 에이전트.
+  trade?: {
+    fund_flow: string; trap_name: string; swayed: boolean;
+    realized_pnl: number; price_pct: number; ret_pct: number;
+    // T-306 — 종목별 한눈 보기(시세 등락·보유가치) + 현금.
+    assets?: { category: string; price_pct: number; value: number }[];
+    cash?: number;
+  };
+  npc_trades?: { id: string; name: string; action: "buy" | "sell" }[];
 }
 export interface ChatLogEntry {
   kind: "meeting" | "persuade";
@@ -135,6 +145,9 @@ export interface BundleItem {
 export interface DayResult {
   trap: string | null; swayed: boolean; fund_flow: string;
   realized_pnl: number; stats: CloneStats; bundle: BundleItem[];
+  // T-301 — 하루 마무리 모달에 자동 표시할 매매 서사(+마을 매매). history와 동일 산식.
+  trade?: HistoryDay["trade"];
+  npc_trades?: HistoryDay["npc_trades"];
 }
 export interface Scene { commands: unknown[]; dialogue: string; monologue_open: boolean; }
 // T-227 §13.6 — GET /control/game/compare의 회차별 하루 뷰.
@@ -179,11 +192,12 @@ export const api = {
   gameStart: (
     gameId: string, answers: Record<string, number>, symbol: string, startPrice = 100.0,
     allocations?: Record<string, number>, village = "balanced",   // T-273
+    cloneName?: string,   // T-303
   ) =>
     post<{ status: string; state: GameState }>(
       "/control/game/start",
       { game_id: gameId, answers, symbol, start_price: startPrice,
-        allocations: allocations ?? null, village }),
+        allocations: allocations ?? null, village, clone_name: cloneName ?? null }),
   gameState: (gameId: string) =>
     get<{ status: string; state: GameState }>("/control/game/state", { game_id: gameId }),
   gamePreview: (gameId: string) =>

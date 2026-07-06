@@ -22,7 +22,7 @@ export default function MainMenu() {
         <div className="text-5xl mb-3">🪞</div>
         <h1 className="text-2xl font-extrabold mb-1">Market Village</h1>
         <p className="text-sm text-pixel-muted mb-8">
-          블라인드 처리된 실제 과거 코인 시장에서<br />내 거울 클론이 30일을 산다
+          블라인드 처리된 실제 과거 코인 시장에서<br />내 거울 클론이 10일을 산다
         </p>
         <div className="flex flex-col gap-3">
           <PixelButton size="lg" onClick={() => router.push("/setup")}>

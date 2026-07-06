@@ -208,9 +208,14 @@ async function playSteps(orig, allSteps, pan, stepMs, max, gen){
   // T-247 — 스텝 간격에 정확히 맞는 등속(px/frame): 다음 칸이 올 때 이미 도착해
   // 있어야 스냅이 안 보이고 카메라도 스프라이트에 밀착한다.
   const pxPerFrame = (TILE * (1000 / 60) / stepMs) * 1.06;
+  // T-304 — 스프라이트별 걷기 소유권: 늦게 시작한 재생(만남 접근 등)이 인수하면
+  // 이전 루프는 즉시 물러난다(두 루프가 한 스프라이트를 끌던 경합 = 벽 뚫기 원인).
+  const o0 = sprites[orig];
+  const tok = o0 ? (o0.walkToken = (o0.walkToken || 0) + 1) : 0;
   try {
     for (const [x, y] of sampleSteps(allSteps, max)){
       if (gen !== walkGen) return;   // T-229 — 새 날 걷기가 시작됨: 이전 루프 종료
+      if (sprites[orig] && sprites[orig].walkToken !== tok) return;   // T-304 인수됨
       while (boardGather){           // T-255 — 게시판 열림: 마을 전체 정지
         sprites[orig]?.s.stop();
         await new Promise((r) => setTimeout(r, 300));
@@ -263,6 +268,14 @@ const PLACE_DOING = {
   "도서관": "📚 투자 책 뒤적이는 중",
 };
 const PLACE_SHORT = { "집_차트": "집" };
+
+// T-292(사용자) — 말풍선은 이모지 딱 1개(긴 한글이 버블 PNG를 늘여 깨짐), 활동
+// 서술 텍스트는 부모의 발자취 패널로 보낸다. PLACE_DOING 값이 "이모지 + 서술"
+// 형태라 첫 토큰이 곧 버블용 이모지.
+const firstEmoji = (s) => (s || "").split(" ")[0];
+function reportActivity(text){
+  window.parent.postMessage({ type: "activity", text: text || null }, "*");
+}
 
 // T-270 — 만남 연출 전 인접 접근(사용자 피드백 ⑤ "가까이 있어야 대화").
 // 표현 계층이라 충돌 데이터가 없다 — 만남은 같은 장소에서만 발생하므로 L자
@@ -320,6 +333,73 @@ function setBubble(orig, text){
   o.bubbleH = h;   // T-278 — update 루프가 머리 위 정렬에 사용
 }
 
+// T-304 — 만남 재생(접근→마주보기→폰 채팅 대기→정리). 접근 경로는 **만남 시점
+// 실좌표**로 서버 길찾기를 질의(정적 approach는 밴드 종료 시점 기준이라 NPC가
+// 아직 이동 중이면 어긋나 벽을 뚫어 보였다 — 사용자 리포트). 실패 시 정적
+// approach → L자 휴리스틱 순 폴백. 반환 true = 도중 무효화로 walked를 이미 보냄.
+async function playMeeting(m, band, gen, bg, speedup, doingAfter){
+  const a = sprites[CLONE_ORIG], b = sprites[m.id];
+  if (a && b){
+    let path = null;
+    try {
+      const bt = tileOf(b), at = tileOf(a);
+      const r = await api("/control/game/day/approach?game_id=" + encodeURIComponent(GAME_ID)
+        + "&fx=" + bt[0] + "&fy=" + bt[1] + "&cx=" + at[0] + "&cy=" + at[1]);
+      if (r.status === "ok") path = r.steps || [];
+    } catch (e) { /* 아래 폴백 */ }
+    if (path === null) path = (m.approach && m.approach.length)
+      ? m.approach : approachPath(tileOf(b), tileOf(a));
+    // 상대가 멀리 있어도(화면 밖) 순간이동 없이 서둘러 온다 — 총 ~3.5초 상한.
+    if (path.length){
+      const ms = Math.min(170, Math.max(50, Math.floor(3500 / path.length)));
+      await playSteps(m.id, path, false, ms, HARD_CAP, gen);
+    }
+  }
+  if (gen !== walkGen || bubbleGen !== bg){
+    window.parent.postMessage({ type: "walked", band }, "*");
+    return true;
+  }
+  faceEachOther(CLONE_ORIG, m.id);   // T-262 — 대화는 정면으로(사용자 피드백)
+  setBubble(CLONE_ORIG, "💬");
+  setBubble(m.id, "💬");
+  reportActivity("💬 " + (m.name || "누군가") + "와 대화 중");
+  // T-281(사용자 반복 피드백) — 대화 내용은 맵 말풍선이 아니라 **부모의 핸드폰
+  // 채팅창**에서. meeting_talk를 올리고 부모가 닫을 때까지(meeting_done) 대기.
+  // T-275의 순서 보장(대화 끝난 뒤 walked)은 이 대기가 그대로 계승한다.
+  // 부모가 구버전 번들이면(ack 3초 무응답) 기존 4.5초 말풍선으로 폴백.
+  await new Promise((resolve) => {
+    let acked = false, done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      window.removeEventListener("message", onMsg);
+      resolve();
+    };
+    const onMsg = (ev) => {
+      const t = ev.data && ev.data.type;
+      if (t === "meeting_ack") acked = true;
+      else if (t === "meeting_done") finish();
+    };
+    window.addEventListener("message", onMsg);
+    window.parent.postMessage({
+      type: "meeting_talk", band,
+      npc: { id: m.id, name: m.name, role: m.role || "", portrait: m.portrait || null },
+      lines: m.lines || [],
+    }, "*");
+    setTimeout(() => {
+      if (!acked) setTimeout(finish, 4500 / Math.max(1, speedup || 1));   // 구버전 부모 폴백
+    }, 3000);
+  });
+  if (gen === walkGen && bubbleGen === bg){
+    setBubble(m.id, null);
+    if (doingAfter){
+      setBubble(CLONE_ORIG, firstEmoji(doingAfter));
+      reportActivity(doingAfter);
+    }
+  }
+  return false;
+}
+
 // T-237 §12.1b — 시간대 동기 재생: 부모가 {type:"walk", band:"오전"…}를 단계마다
 // 보내면 그 시간대 일과 구간만 걷고 {type:"walked", band}로 답한다. 하루치 경로는
 // 첫 구간(오전)에서 한 번만 받아 캐시(서버가 day 캐시라 재요청하면 빈값이 온다).
@@ -355,61 +435,58 @@ async function _walkBandInner(gameId, band, speedup){
   // T-242 — 이동 중 말풍선: 이 시간대의 목적지들.
   const plan = ((walkData.plan || {})[band]) || [];
   const planLabel = plan.map((p) => PLACE_SHORT[p] || p).join(" · ");
-  if (plan.length && cloneSeg.length) setBubble(CLONE_ORIG, "🚶 ➜ " + planLabel);
-  await playSteps(CLONE_ORIG, cloneSeg, true, stepMsFor(cloneSeg.length, target), HARD_CAP, gen);
-  // 도착 — 이 시간대 마지막 장소의 활동 플레이버(다음 구간까지 유지).
-  if (gen === walkGen && plan.length){
-    setBubble(CLONE_ORIG, PLACE_DOING[plan[plan.length - 1]] || "");
-  }
-  // T-249 — 이 시간대에 동선이 겹친 만남: 두 스프라이트가 실제로 대화한다.
+  // T-296(사용자 "각 장소에서 무조건 1가지 행동") — stops(장소별 도착 인덱스)가
+  // 있으면 장소 단위로 끊어 재생: 걷기(🚶) → 그 장소의 행동(이모지+발자취 서술
+  // +짧은 멈춤) → 다음 장소. 제자리 슬롯(스텝 0)도 행동은 재생된다.
+  const stops = ((walkData.stops || {})[band]) || [];
+  const stepMs = stepMsFor(cloneSeg.length, target);
+  // T-304 — 만남은 밴드 끝이 아니라 **그 장소 stop**에서 발동(저녁 만남이 귀가
+  // 후 집에서 열리던 것·"아무도 없는데 열림" 방지). place 미일치/구캐시는 밴드 끝 폴백.
   const met = ((walkData.meetings_by_band || {})[band]) || [];
-  if (gen === walkGen && met.length){
-    const m = met[0];
-    // T-270 — 만남은 붙어서(사용자 피드백 ⑤): NPC가 클론의 인접 타일까지 걸어온
-    // 뒤에 대화를 시작한다. 같은 장소라 경로는 몇 타일 수준(12타일 캡).
-    const a = sprites[CLONE_ORIG], b = sprites[m.id];
-    if (a && b){
-      const path = approachPath(tileOf(b), tileOf(a));
-      if (path.length) await playSteps(m.id, path, false, 170, HARD_CAP, gen);
+  let meetingPlayed = false;
+  if (stops.length){
+    let done = 0;
+    for (const st of stops){
+      const chunk = cloneSeg.slice(done, st.i);
+      done = st.i;
+      if (chunk.length){
+        setBubble(CLONE_ORIG, "🚶");
+        reportActivity("🚶 " + (PLACE_SHORT[st.place] || st.place) + " 가는 중");
+        await playSteps(CLONE_ORIG, chunk, true, stepMs, HARD_CAP, gen);
+      }
+      if (gen !== walkGen) break;
+      const doing = PLACE_DOING[st.place] || "";
+      setBubble(CLONE_ORIG, firstEmoji(doing));
+      reportActivity(doing);
+      await new Promise((r) => setTimeout(r, 1300 / Math.max(1, speedup || 1)));
+      if (gen !== walkGen) break;
+      if (!meetingPlayed && met.length && met[0].place === st.place){
+        meetingPlayed = true;
+        if (await playMeeting(met[0], band, gen, bg, speedup, doing)) return;
+        if (gen !== walkGen) break;
+      }
     }
-    if (gen !== walkGen || bubbleGen !== bg){
-      window.parent.postMessage({ type: "walked", band }, "*");
-      return;
+    if (gen === walkGen && done < cloneSeg.length){
+      await playSteps(CLONE_ORIG, cloneSeg.slice(done), true, stepMs, HARD_CAP, gen);
     }
-    faceEachOther(CLONE_ORIG, m.id);   // T-262 — 대화는 정면으로(사용자 피드백)
-    setBubble(CLONE_ORIG, "💬");
-    setBubble(m.id, "💬");
-    // T-281(사용자 반복 피드백) — 대화 내용은 맵 말풍선이 아니라 **부모의 핸드폰
-    // 채팅창**에서. meeting_talk를 올리고 부모가 닫을 때까지(meeting_done) 대기.
-    // T-275의 순서 보장(대화 끝난 뒤 walked)은 이 대기가 그대로 계승한다.
-    // 부모가 구버전 번들이면(ack 3초 무응답) 기존 4.5초 말풍선으로 폴백.
-    await new Promise((resolve) => {
-      let acked = false, done = false;
-      const finish = () => {
-        if (done) return;
-        done = true;
-        window.removeEventListener("message", onMsg);
-        resolve();
-      };
-      const onMsg = (ev) => {
-        const t = ev.data && ev.data.type;
-        if (t === "meeting_ack") acked = true;
-        else if (t === "meeting_done") finish();
-      };
-      window.addEventListener("message", onMsg);
-      window.parent.postMessage({
-        type: "meeting_talk", band,
-        npc: { id: m.id, name: m.name, role: m.role || "", portrait: m.portrait || null },
-        lines: m.lines || [],
-      }, "*");
-      setTimeout(() => {
-        if (!acked) setTimeout(finish, 4500 / Math.max(1, speedup || 1));   // 구버전 부모 폴백
-      }, 3000);
-    });
-    if (gen === walkGen && bubbleGen === bg){
-      setBubble(m.id, null);
-      if (plan.length) setBubble(CLONE_ORIG, PLACE_DOING[plan[plan.length - 1]] || "");
+  } else {
+    // 구 캐시(stops 없음) 폴백 — 기존 동작: 통走 후 마지막 장소 행동만.
+    if (plan.length && cloneSeg.length){
+      setBubble(CLONE_ORIG, "🚶");
+      reportActivity("🚶 " + planLabel + " 가는 중");
     }
+    await playSteps(CLONE_ORIG, cloneSeg, true, stepMs, HARD_CAP, gen);
+    if (gen === walkGen && plan.length){
+      const doing = PLACE_DOING[plan[plan.length - 1]] || "";
+      setBubble(CLONE_ORIG, firstEmoji(doing));
+      reportActivity(doing);
+    }
+  }
+  // T-249 — 이 시간대에 동선이 겹친 만남 — T-304에서 stops 루프 내 발동으로 이동.
+  // 장소 미일치·구캐시(place 없음)만 여기 밴드 끝 폴백으로 재생.
+  if (gen === walkGen && met.length && !meetingPlayed){
+    const doingAfter = plan.length ? (PLACE_DOING[plan[plan.length - 1]] || "") : "";
+    if (await playMeeting(met[0], band, gen, bg, speedup, doingAfter)) return;
   }
   window.parent.postMessage({ type: "walked", band }, "*");
   if (band === "저녁"){
@@ -417,7 +494,10 @@ async function _walkBandInner(gameId, band, speedup){
     // T-247 — 하루가 끝나면 활동 말풍선을 정리(잔존 방지, 사용자 리포트 ④).
     const genAtEnd = walkGen, bgAtEnd = bubbleGen;
     setTimeout(() => {
-      if (walkGen === genAtEnd && bubbleGen === bgAtEnd) setBubble(CLONE_ORIG, null);
+      if (walkGen === genAtEnd && bubbleGen === bgAtEnd){
+        setBubble(CLONE_ORIG, null);
+        reportActivity(null);
+      }
     }, 6000);
   }
 }
@@ -458,13 +538,15 @@ window.addEventListener("message", (e) => {
       if (orig !== CLONE_ORIG) setBubble(orig, "❗");
       sprites[orig].s.stop();
     });
-    setBubble(CLONE_ORIG, "📱 마을 게시판이 시끄럽다…");
+    setBubble(CLONE_ORIG, "📱");
+    reportActivity("📱 마을 게시판이 시끄럽다…");
   }
   if (e.data.type === "board_release"){
     boardGather = false;
     bubbleGen += 1;
     Object.keys(sprites).forEach((orig) => { if (orig !== CLONE_ORIG) setBubble(orig, null); });
     setBubble(CLONE_ORIG, null);
+    reportActivity(null);
   }
   // T-256 — 매매 순간 가시화: 밤 정산 뒤 그날 사고판 이들에게 💸/📉.
   if (e.data.type === "trade_fx" && Array.isArray(e.data.trades)){
@@ -472,7 +554,7 @@ window.addEventListener("message", (e) => {
     e.data.trades.forEach((tr) => {
       const orig = tr.id === "gamerun_clone" ? CLONE_ORIG : tr.id;
       if (!sprites[orig]) return;
-      setBubble(orig, tr.action === "buy" ? "💸 매수!" : "📉 던졌다!");
+      setBubble(orig, tr.action === "buy" ? "💸" : "📉");
     });
     setTimeout(() => {
       if (bubbleGen !== bg) return;   // 이미 다음 날/게시판이 말풍선을 소유

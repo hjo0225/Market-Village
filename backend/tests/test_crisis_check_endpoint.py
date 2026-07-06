@@ -4,6 +4,9 @@ import market_live_server as mls
 def _advance_to_crisis_day(gid, n=21):
     mls.control_game_start(mls.GameStartBody(
         game_id=gid, answers={"q_panic": 1.0, "q_fomo": 1.0}, symbol="DOGE"))
+    # T-302 이후 서비스 게임은 10일 — 이 테스트는 운명선 day21 위기가 대상이라
+    # 30일로 늘려 진행(엔진은 원래 30일 지원).
+    mls._get_game(gid).days = 30
     for _ in range(n):
         mls.control_game_advance(mls.GameAdvanceBody(game_id=gid))
 

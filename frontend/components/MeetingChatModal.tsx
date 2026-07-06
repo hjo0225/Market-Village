@@ -74,8 +74,7 @@ export default function MeetingChatModal({ npc, lines, onClose }: {
             ))}
           </div>
 
-          <div className="px-3 py-2.5 border-t border-black/10 flex items-center justify-between">
-            <p className="text-[12px] text-pixel-muted">클론에게 말을 걸고 싶다면 📱 1:1 탭에서.</p>
+          <div className="px-3 py-2.5 border-t border-black/10 flex items-center justify-end">
             <PixelButton size="sm" onClick={onClose}>대화 마치기 ▶</PixelButton>
           </div>
         </div>

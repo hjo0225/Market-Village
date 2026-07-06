@@ -74,8 +74,9 @@ def test_walk_returns_npc_steps_and_day_caches():
     for steps in first["npcs"].values():
         for xy in steps:
             assert len(xy) == 2
+    # T-294 — 같은 날 재요청은 빈값이 아니라 같은 경로의 멱등 재생(리로드 안전).
     second = mls.control_game_walk(game_id="npcmap_c")
-    assert second.get("cached") is True and second["npcs"] == {}
+    assert second.get("cached") is True and second["npcs"] == first["npcs"]
 
 
 @requires_ville
@@ -114,12 +115,40 @@ def test_walk_returns_time_band_segments():
 
 
 @requires_ville
+def test_walk_returns_stops_per_place():
+    # T-296(사용자 "각 장소에서 무조건 1가지 행동") — 밴드마다 들르는 장소별
+    # 도착 지점(stops)을 줘야 맵이 장소마다 멈춰 행동을 재생할 수 있다.
+    _start("npcmap_i")
+    r = mls.control_game_walk(game_id="npcmap_i")
+    assert list(r["stops"].keys()) == list(_BANDS)
+    for band in _BANDS:
+        stops = r["stops"][band]
+        seg = r["segments"][band]
+        # 일정이 있는 밴드는 최소 1개 stop — 제자리(스텝 0)여도 행동은 있어야 한다.
+        if r["plan"][band]:
+            assert len(stops) >= 1
+        prev = 0
+        for st in stops:
+            assert st["place"], "stop에 장소명이 있어야 행동 플레이버를 고른다"
+            assert 0 <= st["i"] <= len(seg)
+            assert st["i"] >= prev            # 도착 인덱스는 단조 증가
+            prev = st["i"]
+        if stops:
+            assert stops[-1]["i"] == len(seg)  # 마지막 stop = 구간 끝(경로 전부 소진)
+    # 연속 중복 일정(같은 장소 2슬롯)은 하나의 stop으로 접힌다.
+    for band in _BANDS:
+        names = [st["place"] for st in r["stops"][band]]
+        assert all(a != b for a, b in zip(names, names[1:]))
+
+
+@requires_ville
 def test_walk_segments_cached_same_day():
+    # T-294 — 같은 날 재요청은 첫 응답의 구간을 그대로 재생한다(빈값 아님).
     _start("npcmap_f")
-    mls.control_game_walk(game_id="npcmap_f")
+    first = mls.control_game_walk(game_id="npcmap_f")
     again = mls.control_game_walk(game_id="npcmap_f")
     assert again.get("cached") is True
-    assert all(v == [] for v in again["segments"].values())
+    assert again["segments"] == first["segments"]
 
 
 @requires_ville

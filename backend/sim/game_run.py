@@ -61,11 +61,13 @@ class GameRun:
         other_categories: tuple[str, ...] | None = None,
         initial_positions: dict[str, dict] | None = None,
         village: str = "balanced",
+        clone_name: str = "내 클론",   # T-303 — 플레이어가 지은 에이전트 이름
     ) -> None:
         self.clone_spec = clone_spec
         self.category = category
         self.start_price = start_price
         self.days = days
+        self.clone_name = clone_name
         self.fl = fate_line or load_fate_line()
         self.store = store or RunStore()
         self.run_id = run_id
@@ -380,16 +382,55 @@ class GameRun:
         return out
 
     def history(self) -> list[dict]:
-        """T-269 — 이 회차의 일별 발자취(뉴스 선택·만남·소셜·일과). 순수 조회."""
+        """T-269 — 이 회차의 일별 발자취(뉴스 선택·만남·소셜·일과). 순수 조회.
+
+        T-300(사용자 "어떤 감정변화 땜에 매매를 했고 그 결과 수익률") — 일별
+        trade 서사 필드 동봉: 원인(trap_name·swayed) → 행동(fund_flow) →
+        시세(price_pct, 전일 종가 대비) → 결과(ret_pct 총자산 변화·실현손익).
+        """
         snaps = self.store.snapshots(self.run_id)
-        return [{
-            "day": day,
-            "news_id": s.news_id, "news_tone": s.news_tone,
-            "met": list(s.met), "companion": s.companion,
-            "schedule": {str(k): v for k, v in (s.schedule or {}).items()},
-            "swayed": s.swayed, "trap": s.trap,
-            "social": [e for e in self._social_log if e.get("day") == day],
-        } for day, s in sorted(snaps.items())]
+        out = []
+        prev_total = self.initial_total
+        for day, s in sorted(snaps.items()):
+            flow = s.fund_flow or next(
+                (b.get("fund_flow") for b in (s.bundle or []) if b.get("fund_flow")), "")
+            ret_pct = (round((s.total_asset - prev_total) / prev_total * 100.0, 2)
+                       if prev_total else 0.0)
+            # T-306(사용자 "포트폴리오별로 한눈에") — 종목별 시세 등락·보유가치.
+            assets = []
+            for cat, pos in (s.holdings or {}).items():
+                qty = float(pos.get("quantity", 0.0))
+                if qty <= 0:
+                    continue
+                ohlc = self.fl.day_ohlc(cat, day)
+                price = ohlc[3] if ohlc is not None else float(pos.get("avg_cost", 0.0))
+                assets.append({
+                    "category": cat,
+                    "price_pct": round(self.fl.change_rate(cat, day), 2),
+                    "value": round(qty * price, 2)})
+            assets.sort(key=lambda a: -a["value"])
+            out.append({
+                "day": day,
+                "news_id": s.news_id, "news_tone": s.news_tone,
+                "met": list(s.met), "companion": s.companion,
+                "schedule": {str(k): v for k, v in (s.schedule or {}).items()},
+                "swayed": s.swayed, "trap": s.trap,
+                "social": [e for e in self._social_log if e.get("day") == day],
+                "trade": {
+                    "fund_flow": flow,
+                    "trap_name": next(
+                        (b.get("trap_name") for b in (s.bundle or []) if b.get("trap_name")), ""),
+                    "swayed": s.swayed,
+                    "realized_pnl": round(s.realized_pnl, 2),
+                    "price_pct": round(self.fl.change_rate(self.category, day), 2),
+                    "ret_pct": ret_pct,
+                    "assets": assets,               # T-306
+                    "cash": round(float(s.cash), 2),
+                },
+            })
+            if s.total_asset:
+                prev_total = s.total_asset
+        return out
 
     def siren_choice(self, day: int, kind: str) -> dict:
         """T-271 — 긴급 속보 선택 적용(심리 전용 — 가격·운명선 불가침 §7.1).
@@ -522,6 +563,7 @@ class GameRun:
             "run_id": self.run_id,
             "day": self.day,
             "days": self.days,
+            "clone_name": self.clone_name,   # T-303
             "finished": self.finished,
             "stats": dict(self.stats),
             "portfolio": {**dict(self.holding), "holdings": holdings},
@@ -546,6 +588,7 @@ class GameRun:
             "start_cash": self._start_cash,
             "initial_positions": self._initial_positions,
             "village": self.village,   # T-273
+            "clone_name": self.clone_name,   # T-303
 
             "other_categories": list(self.other_categories),
             "base_stats": dict(self._base_stats),
@@ -585,6 +628,7 @@ class GameRun:
             other_categories=tuple(doc["other_categories"]),
             initial_positions=doc.get("initial_positions") or None,
             village=doc.get("village", "balanced"),   # T-273 — 구 문서=균형(현행 동일)
+            clone_name=doc.get("clone_name", "내 클론"),   # T-303 — 구 문서 하위호환
         )
         # __init__이 새 회차로 리셋해버리므로, 저장된 실제 진행 상태를 그 위에 덮는다.
         g._run_index = doc["run_index"]

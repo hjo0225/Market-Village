@@ -72,6 +72,8 @@ def test_advance_with_news_and_strategy():
 
 def test_newrun_resets_and_compare_diverges():
     _start("ep_cmp")
+    # T-302 이후 서비스 게임은 10일 — 이 테스트는 운명선 day27 분기가 대상이라 30일로.
+    mls._get_game("ep_cmp").days = 30
     # 1회차: 개입 없음 → day27 패닉 매도(실 업비트 DOGE −21.6%)
     for _ in range(30):
         mls.control_game_advance(mls.GameAdvanceBody(game_id="ep_cmp"))

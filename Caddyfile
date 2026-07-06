@@ -1,4 +1,5 @@
-# 실제 배포 시 example.com을 실 도메인으로 교체. Caddy가 Let's Encrypt로 TLS 자동 발급.
-example.com {
+# T-308 — 도메인 없이 공인 IP+HTTP로 시작(팀 개발용). 도메인 생기면 아래를
+# `도메인명 { ... }`으로 바꾸면 Caddy가 Let's Encrypt TLS를 자동 발급한다.
+:80 {
     reverse_proxy frontend:3000
 }

@@ -4,7 +4,8 @@ import { ReactNode } from "react";
 
 // T-288(사용자 지시 "폰 UI 통일") — 게시판 이벤트(T-255)의 슬라이드업 폰 프레임을
 // 공용 컴포넌트로 추출. 이벤트 폰과 헤더 📱핸드폰이 같은 프레임을 쓴다.
-export default function PhoneFrame({ day, children, maxW = "max-w-lg" }: {
+// T-293(사용자) — 실폰 비율: 가로는 좁게(max-w-sm), 세로는 내용이 70vh까지.
+export default function PhoneFrame({ day, children, maxW = "max-w-sm" }: {
   day: number;
   children: ReactNode;
   maxW?: string;

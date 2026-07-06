@@ -34,6 +34,7 @@ export default function PortfolioSetupPage() {
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const [village, setVillage] = useState("balanced");   // T-273
+  const [cloneName, setCloneName] = useState("");       // T-303 — 에이전트 이름
 
   // T-274 — 분산 4유형 고정(단일 종목 모드 삭제). 기본 균등 배분.
   const [allocations, setAllocations] = useState<Record<string, number>>({
@@ -56,7 +57,8 @@ export default function PortfolioSetupPage() {
     try {
       const gameId = newGameId();
       // symbol은 allocations가 있으면 서버가 무시(최대 비중 카테고리가 주력) — 기본값 유지.
-      const r = await api.gameStart(gameId, answers, "DOGE", 100.0, allocations, village);
+      const r = await api.gameStart(gameId, answers, "DOGE", 100.0, allocations, village,
+        cloneName.trim() || undefined);   // T-303
       if (r.status !== "ok") {
         // 실패해도 확정 답변은 보존 — 그대로 재시도 가능(비동기 유실 방지).
         setStartError("서버 연결에 실패했어요. 잠시 후 다시 시도해주세요.");
@@ -106,6 +108,19 @@ export default function PortfolioSetupPage() {
             </p>
           </div>
 
+          {/* T-303 — 에이전트 이름(선택) */}
+          <div className="mt-8 pt-6 border-t-2 border-black/10">
+            <p className="text-base font-extrabold mb-3">🏷 에이전트 이름 <span className="text-sm font-bold text-pixel-muted">(선택)</span></p>
+            <input
+              type="text" value={cloneName} maxLength={12}
+              onChange={(e) => setCloneName(e.target.value)}
+              placeholder="비워두면 '내 클론'"
+              className="w-full sm:w-64 rounded-xl border-2 border-black px-4 py-2.5 text-base font-bold
+                focus:outline-none focus:ring-2 focus:ring-black/30"
+            />
+            <p className="text-sm text-pixel-muted mt-1.5">맵 이름표·리더보드·게시판에 이 이름으로 등장해요.</p>
+          </div>
+
           {/* T-273 — 마을 분위기 선택 */}
           <div className="mt-8 pt-6 border-t-2 border-black/10">
             <p className="text-base font-extrabold mb-3">🏘 마을 분위기</p>
@@ -128,7 +143,7 @@ export default function PortfolioSetupPage() {
 
           <div className="flex justify-end mt-8">
             <PixelButton size="lg" disabled={!allocationValid || starting} onClick={handleStart}>
-              {starting ? "시작 중…" : "게임 시작 (30일) ▶"}
+              {starting ? "시작 중…" : "게임 시작 (10일) ▶"}
             </PixelButton>
           </div>
         </PixelPanel>

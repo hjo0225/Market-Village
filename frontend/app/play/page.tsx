@@ -34,6 +34,7 @@ export default function PlayPage() {
   const [picks, setPicks] = useState<Picks>({});
   const [designated, setDesignated] = useState<Designated>({});   // T-272a
   const [history, setHistory] = useState<HistoryDay[]>([]);       // T-269 발자취
+  const [mapActivity, setMapActivity] = useState<string | null>(null);   // T-292 지금 뭐하는지
   // T-271 — 긴급 속보 사이렌: 오후 스테이지에 한시(20초/배속) 등장, 놓치면 소멸.
   const [sirenVisible, setSirenVisible] = useState(false);
   const [sirenModalOpen, setSirenModalOpen] = useState(false);
@@ -312,7 +313,7 @@ export default function PlayPage() {
 
   return (
     <main className="min-h-screen relative">
-      <MapBackground ref={mapRef} gameId={gameId} />
+      <MapBackground ref={mapRef} gameId={gameId} onActivity={setMapActivity} />
 
       {/* 사용자 피드백(2026-07-01) — 스탯·뉴스는 상시 패널이 아니라 이 리모콘의
           버튼 뒤로 숨긴다. 지도가 화면 대부분을 차지하게. */}
@@ -356,7 +357,7 @@ export default function PlayPage() {
       {/* T-269 — 좌측 발자취 패널(오늘 일정+지금 이동 중+지난 날 이력) */}
       <HistoryPanel
         history={history} todaySchedule={schedule} today={state.day}
-        heading={stagePlan ?? null}
+        heading={stagePlan ?? null} activity={mapActivity}
       />
 
       <PixelModal isOpen={statsOpen} onClose={() => setStatsOpen(false)} title="🪞 클론 상태" size="sm">
@@ -376,7 +377,6 @@ export default function PlayPage() {
       <PhoneModal
         isOpen={phoneOpen} onClose={() => setPhoneOpen(false)} gameId={gameId}
         day={state.day} rapport={state.rapport} crowdMood={state.crowd_mood}
-        meetings={meetings} picks={picks} designated={designated} schedule={schedule}
         history={history} onChanged={() => refresh(gameId)}
       />
       <DayResultModal

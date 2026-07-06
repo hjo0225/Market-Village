@@ -14,11 +14,24 @@ export interface MapBackgroundHandle {
 // T-FE2 — the_ville 배경 지도(§12.0). 백엔드의 순수 캔버스 페이지를 iframe으로
 // 깔아 서비스 전체의 "배경"으로 쓴다. 상태는 전부 Next.js가 들고, 이 iframe은
 // game_id로 GameRun에 연결해 그리기만 한다(하루 진행 시 postMessage로 걷기 트리거).
-const MapBackground = forwardRef<MapBackgroundHandle, { gameId: string }>(function MapBackground(
-  { gameId },
+const MapBackground = forwardRef<MapBackgroundHandle, {
+  gameId: string;
+  // T-292 — 맵의 활동 서술(말풍선은 이모지만, 텍스트는 발자취 패널로).
+  onActivity?: (text: string | null) => void;
+}>(function MapBackground(
+  { gameId, onActivity },
   ref
 ) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  useEffect(() => {
+    if (!onActivity) return;
+    const onMsg = (e: MessageEvent) => {
+      if (e.data?.type === "activity") onActivity(e.data.text ?? null);
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, [onActivity]);
 
   useImperativeHandle(ref, () => ({
     playWalk: (band?: string, speedup?: number) =>

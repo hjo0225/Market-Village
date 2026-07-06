@@ -57,6 +57,10 @@ from backend.sim.interview import question_by_id as _question_by_id  # noqa: E40
 from backend.sim.fate_line import category_for_symbol as _category_for_symbol  # noqa: E402
 from backend.sim import tuning as _T  # noqa: E402
 
+# T-302(사용자) — 서비스 시뮬레이션 길이. 엔진 GameRun 기본값(30)과 별개로
+# 서비스 계층이 명시 전달한다(운명선 시드는 30일 그대로 — 앞 10일만 사용).
+GAME_DAYS = 10
+
 # §12.4 step-able GameRun 세션 맵 (game_id → GameRun). 신 엔진 정본 플레이 경로.
 # 이게 항상 1차 진실 소스 — MongoDB(T-DB)는 서버 재시작 후 재개용 보조 저장소일 뿐.
 _GAMES: dict[str, _GameRun] = {}
@@ -239,6 +243,8 @@ def _meetings_by_band(g: "_GameRun", game_id: str = "") -> dict:
             "name": p["name"] if p else pick,
             "role": p["role"] if p else "",
             "portrait": p["portrait"] if p else None,
+            # T-304 — 만남 슬롯의 장소: 맵이 밴드 끝이 아니라 이 장소 stop에서 연다.
+            "place": g.schedule.get(int(slot), ""),
             "lines": _meeting_talk.dialogue(game_id, g.day, pick, stats)})
     return out
 
@@ -270,21 +276,26 @@ def _ensure_game_walker(game_id: str, npc_scheds: dict | None = None) -> dict:
     return walker
 
 
-def _walk_via(cur: tuple, targets: list, rng: random.Random) -> tuple[list[list[int]], tuple]:
+def _walk_via(cur: tuple, targets: list, rng: random.Random,
+              ) -> tuple[list[list[int]], tuple, list[int | None]]:
     """목표들을 차례로 들르는 타일 경로(steps)와 최종 위치를 반환.
 
     목표는 주소 문자열(영역 내 임의 타일) 또는 정확한 타일 tuple(T-239 — 집처럼
-    게임 내 고정이어야 하는 지점).
+    게임 내 고정이어야 하는 지점). T-296 — 목표별 도착 인덱스(steps 내 위치,
+    해석 실패 목표는 None)를 함께 반환해 연출이 장소마다 멈춰 행동할 수 있게.
     """
     steps: list[list[int]] = []
+    arrive: list[int | None] = []
     for tgt in targets:
         dest = tgt if isinstance(tgt, tuple) else _gamerun_rand_tile_for(tgt, rng)
         if dest is None:
+            arrive.append(None)
             continue
         seg = _gamerun_path(cur, dest)
         steps.extend([list(t) for t in seg[1:]] if len(seg) > 1 else [])
+        arrive.append(len(steps))
         cur = dest
-    return steps, cur
+    return steps, cur, arrive
 
 
 # T-237 §12.1b — 8슬롯을 4시간대로 묶는다(슬롯 1·2=오전 … 7·8=저녁, day_loop와 동일).
@@ -292,32 +303,65 @@ _WALK_BANDS: tuple[tuple[str, tuple[int, int]], ...] = (
     ("오전", (1, 2)), ("점심", (3, 4)), ("오후", (5, 6)), ("저녁", (7, 8)))
 
 
+def _meeting_approach(npc_tile: tuple, clone_tile: tuple) -> list[list[int]]:
+    """T-299(사용자 "포켓몬처럼 가까이서 마주봐야 대화") — NPC가 클론 **옆 칸**까지
+    실 길찾기로 걸어오는 경로. 이미 인접이면 빈 경로. 표현 계층 전용.
+
+    기존 map.html의 L자 직선 휴리스틱(벽 무시·12타일 캡)을 대체 — 목적지는
+    클론 4방 이웃 중 walkable하면서 NPC에 가장 가까운 타일.
+    """
+    if abs(npc_tile[0] - clone_tile[0]) + abs(npc_tile[1] - clone_tile[1]) <= 1:
+        return []
+    neighbors = [(clone_tile[0] + dx, clone_tile[1] + dy)
+                 for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))]
+    goals = sorted(
+        (t for t in neighbors if _gamerun_walkable(t)),
+        key=lambda t: abs(t[0] - npc_tile[0]) + abs(t[1] - npc_tile[1]))
+    for goal in goals:
+        seg = _gamerun_path(tuple(npc_tile), goal)
+        if len(seg) > 1:
+            return [list(t) for t in seg[1:]]
+        if len(seg) == 1 and tuple(seg[0]) == goal:
+            return []
+    return []
+
+
 def _banded_route(
     sched: dict[int, str], cur: tuple, rng: random.Random,
     home_tile: tuple | None = None,
-) -> tuple[dict[str, list[list[int]]], tuple]:
+) -> tuple[dict[str, list[list[int]]], tuple, dict[str, list[dict]]]:
     """일과를 시간대별 경로 구간으로 — 연출이 하루 단계와 동기화되도록(T-237).
 
     home_tile이 주어지면(클론) 저녁 구간 끝에 그 타일로 귀가한다 — 주소 영역 내
     임의 타일이 아니라 게임 내 고정된 '내 집'(T-239, 매일 같은 집으로). 일과 중
     집_차트 슬롯도 같은 타일을 쓴다. 구간 안에서만 연속 중복 목표를 접는다.
+
+    T-296 — 밴드별 stops([{place, i}])도 반환: 들르는 장소마다 도착 인덱스를
+    표시해, 연출이 각 장소에서 최소 1가지 행동을 재생할 수 있게(사용자 요청).
     """
     home_addr = _GAME_LOCATION_ADDR["집_차트"]
     segments: dict[str, list[list[int]]] = {}
+    stops: dict[str, list[dict]] = {}
     for band, slots in _WALK_BANDS:
         targets: list = []
+        names: list[str] = []
         for slot in slots:
-            addr = _GAME_LOCATION_ADDR.get(sched.get(slot, ""))
+            place = sched.get(slot, "")
+            addr = _GAME_LOCATION_ADDR.get(place)
             if not addr:
                 continue
             tgt = home_tile if (home_tile is not None and addr == home_addr) else addr
             if not targets or targets[-1] != tgt:
                 targets.append(tgt)
+                names.append(place)
         if band == "저녁" and home_tile is not None:
             if not targets or targets[-1] != home_tile:
                 targets.append(home_tile)
-        segments[band], cur = _walk_via(cur, targets, rng)
-    return segments, cur
+                names.append("집_차트")
+        segments[band], cur, arrive = _walk_via(cur, targets, rng)
+        stops[band] = [{"place": n, "i": i}
+                       for n, i in zip(names, arrive) if i is not None]
+    return segments, cur, stops
 
 
 def _place_labels(walker: dict) -> list[dict]:
@@ -350,14 +394,19 @@ def control_game_home(game_id: str):
     if g is None:
         return {"status": "error", "error": "no game"}
     walker = _ensure_game_walker(game_id, g.npc_scheds)
+    # T-294 — 오늘 walk가 이미 소비됐으면(워커 pos=하루 끝) 하루 시작 위치를 준다:
+    # 하루 중간에 iframe이 리부트돼도 멱등 walk 재생과 좌표가 이어진다(집 순간이동 방지).
+    start = walker.get("day_start") if walker.get("day") == g.day else None
+    pos = start["pos"] if start else walker["pos"]
     npcs = [
         {"id": p["id"], "name": p["name"], "sprite": p["sprite"],
-         "pos": walker["npcs"][p["id"]]}
+         "pos": (start["npcs"].get(p["id"]) if start else None) or walker["npcs"][p["id"]]}
         for p in _personas.TRADER_PERSONAS
     ]
     return {"status": "ok",
-            "persona": {"original": "gamerun_clone", "underscore": _GAME_CLONE_SPRITE, "initial": "클론"},
-            "pos": walker["pos"], "npcs": npcs, "places": _place_labels(walker)}
+            "persona": {"original": "gamerun_clone", "underscore": _GAME_CLONE_SPRITE,
+                        "initial": g.clone_name},   # T-303 — 맵 이름표에 지은 이름
+            "pos": pos, "npcs": npcs, "places": _place_labels(walker)}
 
 
 @app.get("/control/game/day/walk")
@@ -373,8 +422,13 @@ def control_game_walk(game_id: str):
     walker = _ensure_game_walker(game_id, g.npc_scheds)
     band_names = [b for b, _ in _WALK_BANDS]
     if walker["day"] == g.day:
+        # T-294 — 재요청=빈 경로였던 것을 멱등 재생으로: 같은 날은 첫 응답을 그대로.
+        # (iframe 리로드 후에도 하루 걷기를 다시 재생할 수 있다 — 집 순간이동 방지)
+        if walker.get("day_resp"):
+            return {**walker["day_resp"], "cached": True}
         return {"status": "ok", "steps": [], "npcs": {}, "cached": True,
                 "segments": {b: [] for b in band_names},
+                "stops": {b: [] for b in band_names},
                 "npc_segments": {p["id"]: {b: [] for b in band_names}
                                  for p in _personas.TRADER_PERSONAS},
                 "plan": {band: [g.schedule[s] for s in slots if g.schedule.get(s)]
@@ -383,9 +437,13 @@ def control_game_walk(game_id: str):
 
     # T-237 — 클론·NPC 모두 시간대 4구간으로 분해(연출이 하루 단계와 동기).
     # flat(steps/npcs)은 구간의 순차 연결 — 구버전 map.html 하위호환.
+    # T-294 — 하루 시작 위치를 박제(home이 리부트 시 이 좌표를 준다).
+    day_start = {"pos": list(walker["pos"]),
+                 "npcs": {p["id"]: list(walker["npcs"][p["id"]])
+                          for p in _personas.TRADER_PERSONAS}}
     rng = random.Random(_walker_seed("walk", game_id, g.day))
-    segments, cur = _banded_route(g.schedule, tuple(walker["pos"]), rng,
-                                  home_tile=tuple(walker["home"]))
+    segments, cur, stops = _banded_route(g.schedule, tuple(walker["pos"]), rng,
+                                         home_tile=tuple(walker["home"]))
     walker["pos"] = list(cur)
     steps = [xy for b in band_names for xy in segments[b]]
 
@@ -394,7 +452,7 @@ def control_game_walk(game_id: str):
     for p in _personas.TRADER_PERSONAS:
         rng_n = random.Random(_walker_seed("walk", game_id, p["id"], g.day))
         # T-273 — 연출 경로도 게임의 npc_scheds(프리셋 반영) 단일 소스.
-        segs_n, n_cur = _banded_route(
+        segs_n, n_cur, _stops_n = _banded_route(
             g.npc_scheds.get(p["id"], p["sched"]),
             tuple(walker["npcs"][p["id"]]), rng_n, home_tile=None)
         npc_segments[p["id"]] = segs_n
@@ -404,9 +462,26 @@ def control_game_walk(game_id: str):
     # T-242 — 말풍선용 클론 일정(시간대→장소명). 표현 계층이 "어디로/뭐 하는 중"을 그린다.
     plan = {band: [g.schedule[s] for s in slots if g.schedule.get(s)]
             for band, slots in _WALK_BANDS}
-    return {"status": "ok", "steps": steps, "npcs": npc_steps,
+    meetings = _meetings_by_band(g, game_id)
+    # T-299 — 만남마다 접근 경로 동봉: NPC 밴드 종료 타일 → 클론 옆 칸(실 길찾기).
+    pos_c = list(day_start["pos"])
+    pos_n = {p["id"]: list(day_start["npcs"][p["id"]]) for p in _personas.TRADER_PERSONAS}
+    for band in band_names:
+        if segments[band]:
+            pos_c = list(segments[band][-1])
+        for nid, segs_b in npc_segments.items():
+            if segs_b[band]:
+                pos_n[nid] = list(segs_b[band][-1])
+        for m in meetings[band]:
+            m["approach"] = _meeting_approach(
+                tuple(pos_n.get(m["id"], pos_c)), tuple(pos_c))
+    resp = {"status": "ok", "steps": steps, "npcs": npc_steps,
             "segments": segments, "npc_segments": npc_segments, "plan": plan,
-            "meetings_by_band": _meetings_by_band(g, game_id)}
+            "stops": stops,   # T-296 — 장소별 도착 지점(연출: 장소마다 1행동)
+            "meetings_by_band": meetings}
+    walker["day_start"] = day_start
+    walker["day_resp"] = resp
+    return resp
 
 
 # --------------------------------------------------------------------------- #
@@ -471,6 +546,8 @@ class GameStartBody(BaseModel):
     allocations: dict[str, float] | None = None
     # T-273 — 마을 분위기 프리셋(balanced|aggressive|conservative).
     village: str = "balanced"
+    # T-303 — 플레이어가 지은 에이전트 이름(미지정=기본 문구).
+    clone_name: str | None = None
 
 
 # T-265 — /day/advance 멱등성 캐시: game_id → (마지막 idem_key, 그 응답).
@@ -516,7 +593,11 @@ class GameNewRunBody(BaseModel):
 
 @app.post("/control/game/start")
 def control_game_start(body: GameStartBody):
-    """§12.4 — 인터뷰 답변으로 클론 생성 → 30일 회차 세션 시작(신 엔진 정본)."""
+    """§12.4 — 인터뷰 답변으로 클론 생성 → 회차 세션 시작(신 엔진 정본).
+
+    T-302(사용자 "30일 너무 길다") — 서비스 길이는 GAME_DAYS(10일). 엔진
+    기본값(30)은 run_loop 동치성·기존 테스트를 위해 불변.
+    """
     spec = _clone_spec.build_clone_spec(body.answers)
     allocations = {c: p for c, p in (body.allocations or {}).items() if p and p > 0}
     if allocations:
@@ -533,11 +614,13 @@ def control_game_start(body: GameStartBody):
         g = _GameRun(spec, category=primary_cat, start_price=body.start_price,
                      start_stats=body.start_stats, start_quantity=primary_qty,
                      initial_positions=initial_positions, run_id="run1",
-                     village=body.village)
+                     village=body.village, days=GAME_DAYS,
+                     clone_name=body.clone_name or "내 클론")
     else:
         g = _GameRun(spec, category=_category_for_symbol(body.symbol),
                      start_price=body.start_price, start_stats=body.start_stats,
-                     run_id="run1", village=body.village)
+                     run_id="run1", village=body.village, days=GAME_DAYS,
+                     clone_name=body.clone_name or "내 클론")
     _GAMES[body.game_id] = g
     _persist_game(body.game_id, g)
     return {"status": "ok", "state": g.state()}
@@ -649,11 +732,20 @@ def control_game_siren_choose(body: GameSirenBody):
 
 @app.get("/control/game/history")
 def control_game_history(game_id: str):
-    """T-269 — 진행 이력(발자취): 일별 뉴스 선택·만남·소셜 액션·일과. 순수 조회."""
+    """T-269 — 진행 이력(발자취): 일별 뉴스 선택·만남·소셜 액션·일과. 순수 조회.
+
+    T-300 — 일별 npc_trades(그날 매매한 다른 에이전트, 결정론 파생)도 동봉.
+    """
     g = _get_game(game_id)
     if g is None:
         return {"status": "error", "error": "no game"}
-    return {"status": "ok", "run_id": g.run_id, "days": g.history()}
+    days = g.history()
+    for d in days:
+        d["npc_trades"] = [
+            {"id": p["id"], "name": p["name"], "action": action}
+            for p in _personas.TRADER_PERSONAS
+            if (action := _npc_traders.npc_action_on_day(p, g.fl, g.category, d["day"]))]
+    return {"status": "ok", "run_id": g.run_id, "days": days}
 
 
 @app.get("/control/game/chat_log")
@@ -788,7 +880,29 @@ def control_game_board(game_id: str, use_llm: bool = False):
     llm_on = use_llm or os.environ.get("MV_BOARD_LLM") == "1"
     board = g.board_today(_drawn_news_today(game_id, g), use_llm=llm_on)
     _persist_game(game_id, g)
+    # T-303 — 게시글/댓글의 클론 표기를 지은 이름으로(표현만, 아카이브 불변).
+    def _rename(posts):
+        for p in posts or []:
+            if p.get("author_id") == "clone":
+                p["author"] = g.clone_name
+            for c in p.get("comments", []):
+                if c.get("author_id") == "clone":
+                    c["author"] = g.clone_name
+    _rename(board.get("posts"))
+    if board.get("recent"):
+        _rename(board["recent"].get("posts"))
     return {"status": "ok", **board}
+
+
+@app.get("/control/game/day/approach")
+def control_game_approach(game_id: str, fx: int, fy: int, cx: int, cy: int):
+    """T-304 — 만남 시점 실좌표 접근 경로(순수 함수, 무변이·멱등 GET).
+
+    맵이 만남 직전 NPC의 실제 타일에서 클론 옆 칸까지의 실 길찾기 경로를 받아
+    벽 뚫기 없이 걸어오게 한다(정적 approach는 밴드 종료 시점 기준이라 어긋남).
+    """
+    _ = game_id   # 시그니처 일관성용(경로는 게임 무관 순수 함수)
+    return {"status": "ok", "steps": _meeting_approach((fx, fy), (cx, cy))}
 
 
 @app.get("/control/game/day/crisis_check")
@@ -841,6 +955,15 @@ def _do_advance(body: GameAdvanceBody):
         out["day_result"] = {"trap": snap.trap, "swayed": snap.swayed,
                              "fund_flow": snap.fund_flow, "realized_pnl": snap.realized_pnl,
                              "stats": snap.emotion_stats, "bundle": snap.bundle}
+        # T-301(사용자 "하루 끝나면 모달로") — 매매 서사를 정산 응답에 동봉:
+        # history()와 동일 산식(단일 소스), npc_trades는 그날 결정론 파생.
+        hist = g.history()
+        if hist:
+            out["day_result"]["trade"] = hist[-1]["trade"]
+        out["day_result"]["npc_trades"] = [
+            {"id": p["id"], "name": p["name"], "action": action}
+            for p in _personas.TRADER_PERSONAS
+            if (action := _npc_traders.npc_action_on_day(p, g.fl, g.category, snap.day))]
     if g.finished and g.summary is not None:
         # 게이트 4c-③(부분쓰기): advance_day(변이) 뒤에 예외가 나면 캐시 미기록
         # 상태로 500 → 클라이언트 재시도가 하루를 이중 적용한다. 카드 실패는
@@ -897,7 +1020,7 @@ def control_game_leaderboard(game_id: str):
              else g.holding["cash"] + g.holding["quantity"] * g.last_price)
     clone_pct = round((total - g.initial_total) / g.initial_total * 100.0, 2) \
         if g.initial_total else 0.0
-    board = [{"id": "clone", "name": "내 클론", "return_pct": clone_pct}]
+    board = [{"id": "clone", "name": g.clone_name, "return_pct": clone_pct}]
     for p in _personas.TRADER_PERSONAS:
         board.append({"id": p["id"], "name": p["name"],
                       "return_pct": _npc_traders.npc_return_pct(p, g.fl, g.category, g.day)})
@@ -927,7 +1050,7 @@ def control_game_trades(game_id: str, day: int | None = None):
                  or [g.last_snap.fund_flow])
         action = next((_FLOW_ACTION[f] for f in flows if f in _FLOW_ACTION), None)
         if action:
-            trades.append({"id": "gamerun_clone", "name": "내 클론", "action": action})
+            trades.append({"id": "gamerun_clone", "name": g.clone_name, "action": action})
     for p in _personas.TRADER_PERSONAS:
         action = _npc_traders.npc_action_on_day(p, g.fl, g.category, d)
         if action:

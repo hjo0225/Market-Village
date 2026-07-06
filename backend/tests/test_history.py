@@ -80,3 +80,63 @@ def test_history_endpoint():
     assert r["status"] == "ok"
     assert r["days"][0]["news_tone"] == "fear"
     assert mls.control_game_history(game_id="no_such")["status"] == "error"
+
+
+# --- T-306 · 포트폴리오 한눈 보기 — 종목별 시세·보유가치 --------------------- #
+def test_history_trade_carries_per_asset_breakdown():
+    g = _g("hist_assets")
+    g.advance_day()
+    t = g.history()[-1]["trade"]
+    assert "assets" in t and "cash" in t
+    assert isinstance(t["cash"], float)
+    for a in t["assets"]:
+        assert a["category"]
+        assert isinstance(a["price_pct"], float)
+        assert a["value"] > 0            # 보유 수량이 있는 종목만 나열
+
+
+# --- T-300 · 매매 서사 — 감정 원인→매매→시세→수익률 ------------------------ #
+def test_history_carries_trade_narrative_fields():
+    g = _g("hist_trade")
+    for _ in range(5):
+        g.advance_day()
+    h = g.history()
+    for d in h:
+        t = d["trade"]
+        # 항상 존재: fund_flow(""=거래 없음), 시세 변화율, 자산 변화율.
+        assert set(t) >= {"fund_flow", "price_pct", "ret_pct",
+                          "trap_name", "swayed", "realized_pnl"}
+        assert isinstance(t["price_pct"], float)
+        assert isinstance(t["ret_pct"], float)
+    # 휘둘려 매매한 날은 원인(trap_name)이 함께 남는다.
+    swayed_days = [d for d in h if d["trade"]["swayed"] and d["trade"]["fund_flow"]]
+    for d in swayed_days:
+        assert d["trade"]["trap_name"]
+
+
+def test_advance_day_result_carries_trade_narrative():
+    # T-301(사용자 "하루가 끝나면 모달로 떠야") — 정산 응답에 서사가 실려야
+    # 프론트가 refresh를 기다리지 않고 모달에 바로 띄운다. history()와 동일 산식.
+    mls.control_game_start(mls.GameStartBody(
+        game_id="hist_modal", answers={}, symbol="DOGE", start_price=100.0))
+    r = mls.control_game_advance(mls.GameAdvanceBody(game_id="hist_modal"))
+    dr = r["day_result"]
+    assert set(dr["trade"]) >= {"fund_flow", "price_pct", "ret_pct",
+                                "trap_name", "swayed", "realized_pnl"}
+    assert isinstance(dr["npc_trades"], list)
+    g = mls._get_game("hist_modal")
+    assert dr["trade"] == g.history()[-1]["trade"]
+
+
+def test_history_endpoint_carries_npc_trades():
+    mls.control_game_start(mls.GameStartBody(
+        game_id="hist_npc", answers={}, symbol="DOGE", start_price=100.0))
+    g = mls._get_game("hist_npc")
+    for _ in range(3):
+        g.advance_day()
+    r = mls.control_game_history(game_id="hist_npc")
+    assert r["status"] == "ok"
+    for d in r["days"]:
+        assert "npc_trades" in d
+        for tr in d["npc_trades"]:
+            assert tr["id"] and tr["name"] and tr["action"] in ("buy", "sell")

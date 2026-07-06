@@ -31,7 +31,7 @@ export default function OnboardingOverlay() {
       <div className="flex flex-col gap-4 text-sm">
         <p>
           블라인드 처리된 <b>실제 과거 코인 시장</b>에서 내 투자 성격을 복제한
-          <b> 거울 클론</b>이 30일을 삽니다. 당신은 클론을 직접 조종하지 않고,
+          <b> 거울 클론</b>이 10일을 삽니다. 당신은 클론을 직접 조종하지 않고,
           뉴스·전날밤 회피·위기 개입으로만 클론의 감정을 흔들어요.
         </p>
         <div>
@@ -56,7 +56,7 @@ export default function OnboardingOverlay() {
           </ul>
         </div>
         <p className="text-xs text-pixel-muted">
-          30일 뒤 결과 카드로 클론의 투자 성향을 확인하고, 다시 플레이하며 내
+          10일 뒤 결과 카드로 클론의 투자 성향을 확인하고, 다시 플레이하며 내
           감정 패턴이 달라졌는지 비교할 수 있어요.
         </p>
         <PixelButton size="lg" onClick={close} className="self-end">

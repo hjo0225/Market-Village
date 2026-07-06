@@ -94,13 +94,38 @@ def test_walk_endpoint_returns_steps_first_call():
 
 
 @requires_ville
-def test_walk_endpoint_same_day_returns_empty_cached():
+def test_walk_endpoint_same_day_replays_same_route():
+    # T-294 — 재요청=빈 경로였던 계약을 멱등 재생으로: iframe이 하루 중간에
+    # 리로드돼도(새로고침·핫리로드) 같은 날 걷기를 그대로 다시 재생할 수 있어야
+    # "게시판 닫으니 집으로 순간이동+마을 정지"가 안 생긴다.
     _start("mgr_c")
     mls.control_game_home(game_id="mgr_c")
     first = mls.control_game_walk(game_id="mgr_c")
     second = mls.control_game_walk(game_id="mgr_c")   # 같은 day, 재호출
     assert len(first["steps"]) > 0
-    assert second.get("cached") is True and second["steps"] == []
+    assert second.get("cached") is True
+    assert second["steps"] == first["steps"]
+    assert second["segments"] == first["segments"]
+    assert second["npc_segments"] == first["npc_segments"]
+
+
+@requires_ville
+def test_home_endpoint_returns_day_start_pos_after_walk_consumed():
+    # T-294 — walk가 소비된 뒤(하루 진행 중) 맵이 리부트되면, home은 워커의
+    # "하루 끝" 위치가 아니라 하루 시작 위치를 줘야 재생(위 멱등 walk)과 이어진다.
+    _start("mgr_e")
+    before = mls.control_game_home(game_id="mgr_e")
+    walk = mls.control_game_walk(game_id="mgr_e")
+    after = mls.control_game_home(game_id="mgr_e")
+    assert after["pos"] == before["pos"]
+    npc_before = {n["id"]: n["pos"] for n in before["npcs"]}
+    npc_after = {n["id"]: n["pos"] for n in after["npcs"]}
+    assert npc_after == npc_before
+    # 재생 정합: 멱등 walk의 첫 클론 스텝은 시작 위치와 이어져야 한다(인접 타일).
+    if walk["steps"]:
+        sx, sy = walk["steps"][0]
+        px, py = after["pos"]
+        assert abs(sx - px) + abs(sy - py) <= 1
 
 
 @requires_ville

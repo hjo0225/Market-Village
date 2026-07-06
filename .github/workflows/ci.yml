@@ -1,8 +1,7 @@
 name: CI
 
+# T-308 — main 푸시는 deploy.yml이 같은 테스트를 게이트로 실행(중복 방지) → PR 전용.
 on:
-  push:
-    branches: [main]
   pull_request:
 
 jobs:

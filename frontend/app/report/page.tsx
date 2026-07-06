@@ -48,7 +48,7 @@ export default function ReportPage() {
   if (notReady) {
     return (
       <main className="min-h-screen flex flex-col items-center justify-center gap-4 text-center p-6">
-        <p className="text-pixel-muted">아직 완주하지 않은 회차예요. 30일을 다 살아야 결과를 볼 수 있어요.</p>
+        <p className="text-pixel-muted">아직 완주하지 않은 회차예요. 10일을 다 살아야 결과를 볼 수 있어요.</p>
         <div className="flex gap-2">
           <PixelButton onClick={() => router.push("/play")}>이어서 플레이</PixelButton>
           <PixelButton variant="ghost" onClick={backToMain}>메인으로</PixelButton>
@@ -64,7 +64,7 @@ export default function ReportPage() {
   return (
     <main className="min-h-screen bg-white p-6 flex items-center justify-center">
       <div className="w-full max-w-md">
-        <h1 className="text-xl font-extrabold mb-4 text-center">🏁 30일 결과</h1>
+        <h1 className="text-xl font-extrabold mb-4 text-center">🏁 10일 결과</h1>
         <ResultCardView
           returnPct={card.return_pct} grade={card.grade}
           emotionOverall={card.emotion_overall} evaluation={card.evaluation}

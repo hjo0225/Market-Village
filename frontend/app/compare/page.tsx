@@ -2,7 +2,7 @@
 
 // T-227 · §13.6 회차 비교 화면 — 거울의 핵심 산출물 (PRD_MIRROR_COMPARE C1~C4).
 // 이전 회차와 이번 회차를 같은 날 위에 겹쳐 본다: 행동/교류/자금흐름/결과.
-// 30일 나열이 아니라 "행동이 갈린 날"(분기일)만 탭으로(§13.3 빨리감기).
+// 10일 나열이 아니라 "행동이 갈린 날"(분기일)만 탭으로(§13.3 빨리감기).
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import PixelButton from "@/components/pixel/PixelButton";
@@ -106,7 +106,7 @@ function CompareInner() {
       <main className="min-h-screen bg-white p-6 flex items-center justify-center">
         <div className="text-center">
           <p className="text-sm font-bold mb-1">🪞 비교하려면 완주한 회차가 2개 필요해요</p>
-          <p className="text-xs text-pixel-muted mb-4">같은 30일을 한 번 더 살아보면, 두 회차가 겹쳐 보입니다.</p>
+          <p className="text-xs text-pixel-muted mb-4">같은 10일을 한 번 더 살아보면, 두 회차가 겹쳐 보입니다.</p>
           <PixelButton size="sm" onClick={() => router.push("/")}>메인으로</PixelButton>
         </div>
       </main>

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { HistoryDay, NPC_LABELS } from "@/lib/api";
+import { TradeStory } from "@/components/PhoneModal";
 
 // T-269 — 좌측 발자취 패널(사용자 피드백 ④): 일별로 (a) 어떤 뉴스를 골랐는지
 // (b) 누구와 어떤 대화를 했는지 (c) 어디를 갔는지 + 지금 어디로 가는지.
@@ -39,9 +40,10 @@ interface Props {
   todaySchedule: Record<string, string>;
   today: number;
   heading: string | null;   // 진행 연출 중 "지금 이동 중" 라벨(없으면 null)
+  activity: string | null;  // T-292 — 맵의 활동 서술(말풍선은 이모지만, 텍스트는 여기)
 }
 
-export default function HistoryPanel({ history, todaySchedule, today, heading }: Props) {
+export default function HistoryPanel({ history, todaySchedule, today, heading, activity }: Props) {
   const [open, setOpen] = useState(true);
 
   if (!open) {
@@ -73,7 +75,10 @@ export default function HistoryPanel({ history, todaySchedule, today, heading }:
         {/* 오늘 — 일정 + 지금 이동 중 */}
         <div className="rounded-xl border-2 border-pixel-grass bg-green-50/60 p-2.5">
           <p className="text-xs font-extrabold mb-1">Day {today} · 오늘</p>
-          {heading && <p className="text-xs font-bold mb-1">🚶 지금: {heading}</p>}
+          {/* T-292 — 맵 활동 서술이 있으면 그것이 "지금"(말풍선 텍스트의 이사처) */}
+          {activity
+            ? <p className="text-xs font-bold mb-1">{activity}</p>
+            : heading && <p className="text-xs font-bold mb-1">🚶 지금: {heading}</p>}
           <p className="text-[11px] text-pixel-muted leading-relaxed">
             {Object.keys(todaySchedule).length ? placesLine(todaySchedule) : "일과 준비 중…"}
           </p>
@@ -101,6 +106,8 @@ export default function HistoryPanel({ history, todaySchedule, today, heading }:
               {d.social.map((s, i) => (
                 <p key={i} className="text-[11px] text-pixel-muted leading-relaxed">{socialLine(s)}</p>
               ))}
+              {/* T-300 — 그날의 매매 서사(감정→행동→시세→수익률) */}
+              {d.trade && <TradeStory trade={d.trade} day={d.day} />}
               <p className="text-[10px] text-pixel-muted mt-1">{placesLine(d.schedule)}</p>
             </div>
           );

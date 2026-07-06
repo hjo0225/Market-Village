@@ -29,7 +29,7 @@ export default function HistoryPage() {
         {summaries === null ? (
           <p className="text-pixel-muted">불러오는 중…</p>
         ) : summaries.length === 0 ? (
-          <p className="text-pixel-muted">아직 완주한 회차가 없습니다. 30일을 다 살아보면 여기 쌓입니다.</p>
+          <p className="text-pixel-muted">아직 완주한 회차가 없습니다. 10일을 다 살아보면 여기 쌓입니다.</p>
         ) : (
           <div className="flex flex-col gap-3">
             {summaries.map((s) => (

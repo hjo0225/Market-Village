@@ -7,10 +7,9 @@ import PixelButton from "@/components/pixel/PixelButton";
 import PhoneFrame from "@/components/PhoneFrame";
 import { CONTEXT_HEAD, PostCard, VERDICT_LABEL } from "@/components/BoardEventModal";
 import { TONE_STYLE } from "@/components/NewsModal";
-import { PreviewBody } from "@/components/PreviewModal";
 import {
-  api, BoardFeed, ChatLogDay, Designated, HistoryDay, Meetings,
-  NPC_LABELS, NPC_PORTRAITS, NPC_ROLES, Picks,
+  api, BoardFeed, ChatLogDay, HistoryDay,
+  NPC_LABELS, NPC_PORTRAITS, NPC_ROLES,
 } from "@/lib/api";
 
 // T-262 — 1:1은 결과 한 줄이 아니라 대화 왕복(채팅 버블). 내 발화·NPC 응답은
@@ -48,11 +47,6 @@ interface Props {
   rapport: number;
   crowdMood: number;
   onChanged: () => void;
-  // T-283 — 🌙 일과 탭(구 전날밤 모달 임베드)
-  meetings: Meetings;
-  picks: Picks;
-  designated: Designated;
-  schedule: Record<string, string>;
   // T-288 — 📜 이벤트 타임라인 + 💬 메신저 연락처의 데이터 소스(발자취)
   history: HistoryDay[];
 }
@@ -74,6 +68,62 @@ function Avatar({ npcId, size = 32 }: { npcId: string; size?: number }) {
   );
 }
 
+// T-300 — 매매 서사: 감정 원인 → 행동 → 시세 → 수익률(사용자 "언제 매매했는지
+// 전혀 모르겠어"). fund_flow → 행동 라벨은 §8.3 자금 행선지.
+const FLOW_LABEL: Record<string, { icon: string; label: string }> = {
+  to_cash: { icon: "📉", label: "전량 매도(현금화)" },
+  to_stable: { icon: "📉", label: "매도 후 안전자산으로" },
+  to_hotter: { icon: "💸", label: "더 뜨거운 종목 추격 매수" },
+  concentrate: { icon: "💸", label: "집중 매수(몰빵)" },
+  hold_winner: { icon: "✊", label: "익절 거부, 계속 보유" },
+};
+const pct = (v: number) => `${v > 0 ? "+" : ""}${v}%`;
+
+// T-305(사용자 "무슨 말인지 모르겠다") — 숫자 나열 대신 문장으로. 첫날(day 0)은
+// 전일 비교가 없어 "0%"가 무의미 — 숫자를 아예 빼고 말한다.
+export function TradeStory({ trade, day }: { trade: NonNullable<HistoryDay["trade"]>; day?: number }) {
+  const flow = FLOW_LABEL[trade.fund_flow];
+  const priceTxt = day === 0 ? null
+    : trade.price_pct > 0 ? `코인 시세는 전날보다 ${pct(trade.price_pct)} 올랐고`
+    : trade.price_pct < 0 ? `코인 시세는 전날보다 ${pct(trade.price_pct)} 내렸고`
+    : "코인 시세는 전날과 거의 같았고";
+  const retTxt = day === 0 ? null
+    : trade.ret_pct > 0 ? <>내 총자산은 <b className="text-pixel-greenText">{pct(trade.ret_pct)} 늘었어요</b></>
+    : trade.ret_pct < 0 ? <>내 총자산은 <b className="text-pixel-danger">{pct(trade.ret_pct)} 줄었어요</b></>
+    : <>내 총자산은 그대로예요</>;
+  if (!flow) {
+    return (
+      <p className="text-[11px] text-pixel-muted mt-1 leading-relaxed">
+        {day === 0
+          ? "🧘 첫날 — 매매 없이 시장을 지켜봤어요."
+          : <>🧘 오늘은 사고팔지 않았어요. {priceTxt}, {retTxt}.</>}
+      </p>
+    );
+  }
+  const cause = trade.trap_name
+    ? (trade.swayed ? `「${trade.trap_name}」의 감정에 휩쓸려 ` : `「${trade.trap_name}」의 유혹을 견디며 `)
+    : "";
+  return (
+    <p className={`text-[11px] mt-1 leading-relaxed ${trade.swayed ? "text-rose-700" : ""}`}>
+      {flow.icon} {cause}<b>{flow.label}</b>했어요.
+      {priceTxt && <> {priceTxt}, {retTxt}.</>}
+    </p>
+  );
+}
+
+function NpcTradesLine({ trades }: { trades: NonNullable<HistoryDay["npc_trades"]> }) {
+  if (trades.length === 0) return null;
+  const buys = trades.filter((t) => t.action === "buy").map((t) => t.name);
+  const sells = trades.filter((t) => t.action === "sell").map((t) => t.name);
+  return (
+    <p className="text-[10px] text-pixel-muted mt-0.5">
+      💱 {buys.length > 0 && <>매수 {buys.join("·")}</>}
+      {buys.length > 0 && sells.length > 0 && " / "}
+      {sells.length > 0 && <>매도 {sells.join("·")}</>}
+    </p>
+  );
+}
+
 // T-288 — 📜 지난 이벤트: 발자취를 폰 타임라인으로(뉴스 톤·위기·만남).
 function EventsTab({ history }: { history: HistoryDay[] }) {
   const days = [...history].reverse();   // 최신 위로
@@ -81,7 +131,7 @@ function EventsTab({ history }: { history: HistoryDay[] }) {
     return <p className="text-[12px] text-pixel-muted py-8 text-center">아직 지나온 날이 없어요.</p>;
   }
   return (
-    <div className="flex flex-col gap-2 overflow-y-auto max-h-[340px] pr-1">
+    <div className="flex flex-col gap-2 overflow-y-auto flex-1 min-h-0 pr-1">
       {days.map((d) => {
         const tone = TONE_STYLE[d.news_tone] ?? null;
         return (
@@ -105,6 +155,9 @@ function EventsTab({ history }: { history: HistoryDay[] }) {
                 🤝 {d.met.map((m) => NPC_LABELS[m] ?? m).join(", ")}와 만남
               </p>
             )}
+            {/* T-300 — 그날의 매매 서사(감정→행동→시세→수익률) + 마을의 매매 */}
+            {d.trade && <TradeStory trade={d.trade} day={d.day} />}
+            {d.npc_trades && <NpcTradesLine trades={d.npc_trades} />}
           </div>
         );
       })}
@@ -174,7 +227,7 @@ function MessengerTab({ gameId, history, rapport, busy, setBusy, onChanged }: {
         아직 대화한 사람이 없어요.<br />마을에서 누군가와 마주치면 여기 쌓여요.
       </p>
     ) : (
-      <div className="flex flex-col overflow-y-auto max-h-[340px]">
+      <div className="flex flex-col overflow-y-auto flex-1 min-h-0">
         {contacts.map(([npc, day]) => (
           <button
             key={npc}
@@ -197,7 +250,7 @@ function MessengerTab({ gameId, history, rapport, busy, setBusy, onChanged }: {
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex-1 min-h-0 flex flex-col gap-2">
       <button
         onClick={() => setOpenNpc(null)}
         className="text-left text-[12px] font-extrabold cursor-pointer hover:underline underline-offset-2"
@@ -208,7 +261,7 @@ function MessengerTab({ gameId, history, rapport, busy, setBusy, onChanged }: {
         <span className="text-[10px] text-pixel-muted font-bold">{NPC_ROLES[openNpc] ?? ""}</span>
         <span className="ml-auto text-[10px] text-pixel-muted">래포 {Math.round(rapport)}</span>
       </div>
-      <div className="flex flex-col gap-1.5 overflow-y-auto max-h-[240px] pr-1 bg-slate-50 rounded-lg p-2 border border-black/10">
+      <div className="flex flex-col gap-1.5 overflow-y-auto flex-1 min-h-0 pr-1 bg-slate-50 rounded-lg p-2 border border-black/10">
         {log === null ? (
           <p className="text-[11px] text-pixel-muted text-center py-4 animate-pulse">대화 불러오는 중…</p>
         ) : log.length === 0 && live.length === 0 ? (
@@ -259,10 +312,10 @@ function MessengerTab({ gameId, history, rapport, busy, setBusy, onChanged }: {
 
 // T-288(사용자 지시) — 헤더 📱핸드폰을 게시판 이벤트와 같은 폰 프레임으로 통일.
 // 탭: 🪧 게시판(라이브/아카이브) · 📜 이벤트(발자취 타임라인, 구 FGI 피드 대체 —
-// 🙋 사용자 결정) · 💬 메시지(진짜 메신저: 연락처→대화방) · 🌙 일과(T-283).
+// 🙋 사용자 결정) · 💬 메시지(진짜 메신저: 연락처→대화방). 🌙 일과는 T-290에서 제거.
 export default function PhoneModal({ isOpen, onClose, gameId, day, rapport, crowdMood, onChanged,
-                                      meetings, picks, designated, schedule, history }: Props) {
-  const [tab, setTab] = useState<"board" | "events" | "dm" | "plan">("board");
+                                      history }: Props) {
+  const [tab, setTab] = useState<"board" | "events" | "dm">("board");
   const [busy, setBusy] = useState(false);
   const [board, setBoard] = useState<BoardFeed | null>(null);
   const [boardError, setBoardError] = useState(false);
@@ -286,7 +339,6 @@ export default function PhoneModal({ isOpen, onClose, gameId, day, rapport, crow
     { key: "board", label: "🪧 게시판" },
     { key: "events", label: "📜 이벤트" },
     { key: "dm", label: "💬 메시지" },
-    { key: "plan", label: "🌙 일과" },
   ];
 
   return (
@@ -312,7 +364,8 @@ export default function PhoneModal({ isOpen, onClose, gameId, day, rapport, crow
           ))}
         </div>
 
-        <div className="p-3 flex flex-col gap-3 min-h-[300px]">
+        {/* T-298(사용자) — 탭 무관 폰 크기 고정(콘텐츠 70vh): 내용량에 따라 폰이 줄었다 늘었다 하지 않는다 */}
+        <div className="p-3 flex flex-col gap-3 h-[70vh] overflow-hidden">
           {tab === "board" ? (
             boardError && board === null ? (
               <div className="py-8 text-center flex flex-col items-center gap-2">
@@ -329,7 +382,7 @@ export default function PhoneModal({ isOpen, onClose, gameId, day, rapport, crow
                   {board.verdict && <b className="ml-1 text-black">{VERDICT_LABEL[board.verdict]}</b>}
                   <b className="ml-2 text-black">군중온도 {Math.round(crowdMood)}</b>
                 </div>
-                <div className="flex flex-col gap-2 max-h-[320px] overflow-y-auto">
+                <div className="flex flex-col gap-2 flex-1 min-h-0 overflow-y-auto">
                   {board.posts.map((p, i) => <PostCard key={i} post={p} index={i} />)}
                 </div>
               </>
@@ -339,7 +392,7 @@ export default function PhoneModal({ isOpen, onClose, gameId, day, rapport, crow
                   오늘은 조용해요. 아래는 <b className="text-black">Day {board.recent.day}</b>의 수다(지난 기록) —
                   시장이 크게 흔들리거나 큰 뉴스가 뜨는 날 새 글이 올라와요.
                 </div>
-                <div className="flex flex-col gap-2 max-h-[320px] overflow-y-auto">
+                <div className="flex flex-col gap-2 flex-1 min-h-0 overflow-y-auto">
                   {board.recent.posts.map((p, i) => <PostCard key={i} post={p} index={i} />)}
                 </div>
               </>
@@ -351,18 +404,11 @@ export default function PhoneModal({ isOpen, onClose, gameId, day, rapport, crow
             )
           ) : tab === "events" ? (
             <EventsTab history={history} />
-          ) : tab === "dm" ? (
+          ) : (
             <MessengerTab
               gameId={gameId} history={history} rapport={rapport}
               busy={busy} setBusy={setBusy} onChanged={onChanged}
             />
-          ) : (
-            <div className="max-h-[340px] overflow-y-auto pr-1">
-              <PreviewBody
-                gameId={gameId} meetings={meetings} picks={picks}
-                designated={designated} schedule={schedule} onChanged={onChanged}
-              />
-            </div>
           )}
         </div>
       </PhoneFrame>

@@ -20,9 +20,12 @@ export const CONTEXT_HEAD: Record<string, string> = {
   fomo: "🔥 다들 어딘가로 몰려간다",
   unrest: "🌫 마을이 뒤숭숭하다",
 };
+// T-307(사용자 승인) — "여론 우세"는 다수 의견을 시장 힌트처럼 읽게 만든다(확증
+// 편향 강화 — 게임 의도와 정반대). 방향 예측이 아니라 **쏠림의 세기 경고**로 프레임.
 export const VERDICT_LABEL: Record<string, string> = {
-  up: "📈 마을 여론: 오른다 우세", down: "📉 마을 여론: 내린다 우세",
-  split: "⚖️ 마을 여론: 팽팽하다",
+  up: "🔥 온통 “오른다”는 말뿐 — 쏠릴수록 한 발 물러서서",
+  down: "🧊 온통 “내린다”는 말뿐 — 쏠릴수록 한 발 물러서서",
+  split: "⚖️ 의견이 반반 — 어느 쪽에 끌리는지 스스로를 지켜보자",
 };
 
 // T-260 — SNS 어포던스(좋아요·상대시각)는 표현 전용 결정론 파생값: 텍스트 해시
@@ -115,10 +118,9 @@ export function PostCard({ post, index }: { post: BoardPost; index: number }) {
           aria-expanded={open}
           aria-label={`댓글 ${nComments}개 ${open ? "접기" : "펼치기"}`}
           className={`flex items-center gap-1 ${
-            nComments > 0 ? "font-bold text-black cursor-pointer hover:underline underline-offset-2" : ""}`}
+            nComments > 0 ? "font-bold text-black cursor-pointer" : ""}`}
         >
           💬 {nComments}
-          {nComments > 0 && <span className="text-[11px]">{open ? "▲ 접기" : "▼ 댓글"}</span>}
         </button>
         <span>🔁 {seedNum(post.text, 9, 5)}</span>
       </div>
@@ -143,7 +145,6 @@ export function PostCard({ post, index }: { post: BoardPost; index: number }) {
 }
 
 export default function BoardEventModal({ day, board, news, onClose }: Props) {
-  const delta = board ? Math.round(board.crowd_mood_delta) : 0;
   return (
     <div role="dialog" aria-modal="true" className="fixed inset-0 z-[135] flex items-end sm:items-center justify-center p-0 sm:p-4">
       <div className="absolute inset-0 bg-pixel-ink/70" />
@@ -161,7 +162,7 @@ export default function BoardEventModal({ day, board, news, onClose }: Props) {
             <div className="py-12 text-center text-sm text-pixel-muted animate-pulse">💬 글이 올라오고 있어요…</div>
           ) : (
             /* T-279 — 단일 피드: 그날 NEWS 카드 + 게시글(댓글 인라인 펼침) */
-            <div className="flex flex-col gap-2 max-h-[60vh] overflow-y-auto p-2.5 bg-slate-50">
+            <div className="flex flex-col gap-2 max-h-[70vh] overflow-y-auto p-2.5 bg-slate-50">
               {news && <NewsCard news={news} />}
               {board.posts.map((p, i) => (
                 <PostCard key={i} post={p} index={i} />
@@ -169,14 +170,7 @@ export default function BoardEventModal({ day, board, news, onClose }: Props) {
             </div>
           )}
 
-          {board && (
-            <p className="text-[13px] text-pixel-muted px-4 py-2 border-t border-black/10">
-              군중온도(공포↔탐욕) <b className="text-black">{delta > 0 ? `+${delta}` : delta}</b>
-              {" · "}클론에게 말을 걸고 싶다면 📱 핸드폰의 메시지 탭에서.
-            </p>
-          )}
-
-          <div className="px-3 pb-3 flex justify-end">
+          <div className="px-3 pb-3 pt-2 flex justify-end">
             <PixelButton size="sm" disabled={board === null} onClick={onClose}>닫고 계속 ▶</PixelButton>
           </div>
       </PhoneFrame>
