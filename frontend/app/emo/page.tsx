@@ -1,11 +1,12 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Users, CalendarDays, Wallet } from "lucide-react";
 import * as api from "@/lib/emoApi";
 import { Board, ChainEvent, EmoState, NPC_NAME, CATEGORIES, CATEGORY_LABEL, Category } from "@/lib/emoApi";
 import EmotionGauge from "@/components/EmotionGauge";
 import PortfolioPanel from "@/components/PortfolioPanel";
+import MapBackground, { MapBackgroundHandle } from "@/components/MapBackground";
 import PixelPanel from "@/components/pixel/PixelPanel";
 import PixelButton from "@/components/pixel/PixelButton";
 
@@ -29,6 +30,14 @@ export default function EmoPage() {
   const [alloc, setAlloc] = useState<Record<string, number>>({ ...DEFAULT_ALLOC });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const mapRef = useRef<MapBackgroundHandle>(null);
+  const day = state?.day ?? -1;
+
+  // T-22 — 하루가 바뀌면 맵에서 클론이 그날 동선을 걷는다(배경 연출, 논블로킹).
+  useEffect(() => {
+    if (day >= 0 && state && !state.is_over) mapRef.current?.playWalk();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [day]);
 
   const refresh = useCallback(async (s: EmoState) => {
     setState(s);
@@ -147,8 +156,9 @@ export default function EmoPage() {
 
   // ---------- 플레이 ----------
   return (
-    <main className="min-h-screen bg-pixel-path p-4">
-      <div className="max-w-2xl mx-auto flex flex-col gap-4">
+    <main className="relative min-h-screen p-4">
+      <MapBackground ref={mapRef} gameId={state.game_id} game="emo" />
+      <div className="relative z-10 max-w-2xl mx-auto flex flex-col gap-4">
         {/* 헤더 */}
         <div className="flex items-center gap-3 text-[12px] font-bold">
           <span className="inline-flex items-center gap-1"><CalendarDays className="w-4 h-4" />Day {state.day + 1}/{state.total_days}</span>
