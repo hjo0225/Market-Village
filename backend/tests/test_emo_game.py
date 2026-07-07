@@ -94,6 +94,27 @@ def test_ending_inputs_has_verdict_and_wealth():
     assert ei["wealth_level"] in ("high", "low")
 
 
+def test_choice_position_affects_wealth():
+    # 같은 시장(하락→반등)에서 손절(현금화) vs 버티기(풀투자) → 재산이 달라진다.
+    events = ["market_crash", "market_surge"]
+    returns = [-0.10, 0.10]   # 급락 후 반등
+    seller = EmoGameRun.new(ANSWERS, events, returns, seed=1)
+    holder = EmoGameRun.new(ANSWERS, events, returns, seed=1)
+    seller.choose("cut")     # day0 급락에 손절 → position 급감(반등 놓침)
+    holder.choose("hold")    # day0 버티기 → position 유지(반등 탐)
+    seller.choose("watch"); holder.choose("watch")
+    # 버틴 쪽이 반등을 더 많이 타서 재산이 더 크다.
+    assert holder.portfolio_value > seller.portfolio_value
+
+
+def test_position_clamped_and_serialized():
+    r = EmoGameRun.new(ANSWERS, EVENTS, RETURNS, seed=1)
+    r.choose("cut")          # position -0.6
+    assert 0.0 <= r.position <= 1.0
+    restored = EmoGameRun.from_doc(r.to_doc())
+    assert restored.position == r.position
+
+
 def test_ending_returns_e1_to_e5_after_playthrough():
     r = _run()
     r.choose("buy_dip")

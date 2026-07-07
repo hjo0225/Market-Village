@@ -19,21 +19,27 @@ from pydantic import BaseModel
 from . import emo_store
 from .emo_game import EmoGameRun
 from .player_emotion.verdict import compute_verdict
-from .scenario import EVENT_CATEGORIES
 
 router = APIRouter(prefix="/emo", tags=["emo"])
 
-_EVENT_POOL = list(EVENT_CATEGORIES)
-
 
 def _build_market(seed: int, days: int) -> tuple[list[str], list[float]]:
-    """결정론 시장 시퀀스(이벤트 카테고리 + 일별 수익률). 회차 재현.
+    """결정론 시장 시퀀스(일별 수익률 + 그와 **일관된** 이벤트). 회차 재현.
 
-    MVP: 시드 기반 합성. (fate_line OHLC 연동은 후속 — 지금은 오프라인 합성.)
+    이벤트는 수익률 부호에서 파생한다(급락 이벤트=하락일, 급등 이벤트=상승일) — 옛
+    무상관 draw가 만들던 "급락인데 +수익" 비일관을 제거. 완만한 날은 변동/루머.
+    MVP 합성(fate_line OHLC 연동은 후속).
     """
     rng = random.Random(seed)
-    events = [rng.choice(_EVENT_POOL) for _ in range(days)]
     returns = [round(rng.uniform(-0.15, 0.15), 4) for _ in range(days)]
+    events: list[str] = []
+    for r in returns:
+        if r <= -0.05:
+            events.append("market_crash")
+        elif r >= 0.05:
+            events.append("market_surge")
+        else:
+            events.append(rng.choice(["market_volatile", "rumor_spread"]))
     return events, returns
 
 

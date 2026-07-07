@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 
 from . import avoidance, board_exposure, chain, companion
 from . import ending as _ending
+from . import scenario as _scenario
 from .interview import build_initial_emotion
 from .personas import npc_scheds
 from .player_emotion.deltas import apply_delta
@@ -51,6 +52,7 @@ class EmoGameRun:
     seed: int
     day: int = 0
     portfolio_value: float = START_VALUE
+    position: float = 1.0   # 투자 비중(0=현금, 1=풀투자) — 선택의 매매행동이 조절
     log: EmotionLog = field(default_factory=EmotionLog)
     # 동행배치(T-18): 클론 동선·야간 지정·오늘의 companion.
     clone_route: list[str] = field(default_factory=list)
@@ -182,14 +184,24 @@ class EmoGameRun:
             self._resolve_companion()
 
     def choose(self, choice_id: str) -> None:
-        """선택지 델타 적용 → 스냅샷 기록 → 시장 반영 → 다음 날 진입."""
+        """하루 결산: 시장 실현(진입 포지션) → 감정 델타+스냅샷 → 매매행동으로 포지션
+        갱신 → 다음 날 진입.
+
+        재산은 행동의 결과다: 오늘 시장 이동은 '어제 정한 포지션'만큼 맞고, 오늘 선택의
+        매매(손절=현금↑, 추격=투자↑)는 '다음 날' 이동에 반영된다. 손절 후 반등을
+        놓치고, 버티면 반등을 타는 행동적 인과가 생긴다."""
         if self.is_over:
             raise RuntimeError("game is over")
         event_id = self.events[self.day]
-        self.emotion = board_exposure.apply_choice(self.emotion, event_id, choice_id)
-        self.log = record_snapshot(self.log, self.day, self.emotion)
+        choice = _scenario.get_choice(event_id, choice_id)   # 검증 먼저(변이 전)
+
         ret = self.returns[self.day] if self.day < len(self.returns) else 0.0
-        self.portfolio_value = round(self.portfolio_value * (1.0 + ret), 2)
+        self.portfolio_value = round(self.portfolio_value * (1.0 + ret * self.position), 2)
+
+        self.emotion = apply_delta(self.emotion, choice["deltas"])
+        self.log = record_snapshot(self.log, self.day, self.emotion)
+
+        self.position = max(0.0, min(1.0, self.position + float(choice.get("position", 0.0))))
         self.day += 1
         self._enter_day()
 
@@ -222,6 +234,7 @@ class EmoGameRun:
             "seed": self.seed,
             "day": self.day,
             "portfolio_value": self.portfolio_value,
+            "position": self.position,
             "clone_route": self.clone_route,
             "designations": {str(k): v for k, v in self.designations.items()},
             "companion_id": self.companion_id,
@@ -255,6 +268,7 @@ class EmoGameRun:
             seed=doc["seed"],
             day=doc["day"],
             portfolio_value=doc["portfolio_value"],
+            position=doc.get("position", 1.0),
             log=EmotionLog(snapshots=snaps),
             clone_route=list(doc.get("clone_route") or _default_route(n)),
             designations={int(k): v for k, v in (doc.get("designations") or {}).items()},

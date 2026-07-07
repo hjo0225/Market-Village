@@ -72,3 +72,11 @@ def get_scenario(event_id: str) -> dict:
     if event_id not in scenarios:
         raise ScenarioError(f"unknown event_id: {event_id!r}")
     return scenarios[event_id]
+
+
+def get_choice(event_id: str, choice_id: str) -> dict:
+    """시나리오 선택지 하나를 조회(deltas·position 포함). 없으면 ScenarioError."""
+    for ch in get_scenario(event_id)["choices"]:
+        if ch["id"] == choice_id:
+            return ch
+    raise ScenarioError(f"unknown choice {choice_id!r} for event {event_id!r}")
