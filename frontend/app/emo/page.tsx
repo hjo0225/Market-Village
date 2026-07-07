@@ -28,6 +28,7 @@ export default function EmoPage() {
   const [answers, setAnswers] = useState<Record<string, number>>({});
   const [alloc, setAlloc] = useState<Record<string, number>>({ ...DEFAULT_ALLOC });
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async (s: EmoState) => {
     setState(s);
@@ -38,17 +39,19 @@ export default function EmoPage() {
   }, []);
 
   const start = async () => {
-    setBusy(true);
+    setBusy(true); setError(null);
     const seed = Math.floor(Math.random() * 100000);
     const s = await api.startEmo(answers, seed, 10, alloc);
     if (s) await refresh(s);
+    else setError("게임을 시작하지 못했어요. 잠시 후 다시 시도해 주세요.");
     setBusy(false);
   };
 
   const act = (fn: () => Promise<EmoState | null>) => async () => {
-    setBusy(true);
+    setBusy(true); setError(null);
     const s = await fn();
     if (s) await refresh(s);
+    else setError("요청이 처리되지 않았어요. 다시 시도해 주세요.");
     setBusy(false);
   };
 
@@ -107,7 +110,10 @@ export default function EmoPage() {
               </div>
             );
           })()}
-          <PixelButton size="lg" className="w-full mt-6" disabled={!ready || busy} onClick={start}>
+          {error && (
+            <p className="mt-4 text-[12px] font-bold text-red-600" role="alert">{error}</p>
+          )}
+          <PixelButton size="lg" className="w-full mt-4" disabled={!ready || busy} onClick={start}>
             {busy ? "시작하는 중…" : "이사 온 날 →"}
           </PixelButton>
         </PixelPanel>
@@ -151,6 +157,10 @@ export default function EmoPage() {
             <span className="inline-flex items-center gap-1"><Users className="w-4 h-4" />{NPC_NAME[state.companion] ?? state.companion}</span>
           )}
         </div>
+
+        {error && (
+          <div className="text-[12px] font-bold text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2" role="alert">{error}</div>
+        )}
 
         <EmotionGauge emotion={state.emotion} verdict={state.verdict} />
         <PortfolioPanel holdings={state.holdings} />
