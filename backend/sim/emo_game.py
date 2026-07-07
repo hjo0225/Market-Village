@@ -19,6 +19,7 @@ import random
 from dataclasses import dataclass, field
 
 from . import avoidance, board_exposure, companion
+from . import ending as _ending
 from .interview import build_initial_emotion
 from .personas import npc_scheds
 from .player_emotion.deltas import apply_delta
@@ -56,6 +57,7 @@ class EmoGameRun:
     schedules: dict[str, dict[int, str]] = field(default_factory=npc_scheds)
     designations: dict[int, str] = field(default_factory=dict)
     companion_id: str | None = None
+    special_event_count: int = 0   # 체인 이벤트(T-19)가 증가시킴 → E5 히든 엔딩
 
     # --- 생성 ------------------------------------------------------------- #
     @classmethod
@@ -145,12 +147,20 @@ class EmoGameRun:
 
     # --- 종료 ------------------------------------------------------------- #
     def ending_inputs(self) -> dict:
-        """엔딩 분기 입력(T-13): 감정 압축판정 + 재산 수준."""
+        """엔딩 분기 입력(T-13): 감정 압축판정 + 재산 수준 + 특수이벤트 누적."""
         return {
             "verdict": compute_verdict(self.emotion),
             "wealth_level": "high" if self.portfolio_value >= START_VALUE else "low",
             "portfolio_value": self.portfolio_value,
+            "special_count": self.special_event_count,
         }
+
+    def ending(self) -> dict:
+        """최종 엔딩(E1~E5 + 등급 + 에필로그). 문서 §4."""
+        ei = self.ending_inputs()
+        return _ending.decide_ending(
+            ei["verdict"], ei["wealth_level"], ei["special_count"]
+        )
 
     # --- 직렬화 (T-14 영속화가 소비) ------------------------------------- #
     def to_doc(self) -> dict:
@@ -167,6 +177,7 @@ class EmoGameRun:
             "clone_route": self.clone_route,
             "designations": {str(k): v for k, v in self.designations.items()},
             "companion_id": self.companion_id,
+            "special_event_count": self.special_event_count,
             "log": [
                 {"turn": s.turn, "emotion": {
                     "fear": s.state.fear, "greed": s.state.greed,
@@ -197,4 +208,5 @@ class EmoGameRun:
             clone_route=list(doc.get("clone_route") or _default_route(n)),
             designations={int(k): v for k, v in (doc.get("designations") or {}).items()},
             companion_id=doc.get("companion_id"),
+            special_event_count=doc.get("special_event_count", 0),
         )

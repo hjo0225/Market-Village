@@ -92,6 +92,17 @@ def test_ending_inputs_has_verdict_and_wealth():
     assert ei["wealth_level"] in ("high", "low")
 
 
+def test_ending_returns_e1_to_e5_after_playthrough():
+    r = _run()
+    r.choose("buy_dip")
+    r.choose("chase")
+    r.choose("day_trade")
+    e = r.ending()
+    assert e["id"] in ("E1", "E2", "E3", "E4", "E5")
+    assert e["grade"] in ("고수", "벼락부자형", "강철멘탈형", "호구")
+    assert len(e["epilogue"]) == 3
+
+
 def test_serialization_roundtrip_does_not_reapply_exposure():
     r = _run()
     r.choose("hold")            # 이제 day1(급등) 진입, 노출 적용됨
