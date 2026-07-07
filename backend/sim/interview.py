@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 from .models import AgentType, Persona
+from .player_emotion.state import PlayerEmotionState, clamp
 
 # 기본 문항 순서. 첫 문항으로 경험 유무를 물어 분기한다.
 _QUESTIONS: dict[str, dict] = {
@@ -92,6 +93,38 @@ def _num(answers: dict, key: str, default: float = 0.0) -> float:
         return float(v)
     except (TypeError, ValueError):
         return default
+
+
+def _initial_axis(answer: float) -> float:
+    """0~1 답변 → 중립 50 중심 초기 감정치([30,70]). build_player_persona의
+    default_fear/greed 산식(50+(x-0.5)*40)과 동일 idiom을 4축에 확장."""
+    return round(50.0 + (answer - 0.5) * 40.0, 2)
+
+
+def build_initial_emotion(answers: dict) -> PlayerEmotionState:
+    """답변 → 플레이어 초기 감정 4축(결정론). 빈/누락 답은 중립 0.5→50.
+
+    q_panic→fear, q_fomo→greed, q_rumor→anxiety, q_check→restlessness.
+    무경험자는 시점선호(q_time_pref)로 충동성을 fear/greed에 보정
+    (build_player_persona와 동일 규칙). player_emotion 게이지(0~100)로 clamp.
+    """
+    panic = _num(answers, "q_panic", 0.5)
+    fomo = _num(answers, "q_fomo", 0.5)
+    rumor = _num(answers, "q_rumor", 0.5)
+    check = _num(answers, "q_check", 0.5)
+    if answers.get("q_experience") == "none":
+        tp = _num(answers, "q_time_pref", 0.5)
+        panic = (panic + tp) / 2
+        fomo = (fomo + tp) / 2
+
+    return clamp(
+        PlayerEmotionState(
+            fear=_initial_axis(panic),
+            greed=_initial_axis(fomo),
+            anxiety=_initial_axis(rumor),
+            restlessness=_initial_axis(check),
+        )
+    )
 
 
 def build_player_persona(answers: dict) -> Persona:
