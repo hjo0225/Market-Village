@@ -30,37 +30,84 @@ export default function EmoPage() {
   const [alloc, setAlloc] = useState<Record<string, number>>({ ...DEFAULT_ALLOC });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const mapRef = useRef<MapBackgroundHandle>(null);
   const [mapActivity, setMapActivity] = useState<string | null>(null);
+  const mapRef = useRef<MapBackgroundHandle>(null);
+  const stateRef = useRef<EmoState | null>(null);
   const day = state?.day ?? -1;
 
-  // T-22 — 하루가 바뀌면 맵에서 클론이 그날 동선을 걷는다(배경 연출, 논블로킹).
+  const setRun = useCallback((s: EmoState) => { stateRef.current = s; setState(s); }, []);
+
+  // T-22/A — 하루 일과: 클론이 시간대별로 걷고, 그 도중 만남·게시판이 등장한다
+  // (구 /play의 순차 진행을 /emo에 이식 — 이벤트가 일과 중 등장하도록).
   useEffect(() => {
-    if (day >= 0 && state && !state.is_over) mapRef.current?.playWalk();
+    if (day < 0) return;
+    const s = stateRef.current;
+    if (!s || s.is_over) { setBoard(null); setChain(null); return; }
+    let cancelled = false;
+    (async () => {
+      setBoard(null); setChain(null);
+      // 밴드별로 걷기(배속 2x — 하루가 늘어지지 않게). 만남은 도착 시 맵이 쏘는
+      // meeting_talk를 아래 리스너가 처리한다.
+      for (const band of ["오전", "점심", "오후", "저녁"]) {
+        if (cancelled) return;
+        await mapRef.current?.playWalk(band, 2);
+      }
+      if (cancelled) return;
+      // 일과 끝 → 그날 시장 이벤트(게시판) + 선택. 놓친 만남이 있으면 먼저 띄운다.
+      if (s.has_pending_chain) {
+        const ch = await api.getChain(s.game_id);
+        if (!cancelled && ch) setChain(ch);
+      }
+      const b = await api.getBoard(s.game_id);
+      if (!cancelled) setBoard(b);
+    })();
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [day]);
 
-  const refresh = useCallback(async (s: EmoState) => {
-    setState(s);
-    if (s.is_over) { setBoard(null); setChain(null); return; }
-    const b = await api.getBoard(s.game_id);
-    setBoard(b);
-    setChain(s.has_pending_chain ? await api.getChain(s.game_id) : null);
+  // T-22/A — 맵에서 클론이 companion에 도착하면(meeting_talk) 만남 카드를 연다.
+  useEffect(() => {
+    const onMsg = async (e: MessageEvent) => {
+      if (e.data?.type !== "meeting_talk") return;
+      mapRef.current?.signal({ type: "meeting_ack" });
+      const s = stateRef.current;
+      if (s && s.has_pending_chain) {
+        const ch = await api.getChain(s.game_id);
+        if (ch) { setChain(ch); return; }   // 카드 표시 → 응답이 meeting_done을 보냄
+      }
+      mapRef.current?.signal({ type: "meeting_done" });   // 체인 없으면 지나감
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
   }, []);
 
   const start = async () => {
     setBusy(true); setError(null);
     const seed = Math.floor(Math.random() * 100000);
     const s = await api.startEmo(answers, seed, 10, alloc);
-    if (s) await refresh(s);
+    if (s) setRun(s);
     else setError("게임을 시작하지 못했어요. 잠시 후 다시 시도해 주세요.");
     setBusy(false);
   };
 
-  const act = (fn: () => Promise<EmoState | null>) => async () => {
+  // 만남(체인) 응답 — 걷기 도중. day 불변이라 일과 시퀀스 재실행 안 함.
+  const resolveChain = async (id: string) => {
+    const s = stateRef.current; if (!s) return;
     setBusy(true); setError(null);
-    const s = await fn();
-    if (s) await refresh(s);
+    const ns = await api.chooseChain(s.game_id, id);
+    setChain(null);
+    if (ns) setRun(ns);
+    else setError("요청이 처리되지 않았어요. 다시 시도해 주세요.");
+    mapRef.current?.signal({ type: "meeting_done" });   // 걷기 계속
+    setBusy(false);
+  };
+
+  // 게시판 선택 — 일과 끝의 결정. day++ → 다음 일과 시퀀스.
+  const chooseBoard = async (id: string) => {
+    const s = stateRef.current; if (!s) return;
+    setBusy(true); setError(null);
+    const ns = await api.choose(s.game_id, id);
+    if (ns) setRun(ns);
     else setError("요청이 처리되지 않았어요. 다시 시도해 주세요.");
     setBusy(false);
   };
@@ -156,13 +203,11 @@ export default function EmoPage() {
   }
 
   // ---------- 플레이 (프린세스메이커식 프레임: 상태바 / 맵창+스탯 / 커맨드) ----------
-  const active: { kind: "chain" | "board"; label: string; choices: { id: string; label: string }[];
-    on: (id: string) => Promise<EmoState | null> } | null = chain
-    ? { kind: "chain", label: "만남", choices: chain.choices,
-        on: (id) => api.chooseChain(state.game_id, id) }
+  const active: { kind: "chain" | "board"; choices: { id: string; label: string }[];
+    run: (id: string) => void } | null = chain
+    ? { kind: "chain", choices: chain.choices, run: resolveChain }
     : board
-    ? { kind: "board", label: "선택", choices: board.scenario.choices,
-        on: (id) => api.choose(state.game_id, id) }
+    ? { kind: "board", choices: board.scenario.choices, run: chooseBoard }
     : null;
   return (
     <main className="h-screen w-screen overflow-hidden bg-pixel-path flex flex-col gap-2 p-2 sm:p-3">
@@ -228,18 +273,20 @@ export default function EmoPage() {
         {error && (
           <div className="mb-2 text-[12px] font-bold text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2" role="alert">{error}</div>
         )}
-        {active && (
+        {active ? (
           <PixelPanel tone={active.kind === "chain" ? "path" : "wall"} className="p-2">
             <div className="flex flex-col sm:flex-row gap-2">
               {active.choices.map((c) => (
                 <PixelButton key={c.id} variant={active.kind === "chain" ? "secondary" : "primary"}
                   className="flex-1" disabled={busy}
-                  onClick={act(() => active.on(c.id))}>
+                  onClick={() => active.run(c.id)}>
                   {c.label}
                 </PixelButton>
               ))}
             </div>
           </PixelPanel>
+        ) : (
+          <div className="text-center text-[12px] text-pixel-muted py-2">클론이 하루를 보내는 중…</div>
         )}
       </div>
     </main>
