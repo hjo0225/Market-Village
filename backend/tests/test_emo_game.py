@@ -9,7 +9,8 @@
 
 import pytest
 
-from sim.emo_game import EmoGameRun
+from sim.emo_game import START_VALUE, EmoGameRun
+from sim.fate_line import CATEGORIES
 from sim.interview import build_initial_emotion
 from sim.player_emotion.state import PlayerEmotionState
 
@@ -19,8 +20,13 @@ RETURNS = [-0.2, 0.3, 0.05]
 ANSWERS = {"q_panic": 0.5, "q_fomo": 0.5, "q_rumor": 0.5, "q_check": 0.5}
 
 
+def _cat(returns):
+    """스칼라 수익률 시퀀스를 전 카테고리 동일 적용(포트폴리오 무관 테스트 편의)."""
+    return {c: list(returns) for c in CATEGORIES}
+
+
 def _run():
-    return EmoGameRun.new(ANSWERS, EVENTS, RETURNS, seed=42)
+    return EmoGameRun.new(ANSWERS, EVENTS, _cat(RETURNS), seed=42)
 
 
 def test_starts_at_day0_not_over():
@@ -94,25 +100,47 @@ def test_ending_inputs_has_verdict_and_wealth():
     assert ei["wealth_level"] in ("high", "low")
 
 
-def test_choice_position_affects_wealth():
-    # 같은 시장(하락→반등)에서 손절(현금화) vs 버티기(풀투자) → 재산이 달라진다.
+def test_allocation_splits_start_value_into_holdings():
+    # setup 배분(분수)이 초기 holdings로 분배되고 합=START_VALUE.
+    alloc = {"large_stable": 0.5, "mid_alt": 0.0, "meme": 0.0, "stable": 0.5}
+    r = EmoGameRun.new(ANSWERS, EVENTS, _cat([0.0, 0.0, 0.0]), seed=1, allocation=alloc)
+    assert r.holdings["large_stable"] == START_VALUE * 0.5
+    assert r.holdings["stable"] == START_VALUE * 0.5
+    assert abs(r.portfolio_value - START_VALUE) < 0.01
+
+
+def test_default_allocation_covers_all_categories():
+    r = _run()
+    assert set(r.holdings) == set(CATEGORIES)
+    assert abs(r.portfolio_value - START_VALUE) < 0.01
+
+
+def test_choice_rebalances_risk_to_cash_affects_wealth():
+    # 하락→반등 시장에서 손절(위험자산→현금) vs 버티기 → 재산이 달라진다.
     events = ["market_crash", "market_surge"]
-    returns = [-0.10, 0.10]   # 급락 후 반등
-    seller = EmoGameRun.new(ANSWERS, events, returns, seed=1)
-    holder = EmoGameRun.new(ANSWERS, events, returns, seed=1)
-    seller.choose("cut")     # day0 급락에 손절 → position 급감(반등 놓침)
-    holder.choose("hold")    # day0 버티기 → position 유지(반등 탐)
+    cr = {  # 위험자산은 급락 후 반등, 현금(stable)은 평평.
+        "large_stable": [-0.10, 0.10],
+        "mid_alt": [-0.10, 0.10],
+        "meme": [-0.10, 0.10],
+        "stable": [0.0, 0.0],
+    }
+    alloc = {"large_stable": 0.4, "mid_alt": 0.4, "meme": 0.2, "stable": 0.0}
+    seller = EmoGameRun.new(ANSWERS, events, cr, seed=1, allocation=alloc)
+    holder = EmoGameRun.new(ANSWERS, events, cr, seed=1, allocation=alloc)
+    seller.choose("cut")     # day0 급락에 손절 → 위험자산 대량 현금화(반등 놓침)
+    holder.choose("hold")    # day0 버티기 → 위험자산 유지(반등 탐)
     seller.choose("watch"); holder.choose("watch")
     # 버틴 쪽이 반등을 더 많이 타서 재산이 더 크다.
     assert holder.portfolio_value > seller.portfolio_value
 
 
-def test_position_clamped_and_serialized():
-    r = EmoGameRun.new(ANSWERS, EVENTS, RETURNS, seed=1)
-    r.choose("cut")          # position -0.6
-    assert 0.0 <= r.position <= 1.0
+def test_holdings_serialized_roundtrip():
+    r = EmoGameRun.new(ANSWERS, EVENTS, _cat(RETURNS), seed=1)
+    r.choose("cut")          # 위험자산 → 현금 리밸런싱
+    assert abs(sum(r.holdings.values()) - r.portfolio_value) < 0.01
     restored = EmoGameRun.from_doc(r.to_doc())
-    assert restored.position == r.position
+    assert restored.holdings == r.holdings
+    assert restored.portfolio_value == r.portfolio_value
 
 
 def test_ending_returns_e1_to_e5_after_playthrough():
@@ -128,7 +156,7 @@ def test_ending_returns_e1_to_e5_after_playthrough():
 
 def test_chain_events_resolve_during_playthrough():
     # 실제 24편 데이터가 로드된 상태에서, 발동한 체인을 해결하며 완주.
-    r = EmoGameRun.new(ANSWERS, EVENTS * 3, RETURNS * 3, seed=7)
+    r = EmoGameRun.new(ANSWERS, EVENTS * 3, _cat(RETURNS * 3), seed=7)
     triggered = 0
     for cid in ["hold", "chase", "stare"] * 3:
         ev = r.chain_event()

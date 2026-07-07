@@ -10,10 +10,12 @@ import pytest
 
 from sim.companion import daily_candidates, pick_companion
 from sim.emo_game import EmoGameRun
+from sim.fate_line import CATEGORIES
 from sim.player_emotion.state import PlayerEmotionState
 
 EVENTS = ["market_crash", "market_surge", "market_volatile"]
 RETURNS = [-0.2, 0.3, 0.05]
+CAT_RETURNS = {c: list(RETURNS) for c in CATEGORIES}
 ANSWERS = {"q_panic": 0.5, "q_fomo": 0.5, "q_rumor": 0.5, "q_check": 0.5}
 
 
@@ -54,7 +56,7 @@ def test_pick_companion_respects_designation():
 
 # --- EmoGameRun 통합 --------------------------------------------------- #
 def test_run_determines_daily_companion_idempotently():
-    r = EmoGameRun.new(ANSWERS, EVENTS, RETURNS, seed=42)
+    r = EmoGameRun.new(ANSWERS, EVENTS, CAT_RETURNS, seed=42)
     c1 = r.companion()
     c2 = r.companion()
     assert c1 is not None
@@ -62,7 +64,7 @@ def test_run_determines_daily_companion_idempotently():
 
 
 def test_designate_sets_companion():
-    r = EmoGameRun.new(ANSWERS, EVENTS, RETURNS, seed=42)
+    r = EmoGameRun.new(ANSWERS, EVENTS, CAT_RETURNS, seed=42)
     cands = daily_candidates(r.clone_route[r.day], r.schedules)
     other = next(c for c in cands if c != r.companion())
     r.designate(other)
@@ -70,13 +72,13 @@ def test_designate_sets_companion():
 
 
 def test_designate_rejects_non_candidate():
-    r = EmoGameRun.new(ANSWERS, EVENTS, RETURNS, seed=42)
+    r = EmoGameRun.new(ANSWERS, EVENTS, CAT_RETURNS, seed=42)
     with pytest.raises(ValueError):
         r.designate("value_investor_that_is_not_here_xyz")
 
 
 def test_avoid_swaps_route_and_recomputes():
-    r = EmoGameRun.new(ANSWERS, EVENTS, RETURNS, seed=42)
+    r = EmoGameRun.new(ANSWERS, EVENTS, CAT_RETURNS, seed=42)
     before = list(r.clone_route)
     r.avoid(0, 1)
     assert r.clone_route[0] == before[1]
@@ -84,7 +86,7 @@ def test_avoid_swaps_route_and_recomputes():
 
 
 def test_companion_advances_with_days():
-    r = EmoGameRun.new(ANSWERS, EVENTS, RETURNS, seed=42)
+    r = EmoGameRun.new(ANSWERS, EVENTS, CAT_RETURNS, seed=42)
     r.choose("hold")
     # day1 진입 → companion 재결정(또는 None 가능).
     assert r.day == 1
@@ -92,7 +94,7 @@ def test_companion_advances_with_days():
 
 
 def test_companion_survives_serialization():
-    r = EmoGameRun.new(ANSWERS, EVENTS, RETURNS, seed=42)
+    r = EmoGameRun.new(ANSWERS, EVENTS, CAT_RETURNS, seed=42)
     r.designate(daily_candidates(r.clone_route[0], r.schedules)[0])
     doc = r.to_doc()
     restored = EmoGameRun.from_doc(doc)

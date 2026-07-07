@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from . import avoidance, board_exposure, chain, companion
 from . import ending as _ending
 from . import scenario as _scenario
+from .fate_line import CATEGORIES
 from .interview import build_initial_emotion
 from .personas import npc_scheds
 from .player_emotion.deltas import apply_delta
@@ -29,6 +30,22 @@ from .player_emotion.state import PlayerEmotionState
 from .player_emotion.verdict import compute_verdict
 
 START_VALUE = 1_000_000.0
+
+# 재산 축(T-11): 4카테고리 다자산. stable=현금성(손절 도피처), 나머지=위험자산.
+_STABLE = "stable"
+_RISK = tuple(c for c in CATEGORIES if c != _STABLE)
+
+
+def _holdings_from_allocation(allocation: dict[str, float] | None) -> dict[str, float]:
+    """배분 분수(합≈1)를 카테고리별 초기 보유액으로. None/빈 값·합0이면 균등 분배."""
+    even = {c: 1.0 / len(CATEGORIES) for c in CATEGORIES}
+    if not allocation:
+        w = even
+    else:
+        raw = {c: max(0.0, float(allocation.get(c, 0.0))) for c in CATEGORIES}
+        total = sum(raw.values())
+        w = {c: raw[c] / total for c in CATEGORIES} if total > 0 else even
+    return {c: round(START_VALUE * w[c], 2) for c in CATEGORIES}
 
 # 클론이 하루에 머무는 장소 순환(동행 후보 = 그 장소에 일과가 있는 NPC).
 _ROUTE_CYCLE = ("카페", "광장", "펍", "일터", "운동")
@@ -48,11 +65,11 @@ def _default_route(n: int) -> list[str]:
 class EmoGameRun:
     emotion: PlayerEmotionState
     events: list[str]
-    returns: list[float]
+    cat_returns: dict[str, list[float]]   # 카테고리별 일별 수익률(분수) — 실 FateLine
     seed: int
     day: int = 0
-    portfolio_value: float = START_VALUE
-    position: float = 1.0   # 투자 비중(0=현금, 1=풀투자) — 선택의 매매행동이 조절
+    # 재산 축(T-11): 카테고리별 보유액(KRW). 재산=합. 선택의 매매가 배분을 조절.
+    holdings: dict[str, float] = field(default_factory=dict)
     log: EmotionLog = field(default_factory=EmotionLog)
     # 동행배치(T-18): 클론 동선·야간 지정·오늘의 companion.
     clone_route: list[str] = field(default_factory=list)
@@ -69,17 +86,52 @@ class EmoGameRun:
     # --- 생성 ------------------------------------------------------------- #
     @classmethod
     def new(
-        cls, answers: dict, events: list[str], returns: list[float], seed: int
+        cls,
+        answers: dict,
+        events: list[str],
+        cat_returns: dict[str, list[float]],
+        seed: int,
+        allocation: dict[str, float] | None = None,
     ) -> "EmoGameRun":
         run = cls(
             emotion=build_initial_emotion(answers),
             events=list(events),
-            returns=list(returns),
+            cat_returns={c: list(cat_returns.get(c, [])) for c in CATEGORIES},
             seed=seed,
+            holdings=_holdings_from_allocation(allocation),
             clone_route=_default_route(len(events)),
         )
         run._enter_day()   # day 0 노출 델타 1회 + companion 결정
         return run
+
+    # --- 재산(다자산) ---------------------------------------------------- #
+    @property
+    def portfolio_value(self) -> float:
+        """카테고리별 보유액 합 = 총자산."""
+        return round(sum(self.holdings.values()), 2)
+
+    def _rebalance(self, shift: float) -> None:
+        """매매행동을 자산 배분 이동으로 번역. shift>0=현금(stable)→위험자산(추격),
+        shift<0=위험자산→현금(손절). 손절 후 위험자산 반등을 놓치는 행동적 인과."""
+        if shift == 0.0:
+            return
+        if shift < 0.0:                       # 손절: 위험자산 → 현금
+            frac = min(1.0, -shift)
+            moved = 0.0
+            for cat in _RISK:
+                m = self.holdings.get(cat, 0.0) * frac
+                self.holdings[cat] = round(self.holdings.get(cat, 0.0) - m, 2)
+                moved += m
+            self.holdings[_STABLE] = round(self.holdings.get(_STABLE, 0.0) + moved, 2)
+        else:                                 # 추격: 현금 → 위험자산(현 위험 비중대로)
+            frac = min(1.0, shift)
+            moved = self.holdings.get(_STABLE, 0.0) * frac
+            self.holdings[_STABLE] = round(self.holdings.get(_STABLE, 0.0) - moved, 2)
+            risk_total = sum(self.holdings.get(c, 0.0) for c in _RISK)
+            for cat in _RISK:
+                w = (self.holdings.get(cat, 0.0) / risk_total
+                     if risk_total > 0 else 1.0 / len(_RISK))
+                self.holdings[cat] = round(self.holdings.get(cat, 0.0) + moved * w, 2)
 
     # --- 상태 조회 -------------------------------------------------------- #
     @property
@@ -184,24 +236,28 @@ class EmoGameRun:
             self._resolve_companion()
 
     def choose(self, choice_id: str) -> None:
-        """하루 결산: 시장 실현(진입 포지션) → 감정 델타+스냅샷 → 매매행동으로 포지션
-        갱신 → 다음 날 진입.
+        """하루 결산: 시장 실현(진입 배분) → 감정 델타+스냅샷 → 매매행동으로 배분
+        리밸런싱 → 다음 날 진입.
 
-        재산은 행동의 결과다: 오늘 시장 이동은 '어제 정한 포지션'만큼 맞고, 오늘 선택의
-        매매(손절=현금↑, 추격=투자↑)는 '다음 날' 이동에 반영된다. 손절 후 반등을
-        놓치고, 버티면 반등을 타는 행동적 인과가 생긴다."""
+        재산은 행동의 결과다: 오늘 시장 이동은 '어제 정한 배분'만큼 각 카테고리에
+        맞고, 오늘 선택의 매매(손절=현금↑, 추격=위험자산↑)는 '다음 날' 이동에
+        반영된다. 손절 후 반등을 놓치고, 버티면 반등을 타는 행동적 인과가 생긴다."""
         if self.is_over:
             raise RuntimeError("game is over")
         event_id = self.events[self.day]
         choice = _scenario.get_choice(event_id, choice_id)   # 검증 먼저(변이 전)
 
-        ret = self.returns[self.day] if self.day < len(self.returns) else 0.0
-        self.portfolio_value = round(self.portfolio_value * (1.0 + ret * self.position), 2)
+        # 1) 오늘 시장 실현: 진입 시점 보유액에 카테고리별 수익률.
+        for cat in CATEGORIES:
+            series = self.cat_returns.get(cat, [])
+            ret = series[self.day] if self.day < len(series) else 0.0
+            self.holdings[cat] = round(self.holdings.get(cat, 0.0) * (1.0 + ret), 2)
 
         self.emotion = apply_delta(self.emotion, choice["deltas"])
         self.log = record_snapshot(self.log, self.day, self.emotion)
 
-        self.position = max(0.0, min(1.0, self.position + float(choice.get("position", 0.0))))
+        # 2) 매매행동 → 배분 리밸런싱(다음 날 이동에 반영).
+        self._rebalance(float(choice.get("position", 0.0)))
         self.day += 1
         self._enter_day()
 
@@ -230,11 +286,11 @@ class EmoGameRun:
                 "anxiety": self.emotion.anxiety, "restlessness": self.emotion.restlessness,
             },
             "events": self.events,
-            "returns": self.returns,
+            "cat_returns": self.cat_returns,
             "seed": self.seed,
             "day": self.day,
-            "portfolio_value": self.portfolio_value,
-            "position": self.position,
+            "holdings": self.holdings,
+            "portfolio_value": self.portfolio_value,   # 파생(외부 리더 편의)
             "clone_route": self.clone_route,
             "designations": {str(k): v for k, v in self.designations.items()},
             "companion_id": self.companion_id,
@@ -261,14 +317,22 @@ class EmoGameRun:
             for s in doc.get("log", [])
         )
         n = len(doc["events"])
+        # 재산 복원(하위호환): 신 doc는 holdings/cat_returns, 구 doc는 파생.
+        holdings = doc.get("holdings")
+        if not holdings:
+            pv = doc.get("portfolio_value", START_VALUE)
+            holdings = {c: round(pv / len(CATEGORIES), 2) for c in CATEGORIES}
+        cat_returns = doc.get("cat_returns")
+        if cat_returns is None:
+            old = doc.get("returns") or []
+            cat_returns = {c: list(old) for c in CATEGORIES}
         return cls(
             emotion=PlayerEmotionState(**doc["emotion"]),
             events=list(doc["events"]),
-            returns=list(doc["returns"]),
+            cat_returns={c: list(cat_returns.get(c, [])) for c in CATEGORIES},
             seed=doc["seed"],
             day=doc["day"],
-            portfolio_value=doc["portfolio_value"],
-            position=doc.get("position", 1.0),
+            holdings={c: float(holdings.get(c, 0.0)) for c in CATEGORIES},
             log=EmotionLog(snapshots=snaps),
             clone_route=list(doc.get("clone_route") or _default_route(n)),
             designations={int(k): v for k, v in (doc.get("designations") or {}).items()},

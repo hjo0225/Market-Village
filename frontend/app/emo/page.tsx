@@ -3,10 +3,16 @@
 import { useCallback, useState } from "react";
 import { Users, CalendarDays, Wallet } from "lucide-react";
 import * as api from "@/lib/emoApi";
-import { Board, ChainEvent, EmoState, NPC_NAME } from "@/lib/emoApi";
+import { Board, ChainEvent, EmoState, NPC_NAME, CATEGORIES, CATEGORY_LABEL, Category } from "@/lib/emoApi";
 import EmotionGauge from "@/components/EmotionGauge";
+import PortfolioPanel from "@/components/PortfolioPanel";
 import PixelPanel from "@/components/pixel/PixelPanel";
 import PixelButton from "@/components/pixel/PixelButton";
+
+// 초기 배분 기본값(비중, 합 100). 백엔드가 합으로 정규화하므로 정확히 100 아니어도 됨.
+const DEFAULT_ALLOC: Record<Category, number> = {
+  large_stable: 40, mid_alt: 30, meme: 20, stable: 10,
+};
 
 const QUESTIONS: { key: string; text: string; options: [string, number][] }[] = [
   { key: "q_panic", text: "급락장에서 당신의 첫 반응은?", options: [["바로 손절", 1], ["일부 정리", 0.5], ["버틴다", 0]] },
@@ -20,6 +26,7 @@ export default function EmoPage() {
   const [board, setBoard] = useState<Board | null>(null);
   const [chain, setChain] = useState<ChainEvent | null>(null);
   const [answers, setAnswers] = useState<Record<string, number>>({});
+  const [alloc, setAlloc] = useState<Record<string, number>>({ ...DEFAULT_ALLOC });
   const [busy, setBusy] = useState(false);
 
   const refresh = useCallback(async (s: EmoState) => {
@@ -33,7 +40,7 @@ export default function EmoPage() {
   const start = async () => {
     setBusy(true);
     const seed = Math.floor(Math.random() * 100000);
-    const s = await api.startEmo(answers, seed, 10);
+    const s = await api.startEmo(answers, seed, 10, alloc);
     if (s) await refresh(s);
     setBusy(false);
   };
@@ -72,6 +79,34 @@ export default function EmoPage() {
               </div>
             ))}
           </div>
+          {/* T-11 · 초기 자산 배분 */}
+          {(() => {
+            const sum = CATEGORIES.reduce((s, c) => s + (alloc[c] ?? 0), 0);
+            return (
+              <div className="mt-6 border-t border-black/10 pt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-[13px] font-bold">초기 자산 배분</div>
+                  <span className="text-[11px] text-pixel-muted">합계 {sum}{sum === 100 ? " ✓" : "%"}</span>
+                </div>
+                <div className="flex flex-col gap-2.5">
+                  {CATEGORIES.map((c: Category) => {
+                    const pct = sum > 0 ? Math.round(((alloc[c] ?? 0) / sum) * 100) : 0;
+                    return (
+                      <div key={c} className="flex items-center gap-3 text-[12px]">
+                        <span className="w-20 shrink-0 text-pixel-muted">{CATEGORY_LABEL[c]}</span>
+                        <input
+                          type="range" min={0} max={100} step={5} value={alloc[c] ?? 0}
+                          className="flex-1 accent-black"
+                          onChange={(e) => setAlloc((a) => ({ ...a, [c]: Number(e.target.value) }))}
+                        />
+                        <span className="w-9 text-right font-bold tabular-nums">{pct}%</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
           <PixelButton size="lg" className="w-full mt-6" disabled={!ready || busy} onClick={start}>
             {busy ? "시작하는 중…" : "이사 온 날 →"}
           </PixelButton>
@@ -118,6 +153,7 @@ export default function EmoPage() {
         </div>
 
         <EmotionGauge emotion={state.emotion} verdict={state.verdict} />
+        <PortfolioPanel holdings={state.holdings} />
 
         {/* 동행 체인(만남) — 있으면 먼저 */}
         {chain && (

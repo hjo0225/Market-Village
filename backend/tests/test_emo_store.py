@@ -8,13 +8,16 @@
 from sim import emo_store
 from sim.emo_game import EmoGameRun
 
+from sim.fate_line import CATEGORIES
+
 EVENTS = ["market_crash", "market_surge", "market_volatile"]
 RETURNS = [-0.2, 0.3, 0.05]
 ANSWERS = {"q_panic": 0.5, "q_fomo": 0.5, "q_rumor": 0.5, "q_check": 0.5}
 
 
 def _run():
-    return EmoGameRun.new(ANSWERS, EVENTS, RETURNS, seed=42)
+    cat_returns = {c: list(RETURNS) for c in CATEGORIES}
+    return EmoGameRun.new(ANSWERS, EVENTS, cat_returns, seed=42)
 
 
 def setup_function():

@@ -14,6 +14,7 @@ export interface EmoState {
   emotion: Emotion;
   verdict: string;
   portfolio_value: number;
+  holdings: Record<string, number>;   // 카테고리별 보유액(T-11)
   companion: string | null;
   special_event_count: number;
   has_pending_chain: boolean;
@@ -59,8 +60,10 @@ const postJson = <T>(path: string, body: Record<string, unknown>) =>
     body: JSON.stringify(body),
   }, 0); // 변이는 재시도 없음
 
-export const startEmo = (answers: Record<string, number>, seed: number, days = 10) =>
-  postJson<EmoState>("/emo/start", { answers, seed, days });
+export const startEmo = (
+  answers: Record<string, number>, seed: number, days = 10,
+  allocations?: Record<string, number>,
+) => postJson<EmoState>("/emo/start", { answers, seed, days, allocations });
 
 export const getState = (id: string) => getJson<EmoState>(`/emo/${id}/state`);
 export const getBoard = (id: string) => getJson<Board>(`/emo/${id}/board`);
@@ -78,6 +81,13 @@ export const AXES = ["fear", "greed", "anxiety", "restlessness"] as const;
 export type Axis = (typeof AXES)[number];
 export const AXIS_LABEL: Record<Axis, string> = {
   fear: "공포", greed: "탐욕", anxiety: "불안", restlessness: "조급",
+};
+
+// 자산 카테고리(T-11) — backend fate_line.CATEGORIES와 정확히 일치. 이모지 금지.
+export const CATEGORIES = ["large_stable", "mid_alt", "meme", "stable"] as const;
+export type Category = (typeof CATEGORIES)[number];
+export const CATEGORY_LABEL: Record<Category, string> = {
+  large_stable: "대형 안정형", mid_alt: "중견 알트형", meme: "밈형", stable: "스테이블/현금",
 };
 
 // NPC id → 표시 이름(문서 §3).
