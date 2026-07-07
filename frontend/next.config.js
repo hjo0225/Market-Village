@@ -7,6 +7,7 @@ const nextConfig = {
     // 백엔드(FastAPI, :8100)로 프록시 — CORS 없이 같은 오리진처럼 fetch.
     return [
       { source: "/control/:path*", destination: `${BACKEND}/control/:path*` },
+      { source: "/emo/:path*", destination: `${BACKEND}/emo/:path*` },
       { source: "/map", destination: `${BACKEND}/map` },
       { source: "/assets/:path*", destination: `${BACKEND}/assets/:path*` },
     ];
