@@ -18,7 +18,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass, field
 
-from . import avoidance, board_exposure, companion
+from . import avoidance, board_exposure, chain, companion
 from . import ending as _ending
 from .interview import build_initial_emotion
 from .personas import npc_scheds
@@ -58,6 +58,11 @@ class EmoGameRun:
     designations: dict[int, str] = field(default_factory=dict)
     companion_id: str | None = None
     special_event_count: int = 0   # 체인 이벤트(T-19)가 증가시킴 → E5 히든 엔딩
+    # 동행 체인(T-19): NPC별 발동 단계·개별 rapport·오늘의 미해결 체인.
+    chain_progress: dict[str, int] = field(default_factory=dict)
+    rapport: dict[str, float] = field(default_factory=dict)
+    pending_chain: dict | None = None
+    chains: dict = field(default_factory=chain.load_chains)
 
     # --- 생성 ------------------------------------------------------------- #
     @classmethod
@@ -101,6 +106,7 @@ class EmoGameRun:
         delta = board_exposure.exposure_delta(self.events[self.day], board["threads"])
         self.emotion = apply_delta(self.emotion, delta)
         self._resolve_companion()
+        self._maybe_start_chain()
 
     # --- 동행배치 (T-18) -------------------------------------------------- #
     def _resolve_companion(self) -> None:
@@ -114,6 +120,48 @@ class EmoGameRun:
     def companion(self) -> str | None:
         """오늘의 companion NPC id(그날 1회 결정된 값, 멱등 GET)."""
         return self.companion_id
+
+    # --- 동행 체인 (T-19) ------------------------------------------------- #
+    def _maybe_start_chain(self) -> None:
+        """companion 확정 직후 체인 발동 판정(문서 §5.1). 선택 있는 단계는
+        pending으로, 선택 없는 완성 단계(3)는 보상 즉시 적용."""
+        self.pending_chain = None
+        npc = self.companion_id
+        if not npc or npc not in self.chains:
+            return
+        stage = chain.maybe_trigger(
+            self.seed, self.day, npc, self.chain_progress, self.rapport.get(npc, 0.0)
+        )
+        if stage is None or stage not in self.chains[npc]:
+            return
+        event = self.chains[npc][stage]
+        if event.get("choices"):
+            self.pending_chain = {"npc_id": npc, "stage": stage}
+        else:   # 완성 보상(단계3) — 선택 없이 즉시 발동.
+            self.emotion = chain.apply_chain_reward(self.emotion, event)
+            self.chain_progress[npc] = stage
+            self.special_event_count += 1
+
+    def chain_event(self) -> dict | None:
+        """오늘 미해결 체인 이벤트(만남 서사+선택지) 또는 None(멱등 GET)."""
+        if not self.pending_chain:
+            return None
+        npc, stage = self.pending_chain["npc_id"], self.pending_chain["stage"]
+        return {"npc_id": npc, "stage": stage, **self.chains[npc][stage]}
+
+    def chain_choose(self, choice_id: str) -> None:
+        """미해결 체인 선택지 해결 → 4축 델타 + rapport 적용, 단계 완료·카운터++."""
+        if not self.pending_chain:
+            raise RuntimeError("no pending chain event")
+        npc, stage = self.pending_chain["npc_id"], self.pending_chain["stage"]
+        event = self.chains[npc][stage]
+        self.emotion, new_rap = chain.apply_chain_choice(
+            self.emotion, self.rapport.get(npc, 0.0), event, choice_id
+        )
+        self.rapport[npc] = new_rap
+        self.chain_progress[npc] = stage
+        self.special_event_count += 1
+        self.pending_chain = None
 
     def designate(self, npc_id: str) -> None:
         """전날 밤 개입 — 오늘 대화 상대를 지정(오늘 장소의 후보여야 함)."""
@@ -178,6 +226,9 @@ class EmoGameRun:
             "designations": {str(k): v for k, v in self.designations.items()},
             "companion_id": self.companion_id,
             "special_event_count": self.special_event_count,
+            "chain_progress": self.chain_progress,
+            "rapport": self.rapport,
+            "pending_chain": self.pending_chain,
             "log": [
                 {"turn": s.turn, "emotion": {
                     "fear": s.state.fear, "greed": s.state.greed,
@@ -209,4 +260,7 @@ class EmoGameRun:
             designations={int(k): v for k, v in (doc.get("designations") or {}).items()},
             companion_id=doc.get("companion_id"),
             special_event_count=doc.get("special_event_count", 0),
+            chain_progress={k: int(v) for k, v in (doc.get("chain_progress") or {}).items()},
+            rapport={k: float(v) for k, v in (doc.get("rapport") or {}).items()},
+            pending_chain=doc.get("pending_chain"),
         )

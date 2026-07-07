@@ -103,6 +103,23 @@ def test_ending_returns_e1_to_e5_after_playthrough():
     assert len(e["epilogue"]) == 3
 
 
+def test_chain_events_resolve_during_playthrough():
+    # 실제 24편 데이터가 로드된 상태에서, 발동한 체인을 해결하며 완주.
+    r = EmoGameRun.new(ANSWERS, EVENTS * 3, RETURNS * 3, seed=7)
+    triggered = 0
+    for cid in ["hold", "chase", "stare"] * 3:
+        ev = r.chain_event()
+        if ev is not None:
+            assert ev["text"].strip() and len(ev["choices"]) == 2
+            r.chain_choose(ev["choices"][0]["id"])
+            triggered += 1
+        r.choose(cid)
+    assert r.is_over
+    # 데이터가 로드됐으므로 최소 1회는 발동(prob 0.6 × 다수 일).
+    assert triggered >= 1
+    assert r.special_event_count == triggered
+
+
 def test_serialization_roundtrip_does_not_reapply_exposure():
     r = _run()
     r.choose("hold")            # 이제 day1(급등) 진입, 노출 적용됨
