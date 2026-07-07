@@ -48,6 +48,7 @@ from backend.sim import clone_spec as _clone_spec  # noqa: E402
 from backend.sim import result_card as _result_card  # noqa: E402
 from backend.sim import runs as _runs  # noqa: E402
 from backend.sim import db as _db  # noqa: E402  (T-DB 게임 세션 영속화, 실패시 인메모리 폴백)
+from backend.sim import emo_api as _emo_api  # noqa: E402  (신 감정 4축 게임 라우터, 컷오버 시 구 라우터 대체)
 from backend.sim.trap_pipeline import Intervention as _Intervention  # noqa: E402
 from backend.sim.traps import get_trap as _traps_get  # noqa: E402
 from backend.sim.game_run import GameRun as _GameRun  # noqa: E402
@@ -94,6 +95,7 @@ ASSETS_DIR = join(_REPO, "environment", "frontend_server", "static_dirs", "asset
 # App + shared state
 # --------------------------------------------------------------------------- #
 app = FastAPI(title="Market Village Live")
+app.include_router(_emo_api.router)   # /emo/* — 신 감정 4축 게임(프론트 /play 브릿지)
 
 # Pre-warm the sentiment model so the first event doesn't pay the load cost.
 import threading
