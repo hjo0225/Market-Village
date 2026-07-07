@@ -18,8 +18,9 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass, field
 
-from . import board_exposure
+from . import avoidance, board_exposure, companion
 from .interview import build_initial_emotion
+from .personas import npc_scheds
 from .player_emotion.deltas import apply_delta
 from .player_emotion.log import EmotionLog, record_snapshot
 from .player_emotion.state import PlayerEmotionState
@@ -27,10 +28,18 @@ from .player_emotion.verdict import compute_verdict
 
 START_VALUE = 1_000_000.0
 
+# 클론이 하루에 머무는 장소 순환(동행 후보 = 그 장소에 일과가 있는 NPC).
+_ROUTE_CYCLE = ("카페", "광장", "펍", "일터", "운동")
+
 
 def _day_rng(seed: int, day: int) -> random.Random:
     """(seed, day)로 결정론 rng — 같은 날은 항상 같은 게시판(재생 가능)."""
     return random.Random(seed * 1000 + day)
+
+
+def _default_route(n: int) -> list[str]:
+    """일수만큼 기본 동선(장소 순환). 플레이어가 avoid로 재배치할 수 있다."""
+    return [_ROUTE_CYCLE[i % len(_ROUTE_CYCLE)] for i in range(n)]
 
 
 @dataclass
@@ -42,6 +51,11 @@ class EmoGameRun:
     day: int = 0
     portfolio_value: float = START_VALUE
     log: EmotionLog = field(default_factory=EmotionLog)
+    # 동행배치(T-18): 클론 동선·야간 지정·오늘의 companion.
+    clone_route: list[str] = field(default_factory=list)
+    schedules: dict[str, dict[int, str]] = field(default_factory=npc_scheds)
+    designations: dict[int, str] = field(default_factory=dict)
+    companion_id: str | None = None
 
     # --- 생성 ------------------------------------------------------------- #
     @classmethod
@@ -53,8 +67,9 @@ class EmoGameRun:
             events=list(events),
             returns=list(returns),
             seed=seed,
+            clone_route=_default_route(len(events)),
         )
-        run._enter_day()   # day 0 노출 델타 1회
+        run._enter_day()   # day 0 노출 델타 1회 + companion 결정
         return run
 
     # --- 상태 조회 -------------------------------------------------------- #
@@ -76,12 +91,45 @@ class EmoGameRun:
 
     # --- 진행 ------------------------------------------------------------- #
     def _enter_day(self) -> None:
-        """그 날에 진입할 때 노출 델타를 1회 적용한다(강제노출·스킵 불가)."""
+        """그 날에 진입할 때 노출 델타 1회 적용 + 오늘의 companion 결정."""
         if self.is_over:
+            self.companion_id = None
             return
         board = self.board()
         delta = board_exposure.exposure_delta(self.events[self.day], board["threads"])
         self.emotion = apply_delta(self.emotion, delta)
+        self._resolve_companion()
+
+    # --- 동행배치 (T-18) -------------------------------------------------- #
+    def _resolve_companion(self) -> None:
+        """오늘 장소의 후보 중 companion 결정(지정 우선, 없으면 4축 끌림). 멱등."""
+        place = self.clone_route[self.day]
+        cands = companion.daily_candidates(place, self.schedules)
+        self.companion_id = companion.pick_companion(
+            cands, self.emotion, self.designations.get(self.day)
+        )
+
+    def companion(self) -> str | None:
+        """오늘의 companion NPC id(그날 1회 결정된 값, 멱등 GET)."""
+        return self.companion_id
+
+    def designate(self, npc_id: str) -> None:
+        """전날 밤 개입 — 오늘 대화 상대를 지정(오늘 장소의 후보여야 함)."""
+        if self.is_over:
+            raise RuntimeError("game is over")
+        place = self.clone_route[self.day]
+        if npc_id not in companion.daily_candidates(place, self.schedules):
+            raise ValueError(f"{npc_id!r} is not a candidate at {place!r}")
+        self.designations[self.day] = npc_id
+        self._resolve_companion()
+
+    def avoid(self, day_a: int, day_b: int) -> None:
+        """전날 밤 개입 — 두 날의 동선(장소)을 맞바꿔 만남을 회피/설계한다."""
+        route = {i: p for i, p in enumerate(self.clone_route)}
+        route = avoidance.avoid(route, day_a, day_b)
+        self.clone_route = [route[i] for i in range(len(self.clone_route))]
+        if not self.is_over:
+            self._resolve_companion()
 
     def choose(self, choice_id: str) -> None:
         """선택지 델타 적용 → 스냅샷 기록 → 시장 반영 → 다음 날 진입."""
@@ -116,6 +164,9 @@ class EmoGameRun:
             "seed": self.seed,
             "day": self.day,
             "portfolio_value": self.portfolio_value,
+            "clone_route": self.clone_route,
+            "designations": {str(k): v for k, v in self.designations.items()},
+            "companion_id": self.companion_id,
             "log": [
                 {"turn": s.turn, "emotion": {
                     "fear": s.state.fear, "greed": s.state.greed,
@@ -134,6 +185,7 @@ class EmoGameRun:
             EmotionSnapshot(turn=s["turn"], state=PlayerEmotionState(**s["emotion"]))
             for s in doc.get("log", [])
         )
+        n = len(doc["events"])
         return cls(
             emotion=PlayerEmotionState(**doc["emotion"]),
             events=list(doc["events"]),
@@ -142,4 +194,7 @@ class EmoGameRun:
             day=doc["day"],
             portfolio_value=doc["portfolio_value"],
             log=EmotionLog(snapshots=snaps),
+            clone_route=list(doc.get("clone_route") or _default_route(n)),
+            designations={int(k): v for k, v in (doc.get("designations") or {}).items()},
+            companion_id=doc.get("companion_id"),
         )
