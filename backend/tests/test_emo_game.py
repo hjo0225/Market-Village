@@ -52,9 +52,11 @@ def test_exposure_delta_applied_once_on_entering_day():
 def test_choose_applies_delta_logs_and_advances():
     r = _run()
     fear_before = r.emotion.fear
-    r.choose("cut")            # 급락 손절 → fear 추가 상승
+    r.choose("cut")            # 급락 손절 → 그 날 fear 상승
     assert r.day == 1
-    assert r.emotion.fear > fear_before
+    # 그 날 선택 효과는 스냅샷에 기록(다음 날 노출 전). live emotion은 이미 day1
+    # 노출(양방향)까지 반영돼 방향이 달라질 수 있으므로 스냅샷으로 검증.
+    assert r.emotion_log.snapshots[0].state.fear > fear_before
     # 하루 완료마다 스냅샷 1개.
     assert len(r.emotion_log.snapshots) == 1
 

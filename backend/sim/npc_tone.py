@@ -38,10 +38,11 @@ def npc_tone(npc_id: str) -> dict[str, float]:
 
 
 def board_tone_delta(threads: list[dict], scale: float | None = None) -> dict[str, float]:
-    """게시판 참여자 톤을 가중 평균해 축별 델타로 만든다(빈 게시판=빈 델타).
+    """게시판 참여자 톤을 축별 델타로 만든다(빈 게시판=빈 델타).
 
-    작성자 가중 1.0, 댓글자 0.5. 평균 톤 × config.BOARD_TONE_SCALE.
-    크라우드 구성이 공포적이면 fear가, 탐욕적이면 greed가 더 커진다.
+    방향성(pole): 평균 톤을 4축 평균으로 **센터링**해, 크라우드가 미는 축은 ↑ 반대
+    축은 ↓ (순합 ≈ 0). 공포적 게시판이면 fear/anxiety ↑ & greed ↓ — 매일 4축을 전부
+    올려 포화시키던 옛 방식(순양수)을 대체한다. 작성자 가중 1.0, 댓글자 0.5.
     """
     if scale is None:
         scale = config.BOARD_TONE_SCALE
@@ -60,4 +61,6 @@ def board_tone_delta(threads: list[dict], scale: float | None = None) -> dict[st
 
     if wsum == 0:
         return {}
-    return {a: round(acc[a] / wsum * scale, 2) for a in TONE_AXES}
+    avg = {a: acc[a] / wsum for a in TONE_AXES}
+    center = sum(avg.values()) / len(TONE_AXES)
+    return {a: round((avg[a] - center) * scale, 2) for a in TONE_AXES}

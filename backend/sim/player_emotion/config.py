@@ -13,5 +13,5 @@ AXIS_MAX: float = 100
 OVERHEAT_THRESHOLD: float = 30
 WITHDRAWAL_THRESHOLD: float = -30
 
-# T-10: 게시판 전체 톤이 노출 델타에 얹는 최대 가중(축별, 평균 톤 1.0 기준).
-BOARD_TONE_SCALE: float = 6.0
+# T-10: 게시판 톤의 방향성 세기(센터링된 편차 × 이 값). 순합 0이라 포화 없음.
+BOARD_TONE_SCALE: float = 18.0
