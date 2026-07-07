@@ -20,8 +20,10 @@ const MapBackground = forwardRef<MapBackgroundHandle, {
   onActivity?: (text: string | null) => void;
   // T-22 — 게임 종류(classic=구 /play, emo=신 감정게임). 기본 classic.
   game?: string;
+  // T-22 — true면 부모 컨테이너를 채움(PM식 장면 창), false면 뷰포트 고정 배경(구 /play).
+  contained?: boolean;
 }>(function MapBackground(
-  { gameId, onActivity, game = "classic" },
+  { gameId, onActivity, game = "classic", contained = false },
   ref
 ) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -81,7 +83,9 @@ const MapBackground = forwardRef<MapBackgroundHandle, {
       ref={iframeRef}
       src={`/map?game_id=${encodeURIComponent(gameId)}&game=${encodeURIComponent(game)}`}
       title="Market Village 배경 지도"
-      className="fixed inset-0 w-full h-full border-0 z-0"
+      className={contained
+        ? "absolute inset-0 w-full h-full border-0"
+        : "fixed inset-0 w-full h-full border-0 z-0"}
     />
   );
 });

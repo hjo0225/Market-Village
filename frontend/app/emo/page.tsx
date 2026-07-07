@@ -31,6 +31,7 @@ export default function EmoPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const mapRef = useRef<MapBackgroundHandle>(null);
+  const [mapActivity, setMapActivity] = useState<string | null>(null);
   const day = state?.day ?? -1;
 
   // T-22 — 하루가 바뀌면 맵에서 클론이 그날 동선을 걷는다(배경 연출, 논블로킹).
@@ -154,67 +155,90 @@ export default function EmoPage() {
     );
   }
 
-  // ---------- 플레이 ----------
+  // ---------- 플레이 (프린세스메이커식 프레임: 상태바 / 맵창+스탯 / 커맨드) ----------
+  const active: { kind: "chain" | "board"; label: string; choices: { id: string; label: string }[];
+    on: (id: string) => Promise<EmoState | null> } | null = chain
+    ? { kind: "chain", label: "만남", choices: chain.choices,
+        on: (id) => api.chooseChain(state.game_id, id) }
+    : board
+    ? { kind: "board", label: "선택", choices: board.scenario.choices,
+        on: (id) => api.choose(state.game_id, id) }
+    : null;
   return (
-    <main className="relative min-h-screen p-4">
-      <MapBackground ref={mapRef} gameId={state.game_id} game="emo" />
-      <div className="relative z-10 max-w-2xl mx-auto flex flex-col gap-4">
-        {/* 헤더 */}
-        <div className="flex items-center gap-3 text-[12px] font-bold">
-          <span className="inline-flex items-center gap-1"><CalendarDays className="w-4 h-4" />Day {state.day + 1}/{state.total_days}</span>
-          <span className="inline-flex items-center gap-1"><Wallet className="w-4 h-4" />{Math.round(state.portfolio_value).toLocaleString()}</span>
-          {state.companion && (
-            <span className="inline-flex items-center gap-1"><Users className="w-4 h-4" />{NPC_NAME[state.companion] ?? state.companion}</span>
+    <main className="h-screen w-screen overflow-hidden bg-pixel-path flex flex-col gap-2 p-2 sm:p-3">
+      {/* 상태바 */}
+      <header className="shrink-0 flex items-center gap-4 text-[12px] font-bold px-1">
+        <span className="inline-flex items-center gap-1"><CalendarDays className="w-4 h-4" />Day {state.day + 1}/{state.total_days}</span>
+        <span className="inline-flex items-center gap-1"><Wallet className="w-4 h-4" />{Math.round(state.portfolio_value).toLocaleString()}</span>
+        {state.companion && (
+          <span className="inline-flex items-center gap-1"><Users className="w-4 h-4" />동행 · {NPC_NAME[state.companion] ?? state.companion}</span>
+        )}
+      </header>
+
+      {/* 중단: 맵 장면 창(좌) + 스탯 패널(우) */}
+      <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-2">
+        {/* 맵 장면 창 */}
+        <div className="relative flex-1 min-h-0 min-w-0 rounded-xl overflow-hidden border-2 border-black/25">
+          <MapBackground ref={mapRef} gameId={state.game_id} game="emo" contained onActivity={setMapActivity} />
+          {mapActivity && !chain && !board && (
+            <div className="absolute top-2 left-2 z-10 text-[11px] font-bold bg-black/60 text-white rounded px-2 py-1">{mapActivity}</div>
+          )}
+          {/* 이벤트 서사 오버레이(만남/게시판) — 맵 창 하단 대사 박스 */}
+          {(chain || board) && (
+            <div className="absolute inset-x-0 bottom-0 z-10 p-3">
+              <div className="bg-black/72 text-white rounded-lg px-4 py-3 backdrop-blur-sm">
+                {chain ? (
+                  <>
+                    <div className="text-[11px] text-white/60 mb-1">{NPC_NAME[chain.npc_id] ?? chain.npc_id}{chain.place ? ` · ${chain.place}` : ""}</div>
+                    <div className="text-[13px] font-extrabold mb-1">{chain.title}</div>
+                    <p className="text-[13px] leading-relaxed whitespace-pre-line">{chain.text}</p>
+                  </>
+                ) : board ? (
+                  <>
+                    <div className="text-[11px] text-white/60 mb-1">게시판 · 여론 {board.verdict}</div>
+                    <p className="text-[13px] leading-relaxed">{board.scenario.text}</p>
+                  </>
+                ) : null}
+              </div>
+            </div>
           )}
         </div>
 
+        {/* 스탯 패널 */}
+        <aside className="shrink-0 md:w-72 flex flex-col gap-2 overflow-y-auto">
+          <EmotionGauge emotion={state.emotion} verdict={state.verdict} />
+          <PortfolioPanel holdings={state.holdings} />
+          {board && !chain && (
+            <PixelPanel tone="wall" className="p-3">
+              <div className="text-[11px] text-pixel-muted mb-2">게시판 여론</div>
+              <div className="flex flex-col gap-1">
+                {board.threads.slice(0, 4).map((t, i) => (
+                  <div key={i} className="text-[11px] bg-black/[0.03] rounded px-2 py-1">
+                    <span className="font-bold">{NPC_NAME[t.author_id] ?? t.author_id}</span> {t.text}
+                  </div>
+                ))}
+              </div>
+            </PixelPanel>
+          )}
+        </aside>
+      </div>
+
+      {/* 하단: 커맨드/선택 바 */}
+      <div className="shrink-0">
         {error && (
-          <div className="text-[12px] font-bold text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2" role="alert">{error}</div>
+          <div className="mb-2 text-[12px] font-bold text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2" role="alert">{error}</div>
         )}
-
-        <EmotionGauge emotion={state.emotion} verdict={state.verdict} />
-        <PortfolioPanel holdings={state.holdings} />
-
-        {/* 동행 체인(만남) — 있으면 먼저 */}
-        {chain && (
-          <PixelPanel tone="path" className="p-4">
-            <div className="text-[11px] text-pixel-muted mb-1">
-              {NPC_NAME[chain.npc_id] ?? chain.npc_id}{chain.place ? ` · ${chain.place}` : ""}
-            </div>
-            <h3 className="text-sm font-extrabold mb-2">{chain.title}</h3>
-            <p className="text-[13px] leading-relaxed mb-3 whitespace-pre-line">{chain.text}</p>
-            <div className="flex flex-col gap-2">
-              {chain.choices.map((c) => (
-                <PixelButton key={c.id} variant="secondary" disabled={busy}
-                  onClick={act(() => api.chooseChain(state.game_id, c.id))}>
+        {active && (
+          <PixelPanel tone={active.kind === "chain" ? "path" : "wall"} className="p-2">
+            <div className="flex flex-col sm:flex-row gap-2">
+              {active.choices.map((c) => (
+                <PixelButton key={c.id} variant={active.kind === "chain" ? "secondary" : "primary"}
+                  className="flex-1" disabled={busy}
+                  onClick={act(() => active.on(c.id))}>
                   {c.label}
                 </PixelButton>
               ))}
             </div>
-          </PixelPanel>
-        )}
-
-        {/* 게시판 강제노출 + 선택지 */}
-        {board && (
-          <PixelPanel tone="wall" className="p-4">
-            <div className="text-[11px] text-pixel-muted mb-2">게시판 · 여론 {board.verdict}</div>
-            <div className="flex flex-col gap-1.5 mb-4 max-h-40 overflow-y-auto">
-              {board.threads.slice(0, 5).map((t, i) => (
-                <div key={i} className="text-[11px] bg-black/[0.03] rounded px-2 py-1">
-                  <span className="font-bold">{NPC_NAME[t.author_id] ?? t.author_id}</span> {t.text}
-                </div>
-              ))}
-            </div>
-            <p className="text-[13px] leading-relaxed mb-3">{board.scenario.text}</p>
-            <div className="flex flex-col gap-2">
-              {board.scenario.choices.map((c) => (
-                <PixelButton key={c.id} disabled={busy || !!chain}
-                  onClick={act(() => api.choose(state.game_id, c.id))}>
-                  {c.label}
-                </PixelButton>
-              ))}
-            </div>
-            {chain && <p className="text-[11px] text-pixel-muted mt-2">먼저 위 만남에 응답하세요.</p>}
           </PixelPanel>
         )}
       </div>
