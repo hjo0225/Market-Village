@@ -134,6 +134,15 @@ def test_choice_rebalances_risk_to_cash_affects_wealth():
     assert holder.portfolio_value > seller.portfolio_value
 
 
+def test_day_schedule_expands_place_to_8_slots():
+    # T-22 맵 브릿지: 그날 장소 1개를 8슬롯(아침 집→장소→저녁 귀가)으로.
+    r = _run()   # day0 clone_route = "카페"
+    sched = r.day_schedule()
+    assert set(sched.keys()) == {1, 2, 3, 4, 5, 6, 7, 8}
+    assert sched[1] == "집_차트" and sched[8] == "집_차트"   # 아침 집·저녁 귀가
+    assert sched[4] == r.clone_route[0]                     # 낮엔 그날 장소
+
+
 def test_holdings_serialized_roundtrip():
     r = EmoGameRun.new(ANSWERS, EVENTS, _cat(RETURNS), seed=1)
     r.choose("cut")          # 위험자산 → 현금 리밸런싱

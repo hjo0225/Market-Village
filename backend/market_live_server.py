@@ -49,6 +49,7 @@ from backend.sim import result_card as _result_card  # noqa: E402
 from backend.sim import runs as _runs  # noqa: E402
 from backend.sim import db as _db  # noqa: E402  (T-DB 게임 세션 영속화, 실패시 인메모리 폴백)
 from backend.sim import emo_api as _emo_api  # noqa: E402  (신 감정 4축 게임 라우터, 컷오버 시 구 라우터 대체)
+from backend.sim import emo_store as _emo_store  # noqa: E402  (T-22 맵 브릿지가 emo 게임 조회)
 from backend.sim.trap_pipeline import Intervention as _Intervention  # noqa: E402
 from backend.sim.traps import get_trap as _traps_get  # noqa: E402
 from backend.sim.game_run import GameRun as _GameRun  # noqa: E402
@@ -484,6 +485,113 @@ def control_game_walk(game_id: str):
     walker["day_start"] = day_start
     walker["day_resp"] = resp
     return resp
+
+
+# --------------------------------------------------------------------------- #
+# T-22 — 이동 맵을 새 감정 게임(EmoGameRun)에 연결.
+# 위 GameRun용 좌표 브릿지(_ensure_game_walker/_banded_route/_meeting_approach/
+# _place_labels)를 그대로 재사용한다 — game_id·8슬롯 스케줄·npc_scheds만 소비하므로
+# 게임 무관. EmoGameRun은 하루 장소 1개라 day_schedule()이 8슬롯으로 확장해준다.
+# 구 /control/game/day/* 와 map.html classic 경로는 무수정(신규 엔드포인트로 additive).
+# --------------------------------------------------------------------------- #
+def _emo_meetings(run) -> dict:
+    """오늘 companion을 맵 만남으로(오후 밴드·그날 장소). 대사=체인은 Phase 3."""
+    out: dict[str, list] = {b: [] for b, _ in _WALK_BANDS}
+    npc = run.companion_id
+    if npc:
+        place = run.clone_route[run.day] if run.day < len(run.clone_route) else ""
+        p = _personas.trader_by_id(npc)
+        out["오후"].append({
+            "id": npc, "name": p["name"] if p else npc,
+            "role": p["role"] if p else "", "portrait": p["portrait"] if p else None,
+            "place": place, "lines": [],
+            "has_chain": run.pending_chain is not None})
+    return out
+
+
+@app.get("/emo/{game_id}/map/home")
+def emo_map_home(game_id: str):
+    """EmoGameRun 맵 부트스트랩 — 클론+NPC 스프라이트·초기 좌표·장소 라벨."""
+    run = _emo_store.load_run(game_id)
+    if run is None:
+        return {"status": "error", "error": "no game"}
+    walker = _ensure_game_walker(game_id, run.schedules)
+    start = walker.get("day_start") if walker.get("day") == run.day else None
+    pos = start["pos"] if start else walker["pos"]
+    npcs = [
+        {"id": p["id"], "name": p["name"], "sprite": p["sprite"],
+         "pos": (start["npcs"].get(p["id"]) if start else None) or walker["npcs"][p["id"]]}
+        for p in _personas.TRADER_PERSONAS]
+    return {"status": "ok",
+            "persona": {"original": "gamerun_clone", "underscore": _GAME_CLONE_SPRITE,
+                        "initial": "내 클론"},
+            "pos": pos, "npcs": npcs, "places": _place_labels(walker)}
+
+
+@app.get("/emo/{game_id}/map/walk")
+def emo_map_walk(game_id: str):
+    """그날 동선(8슬롯)을 실좌표 경로로 — 구 walk와 동일 계약, EmoGameRun 소스."""
+    run = _emo_store.load_run(game_id)
+    if run is None:
+        return {"status": "error", "error": "no game"}
+    walker = _ensure_game_walker(game_id, run.schedules)
+    band_names = [b for b, _ in _WALK_BANDS]
+    sched = run.day_schedule()
+    if walker["day"] == run.day:
+        if walker.get("day_resp"):
+            return {**walker["day_resp"], "cached": True}
+        return {"status": "ok", "steps": [], "npcs": {}, "cached": True,
+                "segments": {b: [] for b in band_names},
+                "stops": {b: [] for b in band_names},
+                "npc_segments": {p["id"]: {b: [] for b in band_names}
+                                 for p in _personas.TRADER_PERSONAS},
+                "plan": {band: [sched[s] for s in slots if sched.get(s)]
+                         for band, slots in _WALK_BANDS},
+                "meetings_by_band": _emo_meetings(run)}
+    day_start = {"pos": list(walker["pos"]),
+                 "npcs": {p["id"]: list(walker["npcs"][p["id"]])
+                          for p in _personas.TRADER_PERSONAS}}
+    rng = random.Random(_walker_seed("emo_walk", game_id, run.day))
+    segments, cur, stops = _banded_route(sched, tuple(walker["pos"]), rng,
+                                         home_tile=tuple(walker["home"]))
+    walker["pos"] = list(cur)
+    steps = [xy for b in band_names for xy in segments[b]]
+    npc_steps: dict[str, list[list[int]]] = {}
+    npc_segments: dict[str, dict[str, list[list[int]]]] = {}
+    for p in _personas.TRADER_PERSONAS:
+        rng_n = random.Random(_walker_seed("emo_walk", game_id, p["id"], run.day))
+        segs_n, n_cur, _s = _banded_route(
+            run.schedules.get(p["id"], p["sched"]),
+            tuple(walker["npcs"][p["id"]]), rng_n, home_tile=None)
+        npc_segments[p["id"]] = segs_n
+        npc_steps[p["id"]] = [xy for b in band_names for xy in segs_n[b]]
+        walker["npcs"][p["id"]] = list(n_cur)
+    walker["day"] = run.day
+    plan = {band: [sched[s] for s in slots if sched.get(s)]
+            for band, slots in _WALK_BANDS}
+    meetings = _emo_meetings(run)
+    pos_c = list(day_start["pos"])
+    pos_n = {p["id"]: list(day_start["npcs"][p["id"]]) for p in _personas.TRADER_PERSONAS}
+    for band in band_names:
+        if segments[band]:
+            pos_c = list(segments[band][-1])
+        for nid, segs_b in npc_segments.items():
+            if segs_b[band]:
+                pos_n[nid] = list(segs_b[band][-1])
+        for m in meetings[band]:
+            m["approach"] = _meeting_approach(tuple(pos_n.get(m["id"], pos_c)), tuple(pos_c))
+    resp = {"status": "ok", "steps": steps, "npcs": npc_steps,
+            "segments": segments, "npc_segments": npc_segments, "plan": plan,
+            "stops": stops, "meetings_by_band": meetings}
+    walker["day_start"] = day_start
+    walker["day_resp"] = resp
+    return resp
+
+
+@app.get("/emo/{game_id}/map/approach")
+def emo_map_approach(game_id: str, fx: int, fy: int, cx: int, cy: int):
+    """만남 시 NPC→클론 옆칸 실 길찾기(구 approach와 동일). 순수."""
+    return {"steps": _meeting_approach((fx, fy), (cx, cy))}
 
 
 # --------------------------------------------------------------------------- #

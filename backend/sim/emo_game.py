@@ -175,6 +175,14 @@ class EmoGameRun:
         """오늘의 companion NPC id(그날 1회 결정된 값, 멱등 GET)."""
         return self.companion_id
 
+    def day_schedule(self) -> dict[int, str]:
+        """맵 브릿지(T-22)용 8슬롯 스케줄 — 그날 장소 1개를 아침 집→그 장소→저녁
+        귀가로 확장. 구 GameRun.schedule과 같은 형태({슬롯:장소})라, 표현 계층의
+        좌표 기계(_banded_route 등)가 게임 무관하게 그대로 소비한다."""
+        place = self.clone_route[self.day] if self.day < len(self.clone_route) else "집_차트"
+        return {1: "집_차트", 2: place, 3: place, 4: place,
+                5: place, 6: place, 7: place, 8: "집_차트"}
+
     # --- 동행 체인 (T-19) ------------------------------------------------- #
     def _maybe_start_chain(self) -> None:
         """companion 확정 직후 체인 발동 판정(문서 §5.1). 선택 있는 단계는
