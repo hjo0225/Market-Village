@@ -27,6 +27,12 @@ router = APIRouter(prefix="/emo", tags=["emo"])
 # 단조로워져 감정 코어가 죽는다(30일 실데이터 검증: large=급락/급등 0, meme=급락4·급등11).
 _BELLWETHER = "meme"
 
+# 드라마 윈도 오프셋(T-21). 실 시드 30일 중 앞부분은 잔잔(급락/급등 0)하고 드라마가
+# fate 11~20일에 몰려 있어, 기본 10일 게임을 그 구간으로 당겨온다(급등4·급락2·변동3
+# ·루머1 — 공포·탐욕 균형 아크). 블라인드 실데이터를 유지하며 '어느 10일을 사는가'만
+# 고정 이동(통제변인 보존). 창이 시드를 넘지 않게 클램프.
+_MARKET_OFFSET = 11
+
 
 def _build_market(seed: int, days: int) -> tuple[list[str], dict[str, list[float]]]:
     """시장 시퀀스 — **실 FateLine(블라인드 과거 업비트 OHLC)**에서 카테고리별
@@ -34,11 +40,12 @@ def _build_market(seed: int, days: int) -> tuple[list[str], dict[str, list[float
 
     이벤트는 벨웨더(meme, 고변동) 수익률에서 파생한다(급락=하락일, 급등=상승일) —
     "급락인데 +수익" 비일관 제거. 완만한 날은 변동폭으로 변동/루머 구분.
-    emo day d = fate day d+1(첫날 지수정규화 flat 회피, 시드 30일 중 앞부분 사용).
+    emo day d = fate day d+offset(드라마 구간으로 당김, 창이 시드 넘지 않게 클램프).
     """
     fate = load_fate_line()
+    offset = min(_MARKET_OFFSET, max(1, fate.days - days))
     cat_returns: dict[str, list[float]] = {
-        cat: [fate.change_rate(cat, d + 1) / 100.0 for d in range(days)]
+        cat: [fate.change_rate(cat, d + offset) / 100.0 for d in range(days)]
         for cat in CATEGORIES
     }
     events: list[str] = []

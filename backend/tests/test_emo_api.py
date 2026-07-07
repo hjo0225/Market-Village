@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from sim import emo_store
-from sim.emo_api import router
+from sim.emo_api import _build_market, router
 
 
 def _client():
@@ -80,3 +80,12 @@ def test_full_playthrough_to_ending():
 def test_unknown_game_404():
     c = _client()
     assert c.get("/emo/nope/state").status_code == 404
+
+
+def test_default_market_window_has_drama():
+    # T-21: 기본 10일 게임에 급락·급등이 최소 1회씩 — 감정 코어(공포/FOMO) 자극 보장.
+    # 실 FateLine 시드 앞 10일이 잔잔해 드라마 구간(offset)으로 당겨온다.
+    events, cat_returns = _build_market(seed=0, days=10)
+    assert "market_crash" in events, events
+    assert "market_surge" in events, events
+    assert all(len(v) == 10 for v in cat_returns.values())
