@@ -45,6 +45,20 @@ export interface ChainEvent {
 
 export interface Ending { id: string; title: string; grade: string; epilogue: string[]; }
 
+// T-47d — 진단 리포트(1층 선언 vs 2층 실제 편향). 엔딩 후에만 노출.
+export interface BiasComparison { axis: string; label: string; expected: number | null; actual: number; gap: number; }
+export interface DiagnosisReport {
+  available: boolean;
+  declared_type?: string;
+  capacity_score?: number;
+  attitude_score?: number;
+  subdimension?: { pattern: string; text: string };
+  bias_comparison?: BiasComparison[];
+  measured_axes?: string[];
+  self_awareness?: number | null;
+  insights?: string[];
+}
+
 async function fetchJson<T>(input: RequestInfo, init?: RequestInit, retries = 1): Promise<T | null> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -85,6 +99,7 @@ export const chooseDilemma = (id: string, choice_id: string) =>
 export const designate = (id: string, npc_id: string) =>
   postJson<EmoState>(`/emo/${id}/designate`, { npc_id });
 export const getEnding = (id: string) => getJson<Ending>(`/emo/${id}/ending`);
+export const getReport = (id: string) => getJson<DiagnosisReport>(`/emo/${id}/report`);
 
 // 감정 축 표시 메타(라벨·색·아이콘 키). 함정 4축 + 긍정 '평정'. 이모지 금지 — lucide.
 export const NEGATIVE_AXES = ["fear", "greed", "anxiety", "restlessness"] as const;

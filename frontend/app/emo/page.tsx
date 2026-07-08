@@ -10,6 +10,7 @@ import PortfolioPanel from "@/components/PortfolioPanel";
 import AdvDialogue from "@/components/AdvDialogue";
 import AdvChoiceMenu from "@/components/AdvChoiceMenu";
 import DayReport, { DayReportData } from "@/components/DayReport";
+import DiagnosisReport from "@/components/DiagnosisReport";
 import MapBackground, { MapBackgroundHandle } from "@/components/MapBackground";
 import PixelPanel from "@/components/pixel/PixelPanel";
 import PixelButton from "@/components/pixel/PixelButton";
@@ -24,11 +25,23 @@ const DEFAULT_LEVELS: Record<Category, Level> = {
   large_stable: "med", mid_alt: "med", meme: "low", stable: "low", cash: "med",
 };
 
+// T-47e — 정적 성향 진단 7문항(spec docs/STATIC_DISPOSITION_SPEC.md §1). 값=점수
+// (1~4, 높을수록 위험지향). 백엔드 disposition.diagnose가 점수로 선택지를 역참조.
 const QUESTIONS: { key: string; text: string; options: [string, number][] }[] = [
-  { key: "q_panic", text: "급락장에서 당신의 첫 반응은?", options: [["바로 손절", 1], ["일부 정리", 0.5], ["버틴다", 0]] },
-  { key: "q_fomo", text: "급등장에서 당신은?", options: [["추격매수", 1], ["조금만", 0.5], ["관망", 0]] },
-  { key: "q_rumor", text: "출처 불명 루머에 얼마나 흔들리나요?", options: [["많이 흔들린다", 1], ["확인부터 한다", 0]] },
-  { key: "q_check", text: "시세창을 얼마나 자주 보나요?", options: [["수시로", 1], ["가끔", 0.5], ["거의 안 봄", 0]] },
+  { key: "Q1", text: "룸메이트가 눈을 반짝이며 말한다. \"지금 아니면 못 사. 다들 타는 중이야.\" 너라면?",
+    options: [["바로 산다. 기회는 안 기다려준다", 4], ["일단 뭔지 좀 알아본다", 2], ["다들 탈 때가 제일 위험하다. 무시", 1]] },
+  { key: "Q2", text: "투자한 돈이 하루 만에 −30%. 지금 네 심정은?",
+    options: [["기회다. 오히려 더 산다", 4], ["오를 때까지 버틴다(존버)", 3], ["정해둔 선에서 손절한다", 2], ["밤새 잠을 못 잔다", 1]] },
+  { key: "Q3", text: "예상 못 한 100만원이 생겼다. 어디에 넣어?",
+    options: [["신규/알트코인에 전부", 4], ["비트·이더 같은 메이저에", 3], ["절반만 투자, 절반은 예금", 2], ["전액 예적금", 1]] },
+  { key: "Q4", text: "너에게 '투자'란 한마디로?",
+    options: [["인생 역전의 기회", 4], ["자산을 불리는 수단", 3], ["노후를 위한 준비", 2], ["안 잃는 게 최우선", 1]] },
+  { key: "Q5", text: "얼마까지 잃어도 네 일상이 흔들리지 않아?",
+    options: [["전액 각오돼 있다", 4], ["절반 정도까지", 3], ["10% 정도까지", 2], ["한 푼도 잃기 싫다", 1]] },
+  { key: "Q6", text: "수익이 났다. 넌 언제 팔아?",
+    options: [["목표가까지 안 판다", 4], ["조금 오르면 바로 익절", 2], ["원금 회복하는 순간 판다", 1]] },
+  { key: "Q7", text: "코인 결정을 내릴 때 넌 주로 뭘 믿어?",
+    options: [["커뮤니티/인플루언서 분위기", 4], ["유튜브·뉴스의 분석", 3], ["내가 직접 조사한 자료", 2], ["아무도 안 믿는다, 안 한다", 1]] },
 ];
 
 export default function EmoPage() {
@@ -50,6 +63,7 @@ export default function EmoPage() {
   const tradeFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevEmoRef = useRef<Emotion | null>(null);
   const [dayReport, setDayReport] = useState<DayReportData | null>(null);   // T-33/T-34 취침+정산
+  const [report, setReport] = useState<api.DiagnosisReport | null>(null);   // T-47e 진단 리포트(엔딩 후)
   const pendingNextRef = useRef<EmoState | null>(null);
   const mapRef = useRef<MapBackgroundHandle>(null);
   const stateRef = useRef<EmoState | null>(null);
@@ -167,6 +181,13 @@ export default function EmoPage() {
     const t = setTimeout(() => setFlashAxis(null), 1200);
     return () => clearTimeout(t);
   }, [state?.emotion]);
+
+  // T-47e — 엔딩 도달 시 진단 리포트(선언 vs 실제 편향)를 1회 가져온다(멱등 GET).
+  useEffect(() => {
+    if (state?.is_over && state.game_id && !report) {
+      api.getReport(state.game_id).then((r) => { if (r) setReport(r); });
+    }
+  }, [state?.is_over, state?.game_id, report]);
 
   const start = async () => {
     setBusy(true); setError(null);
@@ -344,8 +365,8 @@ export default function EmoPage() {
   if (state.is_over && state.ending) {
     const e = state.ending;
     return (
-      <main className="min-h-screen bg-pixel-path flex items-center justify-center p-4">
-        <PixelPanel tone="cloud" className="w-full max-w-lg p-6">
+      <main className="min-h-screen bg-pixel-path flex items-start justify-center p-4 overflow-y-auto">
+        <PixelPanel tone="cloud" className="w-full max-w-lg p-6 my-4">
           <div className="text-[11px] text-pixel-muted mb-1">{e.id} · {e.grade}</div>
           <h1 className="text-xl font-extrabold mb-4">{e.title}</h1>
           <div className="flex flex-col gap-3 text-[13px] leading-relaxed">
@@ -356,7 +377,11 @@ export default function EmoPage() {
           <div className="mt-5 text-[11px] text-pixel-muted">
             {state.clone_name} · 최종 자산 {Math.round(state.portfolio_value).toLocaleString()} · 특수이벤트 {state.special_event_count}회
           </div>
-          <PixelButton size="lg" className="w-full mt-5" onClick={() => { setState(null); setAnswers({}); }}>
+
+          {/* T-47e — 진단 리포트(선언 vs 실제 편향) */}
+          <DiagnosisReport report={report} />
+
+          <PixelButton size="lg" className="w-full mt-6" onClick={() => { setState(null); setAnswers({}); setReport(null); setStep(0); }}>
             다시 시작
           </PixelButton>
         </PixelPanel>
