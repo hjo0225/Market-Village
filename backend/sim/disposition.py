@@ -104,6 +104,10 @@ _TYPE_BANDS: tuple[tuple[int, int, str], ...] = (
     (28, 32, "공격투자형"),
 )
 
+# 2층 편향 5축 — expected_bias · 선택지 bias_tags(T-47b) · actual_bias(T-47c)의
+# 공통 키. 단일 소스: scenario.py·chain.py 검증기가 이걸 import해 태그를 검사한다.
+BIAS_AXES: tuple[str, ...] = ("loss", "fomo", "disp", "over", "panic")
+
 # ── 기대값 테이블 (스펙 §3-①) — declared_type → 2층 편향 5축 ────────────
 _EXPECTED_BIAS: dict[str, dict[str, int]] = {
     "안정형":     {"loss": 60, "fomo": 20, "disp": 40, "over": 15, "panic": 55},

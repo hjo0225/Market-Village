@@ -16,6 +16,7 @@ import zlib
 from functools import lru_cache
 from pathlib import Path
 
+from .disposition import BIAS_AXES
 from .player_emotion.deltas import apply_delta
 from .player_emotion.state import PlayerEmotionState
 
@@ -114,6 +115,11 @@ def validate_chains(chains: dict) -> dict:
                 for axis in (ch.get("deltas") or {}):
                     if axis not in _AXES:
                         raise ChainDataError(f"{npc} stage{stage}: bad axis {axis!r}")
+                # T-47b: 선택적 편향 태그. 있으면 2층 5축의 부분집합이어야 한다.
+                tags = ch.get("bias_tags")
+                if tags is not None:
+                    if not isinstance(tags, list) or any(t not in BIAS_AXES for t in tags):
+                        raise ChainDataError(f"{npc} stage{stage}: bad bias_tags {tags!r}")
         s3 = stages[3]
         if s3.get("choices"):
             raise ChainDataError(f"{npc} stage3: must have no choices")

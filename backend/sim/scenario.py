@@ -11,6 +11,7 @@ import json
 from functools import lru_cache
 from pathlib import Path
 
+from .disposition import BIAS_AXES
 from .player_emotion.state import AXES
 
 TEMPLATES_PATH = Path(__file__).resolve().parent / "data" / "scenario_templates.json"
@@ -55,6 +56,11 @@ def validate_scenarios(scenarios: dict) -> dict:
             for axis in deltas:
                 if axis not in AXES:
                     raise ScenarioError(f"{cat}/{cid}: invalid axis {axis!r}")
+            # T-47b: 선택적 편향 태그. 있으면 2층 5축의 부분집합이어야 한다.
+            tags = ch.get("bias_tags")
+            if tags is not None:
+                if not isinstance(tags, list) or any(t not in BIAS_AXES for t in tags):
+                    raise ScenarioError(f"{cat}/{cid}: invalid bias_tags {tags!r}")
     return scenarios
 
 
