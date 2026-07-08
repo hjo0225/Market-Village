@@ -29,7 +29,7 @@ def test_start_returns_game_id_and_initial_state():
     assert body["game_id"]
     assert body["day"] == 0
     assert not body["is_over"]
-    assert set(body["emotion"]) == {"fear", "greed", "anxiety", "restlessness"}
+    assert set(body["emotion"]) == {"fear", "greed", "anxiety", "restlessness", "composure"}
 
 
 def test_board_and_choose_advances():
@@ -89,3 +89,21 @@ def test_default_market_window_has_drama():
     assert "market_crash" in events, events
     assert "market_surge" in events, events
     assert all(len(v) == 10 for v in cat_returns.values())
+
+
+# --- T-28: 클론 이름 노출 -------------------------------------------------- #
+def test_start_exposes_clone_name():
+    c = _client()
+    r = c.post("/emo/start", json={"answers": ANSWERS, "seed": 42, "days": 3, "name": "철수"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["clone_name"] == "철수"
+    # state GET도 같은 이름을 준다(멱등).
+    gid = body["game_id"]
+    assert c.get(f"/emo/{gid}/state").json()["clone_name"] == "철수"
+
+
+def test_start_clone_name_defaults_when_omitted():
+    c = _client()
+    body = c.post("/emo/start", json={"answers": ANSWERS, "seed": 42, "days": 3}).json()
+    assert body["clone_name"] == "내 클론"

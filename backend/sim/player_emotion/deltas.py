@@ -6,6 +6,7 @@
 
 from __future__ import annotations
 
+from .config import DAILY_DECAY_RATE, EQUILIBRIUM
 from .state import PlayerEmotionState, clamp
 
 # 이벤트ID -> {축: 델타값}. 양방향(pole) 모델 — 감정은 두 극으로 묶인다:
@@ -36,8 +37,27 @@ def apply_delta(state: PlayerEmotionState, delta: dict[str, float]) -> PlayerEmo
         greed=state.greed + delta.get("greed", 0),
         anxiety=state.anxiety + delta.get("anxiety", 0),
         restlessness=state.restlessness + delta.get("restlessness", 0),
+        composure=state.composure + delta.get("composure", 0),
     )
     return clamp(updated)
+
+
+def decay_toward_equilibrium(
+    state: PlayerEmotionState,
+    rate: float = DAILY_DECAY_RATE,
+    equilibrium: float = EQUILIBRIUM,
+) -> PlayerEmotionState:
+    """T-27 (4b): 각 축을 평형값으로 rate만큼 회귀시킨 새 상태(입력 불변).
+
+    밤사이 감정이 중립으로 일부 가라앉는 모델 — 한 방향 강제입력(반복 매수→greed)이
+    클램프 천장까지 램프업하는 것을 막는다(포화 방지). rate=0이면 무회귀(항등)."""
+    def d(v: float) -> float:
+        return v + rate * (equilibrium - v)
+    return clamp(PlayerEmotionState(
+        fear=d(state.fear), greed=d(state.greed),
+        anxiety=d(state.anxiety), restlessness=d(state.restlessness),
+        composure=d(state.composure),
+    ))
 
 
 def apply_event(state: PlayerEmotionState, event_id: str) -> PlayerEmotionState:

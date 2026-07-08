@@ -15,3 +15,9 @@ WITHDRAWAL_THRESHOLD: float = -30
 
 # T-10: 게시판 톤의 방향성 세기(센터링된 편차 × 이 값). 순합 0이라 포화 없음.
 BOARD_TONE_SCALE: float = 18.0
+
+# T-27 (PLAN-READY 4b): 감정 평형·감쇠. 매일 밤(다음 날 진입) 각 축이 평형값으로
+# 일부 회귀한다 — 한 방향 강제입력(예: 반복 매수→greed)이 클램프(AXIS_MAX)까지
+# 램프업하는 것을 막는 안전장치. 3칸: 감쇠율·평형·클램프(클램프는 AXIS_MIN/MAX 재사용).
+EQUILIBRIUM: float = 50.0         # 평형값(중립) — 회귀 목표점
+DAILY_DECAY_RATE: float = 0.15    # 하루당 (평형 - 현재)의 이 비율만큼 회귀

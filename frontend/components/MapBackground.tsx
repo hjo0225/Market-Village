@@ -18,12 +18,12 @@ const MapBackground = forwardRef<MapBackgroundHandle, {
   gameId: string;
   // T-292 — 맵의 활동 서술(말풍선은 이모지만, 텍스트는 발자취 패널로).
   onActivity?: (text: string | null) => void;
-  // T-22 — 게임 종류(classic=구 /play, emo=신 감정게임). 기본 classic.
+  // 맵 브릿지 경로 종류. T-15 컷오버 후 유일 게임은 emo(감정 4축).
   game?: string;
-  // T-22 — true면 부모 컨테이너를 채움(PM식 장면 창), false면 뷰포트 고정 배경(구 /play).
+  // true면 부모 컨테이너를 채움(PM식 장면 창), false면 뷰포트 고정 배경.
   contained?: boolean;
 }>(function MapBackground(
-  { gameId, onActivity, game = "classic", contained = false },
+  { gameId, onActivity, game = "emo", contained = false },
   ref
 ) {
   const iframeRef = useRef<HTMLIFrameElement>(null);

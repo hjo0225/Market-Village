@@ -1,18 +1,20 @@
 "use client";
 
-import { Building2, Coins, Flame, Banknote } from "lucide-react";
+import { Building2, Coins, Flame, Banknote, Wallet } from "lucide-react";
 import { CATEGORIES, CATEGORY_LABEL, Category } from "@/lib/emoApi";
 import PixelPanel from "@/components/pixel/PixelPanel";
 
-// T-11 — 포트폴리오 다자산 보유 패널. 카테고리별 보유액·비중. 이모지 대신 lucide.
+// T-11/T-30 — 포트폴리오 다자산 보유 패널. 카테고리별 보유액·비중(스테이블·현금 분리).
 const ICON: Record<Category, typeof Building2> = {
-  large_stable: Building2, mid_alt: Coins, meme: Flame, stable: Banknote,
+  large_stable: Building2, mid_alt: Coins, meme: Flame, stable: Banknote, cash: Wallet,
 };
 const COLOR: Record<Category, string> = {
-  large_stable: "bg-sky-500", mid_alt: "bg-indigo-500", meme: "bg-rose-500", stable: "bg-emerald-500",
+  large_stable: "bg-sky-500", mid_alt: "bg-indigo-500", meme: "bg-rose-500",
+  stable: "bg-emerald-500", cash: "bg-slate-500",
 };
 const TEXT: Record<Category, string> = {
-  large_stable: "text-sky-600", mid_alt: "text-indigo-600", meme: "text-rose-600", stable: "text-emerald-600",
+  large_stable: "text-sky-600", mid_alt: "text-indigo-600", meme: "text-rose-600",
+  stable: "text-emerald-600", cash: "text-slate-600",
 };
 
 export default function PortfolioPanel({

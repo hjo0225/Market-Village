@@ -4,9 +4,9 @@
     "title": "급락",
     "text": "간밤에 시장이 무너졌다. 보유 종목이 두 자릿수로 빠졌고, 커뮤니티는 패닉이다. 당신의 손은 어디로 향하는가?",
     "choices": [
-      {"id": "cut", "label": "지금 바로 손절한다", "deltas": {"fear": 8, "anxiety": 4}, "position": -0.6},
-      {"id": "hold", "label": "버틴다 — 원래 계획대로", "deltas": {"fear": -6, "anxiety": -2}, "position": 0.0},
-      {"id": "buy_dip", "label": "저가 매수 기회다, 더 담는다", "deltas": {"greed": 8, "fear": -2}, "position": 0.3}
+      {"id": "cut", "label": "지금 바로 손절한다", "deltas": {"fear": 8, "anxiety": 4, "composure": -4}, "position": -0.6},
+      {"id": "hold", "label": "버틴다 — 원래 계획대로", "deltas": {"fear": -6, "anxiety": -2, "composure": 6}, "position": 0.0},
+      {"id": "buy_dip", "label": "저가 매수 기회다, 더 담는다", "deltas": {"greed": 6, "anxiety": 5, "fear": 2, "composure": -4}, "position": 0.3}
     ]
   },
   "market_surge": {
@@ -14,9 +14,9 @@
     "title": "급등",
     "text": "안 산 종목이 하루에 40% 올랐다. 채팅방은 '지금이라도 타라'로 도배됐다. 막차인가, 함정인가?",
     "choices": [
-      {"id": "chase", "label": "추격매수 — 놓칠 수 없다", "deltas": {"greed": 10, "restlessness": 6}, "position": 0.3},
-      {"id": "small", "label": "조금만 태워본다", "deltas": {"greed": 2, "anxiety": 2}, "position": 0.1},
-      {"id": "watch", "label": "관망한다", "deltas": {"greed": -6, "restlessness": -4}, "position": -0.2}
+      {"id": "chase", "label": "놓칠 수 없다", "deltas": {"greed": 7, "anxiety": 6, "restlessness": 5, "fear": 2, "composure": -6}, "position": 0.3},
+      {"id": "small", "label": "조금만 태워본다", "deltas": {"greed": 2, "anxiety": 2, "composure": 1}, "position": 0.1},
+      {"id": "watch", "label": "관망한다", "deltas": {"greed": -6, "restlessness": -4, "composure": 6}, "position": -0.2}
     ]
   },
   "rumor_spread": {
@@ -24,9 +24,9 @@
     "title": "루머",
     "text": "출처 불명의 상장폐지설이 돈다. 확인된 건 없지만 가격은 이미 흔들리기 시작했다.",
     "choices": [
-      {"id": "panic_sell", "label": "일단 팔고 본다", "deltas": {"fear": 6, "anxiety": 8}, "position": -0.6},
-      {"id": "verify", "label": "공식 발표부터 확인한다", "deltas": {"anxiety": -8, "fear": -2}, "position": 0.0},
-      {"id": "ignore", "label": "무시한다", "deltas": {"anxiety": 2, "restlessness": 2}, "position": 0.0}
+      {"id": "panic_sell", "label": "일단 팔고 본다", "deltas": {"fear": 6, "anxiety": 8, "composure": -5}, "position": -0.6},
+      {"id": "verify", "label": "공식 발표부터 확인한다", "deltas": {"anxiety": -8, "fear": -2, "composure": 6}, "position": 0.0},
+      {"id": "ignore", "label": "무시한다", "deltas": {"anxiety": 2, "restlessness": 2, "composure": 2}, "position": 0.0}
     ]
   },
   "market_volatile": {
@@ -34,9 +34,9 @@
     "title": "변동성 폭발",
     "text": "위아래로 10%씩 출렁인다. 잔고가 분 단위로 널을 뛴다. 시세창에서 눈을 뗄 수가 없다.",
     "choices": [
-      {"id": "day_trade", "label": "단타로 대응한다", "deltas": {"restlessness": 12, "greed": 4}, "position": 0.1},
-      {"id": "step_away", "label": "창을 끄고 자리를 뜬다", "deltas": {"restlessness": -10, "anxiety": -4}, "position": -0.3},
-      {"id": "stare", "label": "계속 지켜본다", "deltas": {"restlessness": 4, "anxiety": 2}, "position": 0.0}
+      {"id": "day_trade", "label": "단타로 대응한다", "deltas": {"restlessness": 9, "anxiety": 6, "greed": 3, "composure": -5}, "position": 0.1},
+      {"id": "step_away", "label": "창을 끄고 자리를 뜬다", "deltas": {"restlessness": -10, "anxiety": -4, "composure": 6}, "position": -0.3},
+      {"id": "stare", "label": "계속 지켜본다", "deltas": {"restlessness": 4, "anxiety": 2, "composure": -2}, "position": 0.0}
     ]
   }
 }

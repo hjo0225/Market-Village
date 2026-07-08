@@ -9,7 +9,7 @@
 
 import pytest
 
-from sim.emo_game import START_VALUE, EmoGameRun
+from sim.emo_game import CASH, PORTFOLIO_CATEGORIES, START_VALUE, EmoGameRun
 from sim.fate_line import CATEGORIES
 from sim.interview import build_initial_emotion
 from sim.player_emotion.state import PlayerEmotionState
@@ -111,7 +111,7 @@ def test_allocation_splits_start_value_into_holdings():
 
 def test_default_allocation_covers_all_categories():
     r = _run()
-    assert set(r.holdings) == set(CATEGORIES)
+    assert set(r.holdings) == set(PORTFOLIO_CATEGORIES)   # T-30: 시장4 + 현금
     assert abs(r.portfolio_value - START_VALUE) < 0.01
 
 
@@ -141,6 +141,18 @@ def test_day_schedule_expands_place_to_8_slots():
     assert set(sched.keys()) == {1, 2, 3, 4, 5, 6, 7, 8}
     assert sched[1] == "집_차트" and sched[8] == "집_차트"   # 아침 집·저녁 귀가
     assert sched[4] == r.clone_route[0]                     # 낮엔 그날 장소
+
+
+def test_day_schedule_visits_multiple_daytime_places():
+    # 하루가 한 장소로 접히지 않고(단조·긴 이동=순간이동 원인 방지) 낮에 여러 곳을 돈다.
+    r = _run()   # day0 clone_route = "카페"
+    sched = r.day_schedule()
+    assert sched[1] == "집_차트" and sched[8] == "집_차트"     # 아침 집·저녁 귀가
+    daytime = {sched[s] for s in (2, 3, 4, 5, 6, 7)}
+    assert "집_차트" not in daytime                           # 낮엔 집에 머무르지 않음
+    assert len(daytime) >= 2                                  # 서로 다른 장소 ≥2 (단조 아님)
+    # 오후(슬롯5·6)는 오늘의 장소 = 동행이 만나는 곳(_emo_meetings 오후 밴드)
+    assert sched[5] == r.clone_route[0] and sched[6] == r.clone_route[0]
 
 
 def test_holdings_serialized_roundtrip():
@@ -193,3 +205,194 @@ def test_serialization_roundtrip_does_not_reapply_exposure():
     assert len(restored.emotion_log.snapshots) == len(r.emotion_log.snapshots)
     # 복원 후 board()도 멱등.
     assert restored.board()["threads"] == r.board()["threads"]
+
+
+# --- T-28: 클론 이름 ------------------------------------------------------- #
+def test_clone_name_is_set_from_new():
+    run = EmoGameRun.new(ANSWERS, EVENTS, _cat(RETURNS), seed=1, name="철수")
+    assert run.clone_name == "철수"
+
+
+def test_clone_name_defaults_when_empty_or_whitespace():
+    assert EmoGameRun.new(ANSWERS, EVENTS, _cat(RETURNS), seed=1, name="  ").clone_name == "내 클론"
+    assert EmoGameRun.new(ANSWERS, EVENTS, _cat(RETURNS), seed=1, name=None).clone_name == "내 클론"
+    assert EmoGameRun.new(ANSWERS, EVENTS, _cat(RETURNS), seed=1).clone_name == "내 클론"
+
+
+def test_clone_name_is_trimmed_and_length_capped():
+    run = EmoGameRun.new(ANSWERS, EVENTS, _cat(RETURNS), seed=1, name="  " + "가" * 30 + "  ")
+    assert run.clone_name == "가" * 12   # 앞뒤 공백 제거 + 12자 제한
+
+
+def test_clone_name_survives_serialization_roundtrip():
+    run = EmoGameRun.new(ANSWERS, EVENTS, _cat(RETURNS), seed=1, name="영희")
+    restored = EmoGameRun.from_doc(run.to_doc())
+    assert restored.clone_name == "영희"
+
+
+def test_clone_name_defaults_on_legacy_doc_without_field():
+    run = EmoGameRun.new(ANSWERS, EVENTS, _cat(RETURNS), seed=1, name="영희")
+    doc = run.to_doc()
+    del doc["clone_name"]   # 구 doc(필드 없음)
+    assert EmoGameRun.from_doc(doc).clone_name == "내 클론"
+
+
+# --- T-30: 현금(cash) / 스테이블(USDT) 분리 ------------------------------- #
+def test_cash_is_a_separate_portfolio_category():
+    assert CASH == "cash"
+    assert CASH in PORTFOLIO_CATEGORIES and CASH not in CATEGORIES   # 시장 카테고리 아님
+    r = _run()
+    assert CASH in r.holdings
+
+
+def test_cash_and_stable_are_allocated_separately():
+    alloc = {"large_stable": 0.4, "mid_alt": 0.0, "meme": 0.0, "stable": 0.3, "cash": 0.3}
+    r = EmoGameRun.new(ANSWERS, EVENTS, _cat([0.0, 0.0, 0.0]), seed=1, allocation=alloc)
+    assert r.holdings["stable"] == START_VALUE * 0.3   # USDT
+    assert r.holdings["cash"] == START_VALUE * 0.3      # KRW — 별도 보유
+    assert abs(r.portfolio_value - START_VALUE) < 0.01
+
+
+def test_cash_has_zero_return_market_never_moves_it():
+    # 현금은 시장 시리즈가 없어 수익률 0 — 시장이 어떻게 움직여도 불변.
+    events = ["market_surge", "market_crash"]
+    cr = {c: [0.5, -0.5] for c in CATEGORIES}   # 위험자산 급등락
+    r = EmoGameRun.new(ANSWERS, events, cr, seed=1,
+                       allocation={"cash": 1.0})   # 전액 현금
+    start_cash = r.holdings["cash"]
+    r.choose("watch")   # 시장 실현(급등) — 현금은 그대로여야
+    assert r.holdings["cash"] == start_cash
+
+
+def test_cut_moves_risk_into_cash_not_stable():
+    events = ["market_crash", "market_surge"]
+    cr = {c: [-0.1, 0.1] for c in CATEGORIES}
+    r = EmoGameRun.new(ANSWERS, events, cr, seed=1,
+                       allocation={"large_stable": 0.5, "mid_alt": 0.5,
+                                   "meme": 0.0, "stable": 0.0, "cash": 0.0})
+    assert r.holdings["cash"] == 0.0
+    r.choose("cut")   # 손절 → 위험자산이 현금(cash)으로 이동
+    assert r.holdings["cash"] > 0.0        # 도피처는 현금
+    assert r.holdings["stable"] == 0.0     # USDT는 손대지 않음
+
+
+def test_cash_survives_serialization():
+    r = EmoGameRun.new(ANSWERS, EVENTS, _cat([0.0, 0.0, 0.0]), seed=1,
+                       allocation={"cash": 0.4, "large_stable": 0.6})
+    restored = EmoGameRun.from_doc(r.to_doc())
+    assert restored.holdings["cash"] == r.holdings["cash"]
+    assert set(restored.holdings) == set(PORTFOLIO_CATEGORIES)
+
+
+# --- T-30c: 캐시아웃 딜레마 ------------------------------------------------ #
+def _big_gain_run():
+    # 매일 추격매수(chase)로 탐욕이 정점에 오른 중반 상태를 만든다(감정 기반 트리거).
+    events = ["market_surge"] * 6
+    cr = {c: ([0.25] * 6 if c != "stable" else [0.0] * 6) for c in CATEGORIES}
+    r = EmoGameRun.new(ANSWERS, events, cr, seed=1,
+                       allocation={"large_stable": 0.4, "mid_alt": 0.4, "meme": 0.2,
+                                   "stable": 0.0, "cash": 0.0})
+    for _ in range(4):          # day0..3 진행(추격매수로 탐욕 정점)
+        r.choose("chase")
+    return r
+
+
+def test_cashout_dilemma_not_available_early_or_flat():
+    r = EmoGameRun.new(ANSWERS, EVENTS, _cat([0.0, 0.0, 0.0]), seed=1)
+    assert r.cashout_available() is False    # day0·무변동
+    assert r.cashout_event() is None
+
+
+def test_cashout_dilemma_available_after_big_swing():
+    r = _big_gain_run()
+    assert r.cashout_available() is True
+    ev = r.cashout_event()
+    assert ev and ev["gain"] is True
+    assert {c["id"] for c in ev["choices"]} == {"cash_out", "stay"}
+
+
+def test_cashout_moves_risk_to_cash_and_calms():
+    r = _big_gain_run()
+    fear_before = r.emotion.fear
+    cash_before = r.holdings["cash"]
+    risk_before = sum(r.holdings[c] for c in ("large_stable", "mid_alt", "meme"))
+    r.cashout("cash_out")
+    assert r.holdings["cash"] > cash_before                     # 현금으로 이동
+    assert sum(r.holdings[c] for c in ("large_stable", "mid_alt", "meme")) < risk_before
+    assert r.emotion.fear <= fear_before                        # 안심(위축 완화)
+    assert r.cashout_available() is False                       # 1회만
+
+
+def test_cashout_stay_keeps_risk_and_raises_greed():
+    r = _big_gain_run()
+    greed_before = r.emotion.greed
+    risk_before = sum(r.holdings[c] for c in ("large_stable", "mid_alt", "meme"))
+    r.cashout("stay")
+    assert abs(sum(r.holdings[c] for c in ("large_stable", "mid_alt", "meme")) - risk_before) < 0.01
+    assert r.emotion.greed >= greed_before
+    assert r.cashout_available() is False
+
+
+def test_cashout_flag_survives_serialization():
+    r = _big_gain_run()
+    r.cashout("stay")
+    restored = EmoGameRun.from_doc(r.to_doc())
+    assert restored.cashout_offered is True
+    assert restored.cashout_available() is False
+
+
+# --- T-37: 평정(composure) 긍정 축 ---------------------------------------- #
+def test_composure_starts_neutral():
+    r = _run()
+    assert r.emotion.composure == 50   # 중립 시작
+
+
+def test_disciplined_choice_raises_composure_impulsive_lowers():
+    # 급락에 '버틴다'(원칙)=평정↑, '손절'(패닉)=평정↓ (같은 시작 상태 비교).
+    events = ["market_crash", "market_crash"]
+    cr = {c: [0.0, 0.0] for c in CATEGORIES}
+    disc = EmoGameRun.new(ANSWERS, events, cr, seed=1)
+    imp = EmoGameRun.new(ANSWERS, events, cr, seed=1)
+    c0 = disc.emotion.composure
+    disc.choose("hold")     # 원칙
+    imp.choose("cut")       # 패닉
+    # 스냅샷(선택 직후, 밤 회귀 전)으로 방향 비교.
+    assert disc.emotion_log.snapshots[0].state.composure > c0
+    assert imp.emotion_log.snapshots[0].state.composure < c0
+
+
+def test_composure_survives_serialization():
+    r = _run()
+    r.choose("hold")   # 평정 변화
+    restored = EmoGameRun.from_doc(r.to_doc())
+    assert restored.emotion.composure == r.emotion.composure
+
+
+def test_legacy_doc_without_composure_defaults_neutral():
+    r = _run()
+    doc = r.to_doc()
+    del doc["emotion"]["composure"]   # 구 doc(4축)
+    assert EmoGameRun.from_doc(doc).emotion.composure == 50
+
+
+def test_high_composure_yields_controlled_ending_even_if_leaning():
+    from sim.ending import emotion_controlled
+    # 과열이어도 평정이 높으면 통제됨(좋은 엔딩 쪽).
+    assert emotion_controlled("과열", composure=70) is True
+    assert emotion_controlled("과열", composure=40) is False
+    assert emotion_controlled("중립", composure=40) is True   # 중립은 평정 무관 통제
+
+
+# --- T-35: 오늘의 장(카테고리별 수익률) 리포트용 ------------------------- #
+def test_last_market_records_day_returns_as_percent():
+    events = ["market_surge", "market_surge"]
+    cr = {"large_stable": [0.02, 0.0], "mid_alt": [0.05, 0.0],
+          "meme": [0.40, 0.0], "stable": [0.0, 0.0]}
+    r = EmoGameRun.new(ANSWERS, events, cr, seed=1)
+    assert r.last_market == {}          # 정산 전엔 비어있음
+    r.choose("watch")                    # day0 정산
+    assert r.last_market["meme"] == 40.0
+    assert r.last_market["large_stable"] == 2.0
+    assert r.last_market["stable"] == 0.0
+    # 직렬화 왕복 보존.
+    assert EmoGameRun.from_doc(r.to_doc()).last_market == r.last_market

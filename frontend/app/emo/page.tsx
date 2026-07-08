@@ -1,18 +1,27 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Users, CalendarDays, Wallet } from "lucide-react";
+import { Users, CalendarDays, Wallet, PieChart, X, TrendingUp, TrendingDown } from "lucide-react";
 import * as api from "@/lib/emoApi";
-import { Board, ChainEvent, EmoState, NPC_NAME, CATEGORIES, CATEGORY_LABEL, Category } from "@/lib/emoApi";
+import { Board, ChainEvent, Dilemma, EmoState, NPC_NAME, CATEGORIES, CATEGORY_LABEL, Category, AXES, Axis, Emotion } from "@/lib/emoApi";
 import EmotionGauge from "@/components/EmotionGauge";
+import EmotionStrip from "@/components/EmotionStrip";
 import PortfolioPanel from "@/components/PortfolioPanel";
+import AdvDialogue from "@/components/AdvDialogue";
+import AdvChoiceMenu from "@/components/AdvChoiceMenu";
+import DayReport, { DayReportData } from "@/components/DayReport";
 import MapBackground, { MapBackgroundHandle } from "@/components/MapBackground";
 import PixelPanel from "@/components/pixel/PixelPanel";
 import PixelButton from "@/components/pixel/PixelButton";
 
-// 초기 배분 기본값(비중, 합 100). 백엔드가 합으로 정규화하므로 정확히 100 아니어도 됨.
-const DEFAULT_ALLOC: Record<Category, number> = {
-  large_stable: 40, mid_alt: 30, meme: 20, stable: 10,
+// T-30 · 초기 배분 UX — 슬라이더 대신 높음/중간/낮음(가중치). 백엔드가 합으로
+// 정규화하므로 상대 가중치만 보내면 된다(low1·med2·high3).
+type Level = "low" | "med" | "high";
+const LEVELS: Level[] = ["low", "med", "high"];
+const LEVEL_WEIGHT: Record<Level, number> = { low: 1, med: 2, high: 3 };
+const LEVEL_LABEL: Record<Level, string> = { low: "낮음", med: "중간", high: "높음" };
+const DEFAULT_LEVELS: Record<Category, Level> = {
+  large_stable: "med", mid_alt: "med", meme: "low", stable: "low", cash: "med",
 };
 
 const QUESTIONS: { key: string; text: string; options: [string, number][] }[] = [
@@ -26,40 +35,99 @@ export default function EmoPage() {
   const [state, setState] = useState<EmoState | null>(null);
   const [board, setBoard] = useState<Board | null>(null);
   const [chain, setChain] = useState<ChainEvent | null>(null);
+  const [dilemma, setDilemma] = useState<Dilemma | null>(null);   // T-30c 캐시아웃 딜레마
+  const dilemmaPickRef = useRef<((id: string) => void) | null>(null);
   const [answers, setAnswers] = useState<Record<string, number>>({});
-  const [alloc, setAlloc] = useState<Record<string, number>>({ ...DEFAULT_ALLOC });
+  const [name, setName] = useState("");   // T-28 — 클론 이름
+  const [levels, setLevels] = useState<Record<Category, Level>>({ ...DEFAULT_LEVELS });   // T-30
+  const [step, setStep] = useState(0);   // T-29 — 온보딩 스텝(0 이름 · 1 진단 · 2 배분)
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mapActivity, setMapActivity] = useState<string | null>(null);
+  const [showPortfolio, setShowPortfolio] = useState(false);   // T-31 포트폴리오 드로어
+  const [flashAxis, setFlashAxis] = useState<Axis | null>(null);   // T-35 감정 변화 플래시
+  const [tradeFlash, setTradeFlash] = useState<"buy" | "sell" | null>(null);   // T-35 매매 배지
+  const tradeFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevEmoRef = useRef<Emotion | null>(null);
+  const [dayReport, setDayReport] = useState<DayReportData | null>(null);   // T-33/T-34 취침+정산
+  const pendingNextRef = useRef<EmoState | null>(null);
   const mapRef = useRef<MapBackgroundHandle>(null);
   const stateRef = useRef<EmoState | null>(null);
+  const boardPickRef = useRef<((id: string) => void) | null>(null);
   const day = state?.day ?? -1;
 
   const setRun = useCallback((s: EmoState) => { stateRef.current = s; setState(s); }, []);
 
-  // T-22/A — 하루 일과: 클론이 시간대별로 걷고, 그 도중 만남·게시판이 등장한다
-  // (구 /play의 순차 진행을 /emo에 이식 — 이벤트가 일과 중 등장하도록).
+  // T-22/A — 하루 일과: 클론이 시간대별로 걷고, 그 도중 만남·게시판이 등장한다.
+  // 게시판(그날 시장 이벤트)은 랜덤 밴드에 도착 → 반응 선택은 그 자리에서 받되,
+  // 정산(choose: 감정·시장·리밸런싱 + day++)은 남은 하루를 다 걷고 **저녁에** 한다.
+  // (사용자: "선택 후 남은 하루를 걷고" — 선택=하루 끝이 아니라 하루 중 반응.)
   useEffect(() => {
     if (day < 0) return;
     const s = stateRef.current;
     if (!s || s.is_over) { setBoard(null); setChain(null); return; }
     let cancelled = false;
     (async () => {
-      setBoard(null); setChain(null);
-      // 밴드별로 걷기(배속 2x — 하루가 늘어지지 않게). 만남은 도착 시 맵이 쏘는
-      // meeting_talk를 아래 리스너가 처리한다.
-      for (const band of ["오전", "점심", "오후", "저녁"]) {
-        if (cancelled) return;
-        await mapRef.current?.playWalk(band, 2);
+      setBoard(null); setChain(null); setDilemma(null);
+      // T-30c — 하루 시작에 캐시아웃 딜레마(발동 조건 충족 시 1회). 날짜는 안 넘어감.
+      if (s.has_cashout_dilemma) {
+        const dil = await api.getDilemma(s.game_id);
+        if (dil && !cancelled) {
+          setDilemma(dil);
+          const cid = await new Promise<string>((resolve) => { dilemmaPickRef.current = resolve; });
+          dilemmaPickRef.current = null;
+          setDilemma(null);
+          if (!cancelled) {
+            const ns = await api.chooseDilemma(s.game_id, cid);
+            if (ns && !cancelled) setRun(ns);   // day 불변 → 일과 시퀀스 재실행 안 됨
+          }
+        }
       }
       if (cancelled) return;
-      // 일과 끝 → 그날 시장 이벤트(게시판) + 선택. 놓친 만남이 있으면 먼저 띄운다.
-      if (s.has_pending_chain) {
-        const ch = await api.getChain(s.game_id);
-        if (!cancelled && ch) setChain(ch);
+      const bands = ["오전", "점심", "오후", "저녁"];
+      // 게시판이 터지는 밴드 = **점심 고정**. 오전 제외(아침은 걷게 두고 그 뒤에)·
+      // 저녁 제외(반응 후 걸을 하루가 남게)·**오후 제외(동행 만남이 오후라 겹침)**.
+      // 점심에 반응을 끝내면 for-loop이 그때 대기하므로 오후 만남과 순차 진행된다
+      // (게시판·만남 동시 표시 충돌 방지, 사용자 2026-07-08).
+      const boardBand = "점심";
+      let picked: string | null = null;
+      let pickedLabel = "";
+      for (const band of bands) {
+        if (cancelled) return;
+        await mapRef.current?.playWalk(band, 2);   // 만남은 리스너가 도중 처리
+        if (cancelled) return;
+        if (band === boardBand) {
+          // 그날 시장 이벤트 도착 — 걷기 정지, 반응만 받고(정산은 저녁) 게시판 닫음.
+          const b = await api.getBoard(s.game_id);
+          if (cancelled || !b) continue;
+          setBoard(b);
+          picked = await new Promise<string>((resolve) => { boardPickRef.current = resolve; });
+          boardPickRef.current = null;
+          pickedLabel = b.scenario.choices.find((c) => c.id === picked)?.label ?? "";
+          if (cancelled) return;
+          setBoard(null);   // 반응 후 닫고 남은 하루를 마저 걷는다
+        }
       }
-      const b = await api.getBoard(s.game_id);
-      if (!cancelled) setBoard(b);
+      if (cancelled) return;
+      // 저녁 정산 — 낮에 고른 반응을 반영(감정·시장·리밸런싱) + 다음 날.
+      if (picked) {
+        const ns = await api.choose(s.game_id, picked);
+        if (cancelled) return;
+        if (!ns) { setError("정산에 실패했어요. 다시 시도해 주세요."); return; }
+        if (ns.is_over) { setRun(ns); return; }   // 마지막 날 → 엔딩으로
+        // T-33/T-34 — 취침 암전 + 하루 정산 리포트. "다음 날" 누르면 진행.
+        // prev = 정산 직전 상태(딜레마가 갱신했을 수 있어 stateRef에서 읽는다).
+        const prev = stateRef.current ?? s;
+        pendingNextRef.current = ns;
+        setDayReport({
+          day: prev.day, name: prev.clone_name,
+          prevEmotion: prev.emotion, nextEmotion: ns.emotion,
+          prevAsset: prev.portfolio_value, nextAsset: ns.portfolio_value,
+          prevHoldings: prev.holdings, nextHoldings: ns.holdings,   // T-38 — 카테고리별 변화
+          choiceLabel: pickedLabel,
+          market: ns.last_market,
+        });
+      }
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -81,10 +149,32 @@ export default function EmoPage() {
     return () => window.removeEventListener("message", onMsg);
   }, []);
 
+  // T-35 — 감정 변화 체감: 값이 바뀌면 가장 크게 변한 축을 잠깐 플래시.
+  useEffect(() => {
+    const cur = state?.emotion;
+    if (!cur) return;
+    const prev = prevEmoRef.current;
+    prevEmoRef.current = cur;
+    if (!prev) return;
+    let best: Axis | null = null;
+    let bestD = 3;   // 임계 — 미세 변화는 무시
+    (AXES as readonly Axis[]).forEach((a) => {
+      const d = Math.abs((cur[a] ?? 0) - (prev[a] ?? 0));
+      if (d > bestD) { bestD = d; best = a; }
+    });
+    if (!best) return;
+    setFlashAxis(best);
+    const t = setTimeout(() => setFlashAxis(null), 1200);
+    return () => clearTimeout(t);
+  }, [state?.emotion]);
+
   const start = async () => {
     setBusy(true); setError(null);
     const seed = Math.floor(Math.random() * 100000);
-    const s = await api.startEmo(answers, seed, 10, alloc);
+    // T-30 — 높음/중간/낮음 → 상대 가중치(백엔드가 합으로 정규화).
+    const weights: Record<string, number> = {};
+    CATEGORIES.forEach((c) => { weights[c] = LEVEL_WEIGHT[levels[c]]; });
+    const s = await api.startEmo(answers, seed, 10, weights, name.trim());
     if (s) setRun(s);
     else setError("게임을 시작하지 못했어요. 잠시 후 다시 시도해 주세요.");
     setBusy(false);
@@ -102,77 +192,149 @@ export default function EmoPage() {
     setBusy(false);
   };
 
-  // 게시판 선택 — 일과 끝의 결정. day++ → 다음 일과 시퀀스.
-  const chooseBoard = async (id: string) => {
-    const s = stateRef.current; if (!s) return;
-    setBusy(true); setError(null);
-    const ns = await api.choose(s.game_id, id);
-    if (ns) setRun(ns);
-    else setError("요청이 처리되지 않았어요. 다시 시도해 주세요.");
-    setBusy(false);
+  // T-35 — 매매 순간 체감: 결정적 매매를 골랐을 때 맵 위에 매매 배지를 잠깐 띄운다.
+  // (맵 말풍선 trade_fx는 직후 재개되는 걷기 🚶에 즉시 덮여 안 보임 → React 레이어로.)
+  const showTradeFlash = (action: "buy" | "sell") => {
+    setTradeFlash(action);
+    if (tradeFlashTimer.current) clearTimeout(tradeFlashTimer.current);
+    tradeFlashTimer.current = setTimeout(() => setTradeFlash(null), 1400);
   };
 
-  // ---------- 시작(진단) ----------
+  // 게시판 반응 — 낮에 고름. 정산은 아니고(저녁에 함) 일과 시퀀스의 대기를 푼다.
+  // 고른 반응의 position으로 매매 배지를 띄운다. 관망(-0.2)·소액 태움(0.1) 같은
+  // **소극적 선택**엔 안 뜨게 결정적 매매(|position|≥0.25)만.
+  const TRADE_FX_MIN = 0.25;
+  const reactBoard = (id: string) => {
+    const pos = board?.scenario.choices.find((c) => c.id === id)?.position ?? 0;
+    if (pos >= TRADE_FX_MIN) showTradeFlash("buy");
+    else if (pos <= -TRADE_FX_MIN) showTradeFlash("sell");
+    boardPickRef.current?.(id);
+  };
+  // T-30c — 캐시아웃 딜레마 응답. 현금화(cash_out)=위험자산 매도 → 매매 배지.
+  const resolveDilemma = (id: string) => {
+    if (id === "cash_out") showTradeFlash("sell");
+    dilemmaPickRef.current?.(id);
+  };
+
+  // T-33/T-34 — 정산 리포트에서 "다음 날" → 다음 날로 진행(일과 시퀀스 재시작).
+  const advanceDay = () => {
+    const ns = pendingNextRef.current;
+    pendingNextRef.current = null;
+    setDayReport(null);
+    if (ns) setRun(ns);
+  };
+
+  // ---------- 온보딩 위저드(T-29: 한 화면 한 목적 — 이름 → 진단 → 배분) ----------
   if (!state) {
-    const ready = QUESTIONS.every((q) => q.key in answers);
+    const diagnosisReady = QUESTIONS.every((q) => q.key in answers);
+    const totalW = CATEGORIES.reduce((s, c) => s + LEVEL_WEIGHT[levels[c]], 0);
+    const STEP_TITLE = ["이사 온 날", "투자 성향 진단", "초기 자산 배분"];
     return (
       <main className="min-h-screen bg-pixel-path flex items-center justify-center p-4">
         <PixelPanel tone="wall" className="w-full max-w-lg p-6">
-          <h1 className="text-lg font-extrabold mb-1">마켓 빌리지의 열흘</h1>
-          <p className="text-[12px] text-pixel-muted mb-5">몇 가지로 당신의 투자 성향을 진단해요.</p>
-          <div className="flex flex-col gap-4">
-            {QUESTIONS.map((q) => (
-              <div key={q.key}>
-                <div className="text-[13px] font-bold mb-2">{q.text}</div>
-                <div className="flex flex-wrap gap-2">
-                  {q.options.map(([label, val]) => (
-                    <PixelButton
-                      key={label}
-                      size="sm"
-                      variant={answers[q.key] === val ? "primary" : "ghost"}
-                      onClick={() => setAnswers((a) => ({ ...a, [q.key]: val }))}
-                    >
-                      {label}
-                    </PixelButton>
-                  ))}
-                </div>
-              </div>
+          {/* 진행 표시 */}
+          <div className="flex items-center gap-1.5 mb-4">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className={`h-1.5 flex-1 rounded-full ${i <= step ? "bg-black/70" : "bg-black/15"}`} />
             ))}
           </div>
-          {/* T-11 · 초기 자산 배분 */}
-          {(() => {
-            const sum = CATEGORIES.reduce((s, c) => s + (alloc[c] ?? 0), 0);
-            return (
-              <div className="mt-6 border-t border-black/10 pt-4">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-[13px] font-bold">초기 자산 배분</div>
-                  <span className="text-[11px] text-pixel-muted">합계 {sum}{sum === 100 ? " ✓" : "%"}</span>
+          <div className="text-[11px] text-pixel-muted mb-1">{step + 1} / 3</div>
+          <h1 className="text-lg font-extrabold mb-5">{STEP_TITLE[step]}</h1>
+
+          {/* STEP 0 — 이름만 */}
+          {step === 0 && (
+            <div>
+              <p className="text-[12px] text-pixel-muted mb-4">이 마을에서 30일을 살아갈 내 클론의 이름을 지어주세요.</p>
+              <label htmlFor="clone-name" className="text-[13px] font-bold block mb-2">클론 이름</label>
+              <input
+                id="clone-name" type="text" value={name} maxLength={12}
+                placeholder="내 클론"
+                autoFocus
+                className="w-full px-3 py-2.5 text-[14px] rounded-lg border-2 border-black/15 bg-white focus:border-black/40 outline-none"
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") setStep(1); }}
+              />
+            </div>
+          )}
+
+          {/* STEP 1 — 진단 */}
+          {step === 1 && (
+            <div className="flex flex-col gap-4">
+              <p className="text-[12px] text-pixel-muted -mt-2 mb-1">몇 가지로 당신의 투자 성향을 진단해요.</p>
+              {QUESTIONS.map((q) => (
+                <div key={q.key}>
+                  <div className="text-[13px] font-bold mb-2">{q.text}</div>
+                  <div className="flex flex-wrap gap-2">
+                    {q.options.map(([label, val]) => (
+                      <PixelButton
+                        key={label} size="sm"
+                        variant={answers[q.key] === val ? "primary" : "ghost"}
+                        onClick={() => setAnswers((a) => ({ ...a, [q.key]: val }))}
+                      >
+                        {label}
+                      </PixelButton>
+                    ))}
+                  </div>
                 </div>
-                <div className="flex flex-col gap-2.5">
-                  {CATEGORIES.map((c: Category) => {
-                    const pct = sum > 0 ? Math.round(((alloc[c] ?? 0) / sum) * 100) : 0;
-                    return (
-                      <div key={c} className="flex items-center gap-3 text-[12px]">
-                        <span className="w-20 shrink-0 text-pixel-muted">{CATEGORY_LABEL[c]}</span>
-                        <input
-                          type="range" min={0} max={100} step={5} value={alloc[c] ?? 0}
-                          className="flex-1 accent-black"
-                          onChange={(e) => setAlloc((a) => ({ ...a, [c]: Number(e.target.value) }))}
-                        />
-                        <span className="w-9 text-right font-bold tabular-nums">{pct}%</span>
+              ))}
+            </div>
+          )}
+
+          {/* STEP 2 — 배분 */}
+          {step === 2 && (
+            <div>
+              <p className="text-[12px] text-pixel-muted -mt-2 mb-3">각 자산에 얼마나 담을지 고르세요. 현금(KRW)은 시장 밖 마른 장작이에요.</p>
+              <div className="flex flex-col gap-2.5">
+                {CATEGORIES.map((c: Category) => {
+                  const pct = totalW > 0 ? Math.round((LEVEL_WEIGHT[levels[c]] / totalW) * 100) : 0;
+                  return (
+                    <div key={c} className="flex items-center gap-3 text-[12px]">
+                      <span className="w-24 shrink-0 text-pixel-muted">{CATEGORY_LABEL[c]}</span>
+                      <div className="flex gap-1 flex-1">
+                        {LEVELS.map((lv) => (
+                          <PixelButton
+                            key={lv} size="sm"
+                            variant={levels[c] === lv ? "primary" : "ghost"}
+                            className="flex-1"
+                            onClick={() => setLevels((m) => ({ ...m, [c]: lv }))}
+                          >
+                            {LEVEL_LABEL[lv]}
+                          </PixelButton>
+                        ))}
                       </div>
-                    );
-                  })}
-                </div>
+                      <span className="w-9 text-right font-bold tabular-nums">{pct}%</span>
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })()}
+            </div>
+          )}
+
           {error && (
             <p className="mt-4 text-[12px] font-bold text-red-600" role="alert">{error}</p>
           )}
-          <PixelButton size="lg" className="w-full mt-4" disabled={!ready || busy} onClick={start}>
-            {busy ? "시작하는 중…" : "이사 온 날 →"}
-          </PixelButton>
+
+          {/* 네비게이션 */}
+          <div className="flex gap-2 mt-6">
+            {step > 0 && (
+              <PixelButton size="lg" variant="ghost" className="shrink-0" onClick={() => setStep((s) => s - 1)}>
+                ← 뒤로
+              </PixelButton>
+            )}
+            {step < 2 ? (
+              <PixelButton
+                size="lg" className="flex-1"
+                disabled={step === 1 && !diagnosisReady}
+                onClick={() => setStep((s) => s + 1)}
+              >
+                다음 →
+              </PixelButton>
+            ) : (
+              <PixelButton size="lg" className="flex-1" disabled={busy} onClick={start}>
+                {busy ? "시작하는 중…" : "이사 온 날 →"}
+              </PixelButton>
+            )}
+          </div>
         </PixelPanel>
       </main>
     );
@@ -192,7 +354,7 @@ export default function EmoPage() {
             ))}
           </div>
           <div className="mt-5 text-[11px] text-pixel-muted">
-            최종 자산 {Math.round(state.portfolio_value).toLocaleString()} · 특수이벤트 {state.special_event_count}회
+            {state.clone_name} · 최종 자산 {Math.round(state.portfolio_value).toLocaleString()} · 특수이벤트 {state.special_event_count}회
           </div>
           <PixelButton size="lg" className="w-full mt-5" onClick={() => { setState(null); setAnswers({}); }}>
             다시 시작
@@ -202,93 +364,118 @@ export default function EmoPage() {
     );
   }
 
-  // ---------- 플레이 (프린세스메이커식 프레임: 상태바 / 맵창+스탯 / 커맨드) ----------
-  const active: { kind: "chain" | "board"; choices: { id: string; label: string }[];
-    run: (id: string) => void } | null = chain
-    ? { kind: "chain", choices: chain.choices, run: resolveChain }
+  // ---------- 플레이 (하이브리드 ADV: 상단 감정스트립 / 큰 맵 / 하단 JRPG 대사창) ----------
+  const advEvent = dilemma
+    ? { speakerId: undefined as string | undefined, speakerName: state.clone_name,
+        title: dilemma.title, text: dilemma.text, choices: dilemma.choices,
+        run: resolveDilemma, tone: "dilemma" as const }
+    : chain
+    ? { speakerId: chain.npc_id as string | undefined, speakerName: undefined as string | undefined,
+        title: chain.title, text: chain.text, choices: chain.choices,
+        run: resolveChain, tone: "chain" as const }
     : board
-    ? { kind: "board", choices: board.scenario.choices, run: chooseBoard }
+    ? { speakerId: board.threads[0]?.author_id, speakerName: board.threads[0] ? undefined : "게시판",
+        title: `게시판 · 여론 ${board.verdict}`, text: board.scenario.text,
+        choices: board.scenario.choices, run: reactBoard, tone: "board" as const }
     : null;
+
   return (
-    <main className="h-screen w-screen overflow-hidden bg-pixel-path flex flex-col gap-2 p-2 sm:p-3">
-      {/* 상태바 */}
-      <header className="shrink-0 flex items-center gap-4 text-[12px] font-bold px-1">
-        <span className="inline-flex items-center gap-1"><CalendarDays className="w-4 h-4" />Day {state.day + 1}/{state.total_days}</span>
-        <span className="inline-flex items-center gap-1"><Wallet className="w-4 h-4" />{Math.round(state.portfolio_value).toLocaleString()}</span>
+    <main className="relative h-screen w-screen overflow-hidden bg-pixel-path flex flex-col gap-2 p-2 sm:p-3">
+      {/* 상단 슬림바: 이름·Day·자산·동행 + 감정 스트립(항상 노출) + 포트폴리오 토글 */}
+      <header className="shrink-0 flex items-center gap-3 flex-wrap px-1">
+        <span className="text-[12px] font-extrabold">{state.clone_name}</span>
+        <span className="inline-flex items-center gap-1 text-[11px] font-bold"><CalendarDays className="w-3.5 h-3.5" />Day {state.day + 1}/{state.total_days}</span>
+        <span className="inline-flex items-center gap-1 text-[11px] font-bold"><Wallet className="w-3.5 h-3.5" />{Math.round(state.portfolio_value).toLocaleString()}</span>
         {state.companion && (
-          <span className="inline-flex items-center gap-1"><Users className="w-4 h-4" />동행 · {NPC_NAME[state.companion] ?? state.companion}</span>
+          <span className="inline-flex items-center gap-1 text-[11px] font-bold"><Users className="w-3.5 h-3.5" />{NPC_NAME[state.companion] ?? state.companion}</span>
         )}
+        <span className="hidden sm:block ml-auto"><EmotionStrip emotion={state.emotion} flash={flashAxis} /></span>
+        <button
+          onClick={() => setShowPortfolio(true)}
+          className="ml-auto sm:ml-2 inline-flex items-center gap-1 text-[11px] font-bold bg-black/5 rounded px-2 py-1"
+        >
+          <PieChart className="w-3.5 h-3.5" />포트폴리오
+        </button>
       </header>
+      {/* 모바일: 감정 스트립 둘째 줄 */}
+      <div className="sm:hidden shrink-0 px-1"><EmotionStrip emotion={state.emotion} flash={flashAxis} /></div>
 
-      {/* 중단: 맵 장면 창(좌) + 스탯 패널(우) */}
-      <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-2">
-        {/* 맵 장면 창 */}
-        <div className="relative flex-1 min-h-0 min-w-0 rounded-xl overflow-hidden border-2 border-black/25">
-          <MapBackground ref={mapRef} gameId={state.game_id} game="emo" contained onActivity={setMapActivity} />
-          {mapActivity && !chain && !board && (
-            <div className="absolute top-2 left-2 z-10 text-[11px] font-bold bg-black/60 text-white rounded px-2 py-1">{mapActivity}</div>
-          )}
-          {/* 이벤트 서사 오버레이(만남/게시판) — 맵 창 하단 대사 박스 */}
-          {(chain || board) && (
-            <div className="absolute inset-x-0 bottom-0 z-10 p-3">
-              <div className="bg-black/72 text-white rounded-lg px-4 py-3 backdrop-blur-sm">
-                {chain ? (
-                  <>
-                    <div className="text-[11px] text-white/60 mb-1">{NPC_NAME[chain.npc_id] ?? chain.npc_id}{chain.place ? ` · ${chain.place}` : ""}</div>
-                    <div className="text-[13px] font-extrabold mb-1">{chain.title}</div>
-                    <p className="text-[13px] leading-relaxed whitespace-pre-line">{chain.text}</p>
-                  </>
-                ) : board ? (
-                  <>
-                    <div className="text-[11px] text-white/60 mb-1">게시판 · 여론 {board.verdict}</div>
-                    <p className="text-[13px] leading-relaxed">{board.scenario.text}</p>
-                  </>
-                ) : null}
+      {/* 큰 맵/씬 창 — say·choice 스크린이 맵 안에 오버레이(정통 ADV, 분리) */}
+      <div className="relative flex-1 min-h-0 min-w-0 rounded-xl overflow-hidden border-2 border-black/25">
+        <MapBackground ref={mapRef} gameId={state.game_id} game="emo" contained onActivity={setMapActivity} />
+
+        {/* T-35 — 매매 체감 배지: 결정적 반응 직후 맵 위에 잠깐(1.4s). */}
+        {tradeFlash && (
+          <div className="absolute inset-x-0 top-[16%] z-30 flex justify-center pointer-events-none">
+            <span className={`inline-flex items-center gap-1.5 text-[14px] font-extrabold text-white rounded-full px-4 py-1.5 shadow-lg animate-pulse ${tradeFlash === "buy" ? "bg-rose-600/90" : "bg-sky-600/90"}`}>
+              {tradeFlash === "buy" ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+              {tradeFlash === "buy" ? "클론 매수" : "클론 매도"}
+            </span>
+          </div>
+        )}
+
+        {/* 게시판 여론 — 발화 NPC 코멘트 채팅(ADV 채팅, 맵 우상단) */}
+        {board && !chain && (
+          <div className="absolute top-2 right-2 z-10 flex flex-col gap-1 max-w-[55%] items-end">
+            {board.threads.slice(0, 3).map((t, i) => (
+              <div key={i} className="text-[11px] bg-white/90 text-black rounded-lg px-2 py-1 shadow border border-black/10">
+                <span className="font-bold">{NPC_NAME[t.author_id] ?? t.author_id}</span> {t.text}
               </div>
+            ))}
+          </div>
+        )}
+
+        {/* choice 스크린 — say와 분리, 맵 중앙에 창형 메뉴 */}
+        {advEvent && (
+          <div className="absolute inset-x-0 top-[34%] z-20 flex justify-center px-3">
+            <AdvChoiceMenu choices={advEvent.choices} onChoose={advEvent.run} busy={busy} tone={advEvent.tone} />
+          </div>
+        )}
+
+        {/* say 스크린 — 맵 하단 대사 텍스트박스 */}
+        {advEvent && (
+          <div className="absolute inset-x-0 bottom-0 z-10 p-2 sm:p-3">
+            <AdvDialogue
+              speakerId={advEvent.speakerId}
+              speakerName={advEvent.speakerName}
+              title={advEvent.title}
+              text={advEvent.text}
+              tone={advEvent.tone}
+            />
+          </div>
+        )}
+
+        {/* 걷기 상태(이벤트 없을 때) — 맵 하단 얇은 라벨 */}
+        {!advEvent && (
+          <div className="absolute inset-x-0 bottom-2 z-10 flex justify-center">
+            <span className="text-[12px] font-bold bg-black/55 text-white rounded px-3 py-1">
+              {mapActivity ?? "클론이 하루를 보내는 중…"}
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* 에러(맵 밖 얇은 바) */}
+      {error && (
+        <div className="shrink-0 text-[12px] font-bold text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2" role="alert">{error}</div>
+      )}
+
+      {/* 포트폴리오·감정 드로어(탭) */}
+      {showPortfolio && (
+        <div className="absolute inset-0 z-20 bg-black/40 flex justify-end" onClick={() => setShowPortfolio(false)}>
+          <div className="w-80 max-w-[85%] h-full bg-pixel-path p-3 overflow-y-auto flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-extrabold">상태</h2>
+              <button onClick={() => setShowPortfolio(false)} aria-label="닫기"><X className="w-5 h-5" /></button>
             </div>
-          )}
+            <EmotionGauge emotion={state.emotion} verdict={state.verdict} />
+            <PortfolioPanel holdings={state.holdings} />
+          </div>
         </div>
+      )}
 
-        {/* 스탯 패널 */}
-        <aside className="shrink-0 md:w-72 flex flex-col gap-2 overflow-y-auto">
-          <EmotionGauge emotion={state.emotion} verdict={state.verdict} />
-          <PortfolioPanel holdings={state.holdings} />
-          {board && !chain && (
-            <PixelPanel tone="wall" className="p-3">
-              <div className="text-[11px] text-pixel-muted mb-2">게시판 여론</div>
-              <div className="flex flex-col gap-1">
-                {board.threads.slice(0, 4).map((t, i) => (
-                  <div key={i} className="text-[11px] bg-black/[0.03] rounded px-2 py-1">
-                    <span className="font-bold">{NPC_NAME[t.author_id] ?? t.author_id}</span> {t.text}
-                  </div>
-                ))}
-              </div>
-            </PixelPanel>
-          )}
-        </aside>
-      </div>
-
-      {/* 하단: 커맨드/선택 바 */}
-      <div className="shrink-0">
-        {error && (
-          <div className="mb-2 text-[12px] font-bold text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2" role="alert">{error}</div>
-        )}
-        {active ? (
-          <PixelPanel tone={active.kind === "chain" ? "path" : "wall"} className="p-2">
-            <div className="flex flex-col sm:flex-row gap-2">
-              {active.choices.map((c) => (
-                <PixelButton key={c.id} variant={active.kind === "chain" ? "secondary" : "primary"}
-                  className="flex-1" disabled={busy}
-                  onClick={() => active.run(c.id)}>
-                  {c.label}
-                </PixelButton>
-              ))}
-            </div>
-          </PixelPanel>
-        ) : (
-          <div className="text-center text-[12px] text-pixel-muted py-2">클론이 하루를 보내는 중…</div>
-        )}
-      </div>
+      {/* T-33/T-34 — 취침 암전 + 하루 정산 리포트 */}
+      {dayReport && <DayReport data={dayReport} onNext={advanceDay} />}
     </main>
   );
 }

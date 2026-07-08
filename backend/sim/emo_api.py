@@ -62,7 +62,7 @@ def _build_market(seed: int, days: int) -> tuple[list[str], dict[str, list[float
 def _emotion_dict(run: EmoGameRun) -> dict:
     e = run.emotion
     return {"fear": e.fear, "greed": e.greed, "anxiety": e.anxiety,
-            "restlessness": e.restlessness}
+            "restlessness": e.restlessness, "composure": e.composure}
 
 
 def _state(run: EmoGameRun, game_id: str) -> dict:
@@ -70,6 +70,7 @@ def _state(run: EmoGameRun, game_id: str) -> dict:
         "game_id": game_id,
         "day": run.day,
         "total_days": len(run.events),
+        "clone_name": run.clone_name,   # T-28 — 게임 내내 표시할 클론 이름
         "is_over": run.is_over,
         "emotion": _emotion_dict(run),
         "verdict": compute_verdict(run.emotion),
@@ -78,6 +79,9 @@ def _state(run: EmoGameRun, game_id: str) -> dict:
         "companion": run.companion(),
         "special_event_count": run.special_event_count,
         "has_pending_chain": run.pending_chain is not None,
+        "has_cashout_dilemma": run.cashout_available(),   # T-30c
+        "last_market": run.last_market,   # T-35 — 마지막 정산일 카테고리별 수익률(%)
+
         "ending": run.ending() if run.is_over else None,
     }
 
@@ -95,6 +99,7 @@ class StartBody(BaseModel):
     seed: int = 0
     days: int = 10
     allocations: dict[str, float] | None = None   # {카테고리: 0~100 비중} — 합 정규화
+    name: str | None = None   # T-28 — 클론 이름(미입력 시 백엔드 기본값)
 
 
 class ChoiceBody(BaseModel):
@@ -115,7 +120,8 @@ class AvoidBody(BaseModel):
 def start(body: StartBody) -> dict:
     events, cat_returns = _build_market(body.seed, max(1, body.days))
     run = EmoGameRun.new(
-        body.answers, events, cat_returns, seed=body.seed, allocation=body.allocations
+        body.answers, events, cat_returns, seed=body.seed,
+        allocation=body.allocations, name=body.name,
     )
     game_id = uuid.uuid4().hex
     emo_store.save_run(game_id, run)
@@ -145,6 +151,23 @@ def chain_choose(game_id: str, body: ChoiceBody) -> dict:
     run = _get(game_id)
     try:
         run.chain_choose(body.choice_id)
+    except (ValueError, RuntimeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    emo_store.save_run(game_id, run)
+    return _state(run, game_id)
+
+
+@router.get("/{game_id}/dilemma")
+def dilemma(game_id: str) -> dict | None:
+    """T-30c — 캐시아웃 딜레마(발동 조건 충족 시). 순수 GET."""
+    return _get(game_id).cashout_event()
+
+
+@router.post("/{game_id}/dilemma/choose")
+def dilemma_choose(game_id: str, body: ChoiceBody) -> dict:
+    run = _get(game_id)
+    try:
+        run.cashout(body.choice_id)
     except (ValueError, RuntimeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     emo_store.save_run(game_id, run)

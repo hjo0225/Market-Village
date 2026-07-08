@@ -519,13 +519,10 @@ async function boot(gameId){
 
 const params = new URLSearchParams(location.search);
 const GAME_ID = params.get("game_id");
-// T-22 — 게임 종류별 맵 엔드포인트. classic(구 /play)=/control/game/day/*,
-// emo(신 감정게임)=/emo/{gid}/map/*. 기본 classic이라 구 경로 무영향.
-const GAME_KIND = params.get("game") || "classic";
+// T-15 컷오버 — classic(/play) 게임 제거 후 emo(감정 4축)가 유일 경로.
+// 맵 브릿지는 emo 경로(/emo/{id}/map/*)만 쓴다(구 classic 좌표 브릿지는 서버에서 삭제됨).
 function mapUrl(ep, gameId, extra){
-  if (GAME_KIND === "emo")
-    return "/emo/" + encodeURIComponent(gameId) + "/map/" + ep + (extra ? "?" + extra : "");
-  return "/control/game/day/" + ep + "?game_id=" + encodeURIComponent(gameId) + (extra ? "&" + extra : "");
+  return "/emo/" + encodeURIComponent(gameId) + "/map/" + ep + (extra ? "?" + extra : "");
 }
 if (GAME_ID) boot(GAME_ID);
 

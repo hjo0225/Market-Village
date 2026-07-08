@@ -24,7 +24,10 @@ CHAINS_PATH = Path(__file__).resolve().parent / "data" / "npc_chains.json"
 CHAIN_STAGES = 3
 # 🙋 튜닝 잠정치(플레이테스트 확정 — 문서 §8).
 SPECIAL_EVENT_PROB = 0.6      # 동행 시 체인 발동 확률
-CHAIN_RAPPORT_GATE = 3.0      # 단계 2·3 개별 rapport 기준선
+# T-26 — 3.0이면 데드락: stage1 최고 rapport 선택지가 +2라 gate(3.0)에 절대 못 닿아
+# 단계2·3이 영구 차단됐다("1:1이 작동 안 함"). 2.0으로 낮춰 stage1 +2 → 단계2 해금,
+# 단계2 +2(누적 4) → 단계3 해금. 즉 '최고-rapport 선택 누적'으로 체인이 진행된다.
+CHAIN_RAPPORT_GATE = 2.0      # 단계 2·3 개별 rapport 기준선
 
 
 def next_stage(progress: dict[str, int], npc_id: str) -> int | None:

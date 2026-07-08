@@ -1,13 +1,13 @@
 """Market Village LIVE server.
 
-신 엔진 정본(``backend.sim.game_run.GameRun``)이 유일한 게임 경로다(§12.4,
-Next.js ``/play``가 소비). 구 엔진(``sim.engine.GameSession``, 마을 NPC 라운드
-모델)은 2026-07-01 실서비스 전환 정리에서 완전히 제거됐다(``/game``·``/demo``
-위젯과 함께 — Next.js가 이미 유일 진입점이라 병행 유지할 이유가 없어짐).
+감정 4축 미연시 게임(``backend.sim.emo_game.EmoGameRun``, 라우터 ``sim.emo_api``)이
+유일한 게임 경로다. Next.js 루트 ``/`` → ``/emo``가 소비한다. 구 "AI 클론 30일
+관찰" 엔진(``sim.game_run.GameRun``)과 ``/control/*`` 라우트 일체는 T-15 컷오버에서
+완전히 제거됐다(2026-07-08) — emo 게임이 유일 진입점이라 병행 유지할 이유가 없어짐.
 
 reverie의 ``Maze``+``path_finder``는 지도 경로탐색 유틸로만 재사용한다(the_ville
-타일맵) — ``/control/game/day/{home,walk}``(§12.0 GameRun↔맵 좌표 브릿지)가 이걸
-쓴다. reverie의 인지 루프 자체는 안 쓴다.
+타일맵) — ``/emo/{id}/map/{home,walk,approach}``(§12.0 EmoGameRun↔맵 좌표 브릿지)가
+이걸 쓴다. reverie의 인지 루프 자체는 안 쓴다.
 
 Run from backend/:
     cd backend && python -m uvicorn market_live_server:app --port 8100
@@ -15,8 +15,6 @@ Run from backend/:
 
 from __future__ import annotations
 
-import dataclasses
-import json
 import os
 import random
 import sys
@@ -33,62 +31,17 @@ sys.path.insert(0, _REPO)                     # backend.sim
 from fastapi import FastAPI  # noqa: E402
 from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
-from pydantic import BaseModel  # noqa: E402
 
 from maze import Maze  # noqa: E402  (the_ville map util)
 from path_finder import path_finder  # noqa: E402  (path util)
 from utils import collision_block_id  # noqa: E402  (config)
 
-from backend.sim import news as _news  # noqa: E402
-from backend.sim import personas as _personas  # noqa: E402
-from backend.sim import meeting_talk as _meeting_talk  # noqa: E402  (T-281)
-from backend.sim import npc_traders as _npc_traders  # noqa: E402
-from backend.sim import clone_stats as _clone_stats  # noqa: E402
-from backend.sim import clone_spec as _clone_spec  # noqa: E402
-from backend.sim import result_card as _result_card  # noqa: E402
-from backend.sim import runs as _runs  # noqa: E402
-from backend.sim import db as _db  # noqa: E402  (T-DB 게임 세션 영속화, 실패시 인메모리 폴백)
-from backend.sim import emo_api as _emo_api  # noqa: E402  (신 감정 4축 게임 라우터, 컷오버 시 구 라우터 대체)
-from backend.sim import emo_store as _emo_store  # noqa: E402  (T-22 맵 브릿지가 emo 게임 조회)
-from backend.sim.trap_pipeline import Intervention as _Intervention  # noqa: E402
-from backend.sim.traps import get_trap as _traps_get  # noqa: E402
-from backend.sim.game_run import GameRun as _GameRun  # noqa: E402
-from backend.sim import presentation as _presentation  # noqa: E402
-from backend.sim import interview_llm as _interview_llm  # noqa: E402
-from backend.sim.interview import question_by_id as _question_by_id  # noqa: E402
-from backend.sim.fate_line import category_for_symbol as _category_for_symbol  # noqa: E402
-from backend.sim import tuning as _T  # noqa: E402
-
-# T-302(사용자) — 서비스 시뮬레이션 길이. 엔진 GameRun 기본값(30)과 별개로
-# 서비스 계층이 명시 전달한다(운명선 시드는 30일 그대로 — 앞 10일만 사용).
-GAME_DAYS = 10
-
-# §12.4 step-able GameRun 세션 맵 (game_id → GameRun). 신 엔진 정본 플레이 경로.
-# 이게 항상 1차 진실 소스 — MongoDB(T-DB)는 서버 재시작 후 재개용 보조 저장소일 뿐.
-_GAMES: dict[str, _GameRun] = {}
-# §5.3 대화형 인터뷰 세션 맵 (session_id → 지금까지 답변). 게임 시작 전 독립 진행.
-_INTERVIEWS: dict[str, dict] = {}
+from backend.sim import personas as _personas  # noqa: E402  (맵 브리지·NPC 일과)
+from backend.sim import emo_api as _emo_api  # noqa: E402  (감정 4축 게임 라우터 — 유일 게임 경로)
+from backend.sim import emo_store as _emo_store  # noqa: E402  (맵 브리지가 emo 게임 조회)
 
 
-def _get_game(game_id: str) -> "_GameRun | None":
-    """인메모리 우선, 없으면(서버 재시작 등) MongoDB에서 재구성 시도(T-DB)."""
-    g = _GAMES.get(game_id)
-    if g is not None:
-        return g
-    doc = _db.load_game(game_id)
-    if doc is None:
-        return None
-    g = _GameRun.from_doc(doc)
-    _GAMES[game_id] = g
-    return g
-
-
-def _persist_game(game_id: str, g: "_GameRun") -> None:
-    """실패해도 무시(인메모리가 진실 소스 — DB는 재개용 보조일 뿐)."""
-    _db.save_game(game_id, g.to_doc())
-
-
-# the_ville 정적 자원(맵 이미지·스프라이트) — /control/game/day/{home,walk}(§12.0)의
+# the_ville 정적 자원(맵 이미지·스프라이트) — /emo/{id}/map/{home,walk}(§12.0)의
 # 맵 표현 계층이 쓴다.
 ASSETS_DIR = join(_REPO, "environment", "frontend_server", "static_dirs", "assets")
 
@@ -96,7 +49,7 @@ ASSETS_DIR = join(_REPO, "environment", "frontend_server", "static_dirs", "asset
 # App + shared state
 # --------------------------------------------------------------------------- #
 app = FastAPI(title="Market Village Live")
-app.include_router(_emo_api.router)   # /emo/* — 신 감정 4축 게임(프론트 /play 브릿지)
+app.include_router(_emo_api.router)   # /emo/* — 감정 4축 게임(유일 게임 경로, 프론트 /emo)
 
 # Pre-warm the sentiment model so the first event doesn't pay the load cost.
 import threading
@@ -206,8 +159,10 @@ def _gamerun_rand_tile_for(address: str, rng: random.Random):
     tiles = _maze().address_tiles.get(address)
     if not tiles:
         return None
+    # T-24 — walkable 타일만 반환한다. non-walkable 목적지는 path_finder를 실패시켜
+    # 직선 폴백(벽 통과)을 유발하므로, 후보가 없으면 차라리 None(상위가 건너뜀).
     candidates = [t for t in sorted(tiles) if _gamerun_walkable(t)]
-    return rng.choice(candidates or sorted(tiles))
+    return rng.choice(candidates) if candidates else None
 
 
 def _gamerun_path(a, b) -> list[tuple[int, int]]:
@@ -217,39 +172,16 @@ def _gamerun_path(a, b) -> list[tuple[int, int]]:
         p = path_finder(_blocked_maze(), list(a), list(b), collision_block_id)
         return [(t[0], t[1]) for t in p]
     except Exception:
-        return [tuple(a), tuple(b)]
+        # T-24 — 길찾기 실패 시 직선 [a,b]를 주면 map.html이 그 사이를 직선 보간해
+        # 벽을 통과한다(표현 계층엔 충돌 데이터가 없음). 빈 경로를 줘 상위(_walk_via)가
+        # 순간이동 없이 목표를 건너뛰게 한다.
+        return []
 
 
 def _walker_seed(*parts) -> int:
     """워커용 고정 시드 — hash()는 프로세스마다 소금이 달라 재시작 안정성이 없음
     (_news_seed와 같은 이유로 crc32, /review에서 일관성 지적)."""
     return zlib.crc32(":".join(str(p) for p in parts).encode())
-
-
-def _meetings_by_band(g: "_GameRun", game_id: str = "") -> dict:
-    """T-249 — 오늘의 만남(픽)을 시간대별로(맵 대화 연출용). 순수 조회.
-
-    T-281 — 폰 채팅창용 role·portrait·lines(결정론 대사) 동봉(사용자 반복
-    피드백: 1:1 대화는 맵 말풍선이 아니라 핸드폰 채팅으로).
-    """
-    band_names = [b for b, _ in _WALK_BANDS]
-    out: dict[str, list] = {b: [] for b in band_names}
-    prev = g.preview_day()
-    stats = dict(getattr(g, "stats", None) or {})
-    for slot, pick in (prev.get("picks") or {}).items():
-        if not pick:
-            continue
-        band = band_names[(int(slot) - 1) // 2]
-        p = _personas.trader_by_id(pick)
-        out[band].append({
-            "id": pick,
-            "name": p["name"] if p else pick,
-            "role": p["role"] if p else "",
-            "portrait": p["portrait"] if p else None,
-            # T-304 — 만남 슬롯의 장소: 맵이 밴드 끝이 아니라 이 장소 stop에서 연다.
-            "place": g.schedule.get(int(slot), ""),
-            "lines": _meeting_talk.dialogue(game_id, g.day, pick, stats)})
-    return out
 
 
 def _ensure_game_walker(game_id: str, npc_scheds: dict | None = None) -> dict:
@@ -295,9 +227,16 @@ def _walk_via(cur: tuple, targets: list, rng: random.Random,
             arrive.append(None)
             continue
         seg = _gamerun_path(cur, dest)
-        steps.extend([list(t) for t in seg[1:]] if len(seg) > 1 else [])
-        arrive.append(len(steps))
-        cur = dest
+        if len(seg) > 1:
+            steps.extend([list(t) for t in seg[1:]])
+            cur = dest
+            arrive.append(len(steps))
+        elif tuple(cur) == tuple(dest):
+            arrive.append(len(steps))   # 이미 그 자리 — 이동 없음, 행동은 재생
+        else:
+            # T-24 — 길찾기 실패(도달 불가). cur를 dest로 옮기면 다음 목표가 여기서
+            # 길을 찾아 화면상 순간이동(벽 통과)이 된다 → cur 유지, 이 목표만 건너뜀.
+            arrive.append(None)
     return steps, cur, arrive
 
 
@@ -390,103 +329,6 @@ def _place_labels(walker: dict) -> list[dict]:
     return out
 
 
-@app.get("/control/game/day/home")
-def control_game_home(game_id: str):
-    """GameRun 클론+NPC 8종의 맵 스프라이트 정보 + 초기 좌표(§12.0 부트스트랩)."""
-    g = _get_game(game_id)
-    if g is None:
-        return {"status": "error", "error": "no game"}
-    walker = _ensure_game_walker(game_id, g.npc_scheds)
-    # T-294 — 오늘 walk가 이미 소비됐으면(워커 pos=하루 끝) 하루 시작 위치를 준다:
-    # 하루 중간에 iframe이 리부트돼도 멱등 walk 재생과 좌표가 이어진다(집 순간이동 방지).
-    start = walker.get("day_start") if walker.get("day") == g.day else None
-    pos = start["pos"] if start else walker["pos"]
-    npcs = [
-        {"id": p["id"], "name": p["name"], "sprite": p["sprite"],
-         "pos": (start["npcs"].get(p["id"]) if start else None) or walker["npcs"][p["id"]]}
-        for p in _personas.TRADER_PERSONAS
-    ]
-    return {"status": "ok",
-            "persona": {"original": "gamerun_clone", "underscore": _GAME_CLONE_SPRITE,
-                        "initial": g.clone_name},   # T-303 — 맵 이름표에 지은 이름
-            "pos": pos, "npcs": npcs, "places": _place_labels(walker)}
-
-
-@app.get("/control/game/day/walk")
-def control_game_walk(game_id: str):
-    """그날 일과(8슬롯)를 실좌표 경로로 — 클론이 걷고 카메라가 따라간다(§12.0).
-
-    NPC 8종도 각자 고정 일과(§9.2.1)를 따라 같은 날 함께 걷는다(T-221, 순수 연출).
-    하루당 1회만 새 경로를 낸다(day 캐시) — 같은 날 재호출은 빈 steps+cached.
-    """
-    g = _get_game(game_id)
-    if g is None:
-        return {"status": "error", "error": "no game"}
-    walker = _ensure_game_walker(game_id, g.npc_scheds)
-    band_names = [b for b, _ in _WALK_BANDS]
-    if walker["day"] == g.day:
-        # T-294 — 재요청=빈 경로였던 것을 멱등 재생으로: 같은 날은 첫 응답을 그대로.
-        # (iframe 리로드 후에도 하루 걷기를 다시 재생할 수 있다 — 집 순간이동 방지)
-        if walker.get("day_resp"):
-            return {**walker["day_resp"], "cached": True}
-        return {"status": "ok", "steps": [], "npcs": {}, "cached": True,
-                "segments": {b: [] for b in band_names},
-                "stops": {b: [] for b in band_names},
-                "npc_segments": {p["id"]: {b: [] for b in band_names}
-                                 for p in _personas.TRADER_PERSONAS},
-                "plan": {band: [g.schedule[s] for s in slots if g.schedule.get(s)]
-                         for band, slots in _WALK_BANDS},
-                "meetings_by_band": _meetings_by_band(g, game_id)}
-
-    # T-237 — 클론·NPC 모두 시간대 4구간으로 분해(연출이 하루 단계와 동기).
-    # flat(steps/npcs)은 구간의 순차 연결 — 구버전 map.html 하위호환.
-    # T-294 — 하루 시작 위치를 박제(home이 리부트 시 이 좌표를 준다).
-    day_start = {"pos": list(walker["pos"]),
-                 "npcs": {p["id"]: list(walker["npcs"][p["id"]])
-                          for p in _personas.TRADER_PERSONAS}}
-    rng = random.Random(_walker_seed("walk", game_id, g.day))
-    segments, cur, stops = _banded_route(g.schedule, tuple(walker["pos"]), rng,
-                                         home_tile=tuple(walker["home"]))
-    walker["pos"] = list(cur)
-    steps = [xy for b in band_names for xy in segments[b]]
-
-    npc_steps: dict[str, list[list[int]]] = {}
-    npc_segments: dict[str, dict[str, list[list[int]]]] = {}
-    for p in _personas.TRADER_PERSONAS:
-        rng_n = random.Random(_walker_seed("walk", game_id, p["id"], g.day))
-        # T-273 — 연출 경로도 게임의 npc_scheds(프리셋 반영) 단일 소스.
-        segs_n, n_cur, _stops_n = _banded_route(
-            g.npc_scheds.get(p["id"], p["sched"]),
-            tuple(walker["npcs"][p["id"]]), rng_n, home_tile=None)
-        npc_segments[p["id"]] = segs_n
-        npc_steps[p["id"]] = [xy for b in band_names for xy in segs_n[b]]
-        walker["npcs"][p["id"]] = list(n_cur)
-    walker["day"] = g.day
-    # T-242 — 말풍선용 클론 일정(시간대→장소명). 표현 계층이 "어디로/뭐 하는 중"을 그린다.
-    plan = {band: [g.schedule[s] for s in slots if g.schedule.get(s)]
-            for band, slots in _WALK_BANDS}
-    meetings = _meetings_by_band(g, game_id)
-    # T-299 — 만남마다 접근 경로 동봉: NPC 밴드 종료 타일 → 클론 옆 칸(실 길찾기).
-    pos_c = list(day_start["pos"])
-    pos_n = {p["id"]: list(day_start["npcs"][p["id"]]) for p in _personas.TRADER_PERSONAS}
-    for band in band_names:
-        if segments[band]:
-            pos_c = list(segments[band][-1])
-        for nid, segs_b in npc_segments.items():
-            if segs_b[band]:
-                pos_n[nid] = list(segs_b[band][-1])
-        for m in meetings[band]:
-            m["approach"] = _meeting_approach(
-                tuple(pos_n.get(m["id"], pos_c)), tuple(pos_c))
-    resp = {"status": "ok", "steps": steps, "npcs": npc_steps,
-            "segments": segments, "npc_segments": npc_segments, "plan": plan,
-            "stops": stops,   # T-296 — 장소별 도착 지점(연출: 장소마다 1행동)
-            "meetings_by_band": meetings}
-    walker["day_start"] = day_start
-    walker["day_resp"] = resp
-    return resp
-
-
 # --------------------------------------------------------------------------- #
 # T-22 — 이동 맵을 새 감정 게임(EmoGameRun)에 연결.
 # 위 GameRun용 좌표 브릿지(_ensure_game_walker/_banded_route/_meeting_approach/
@@ -524,7 +366,7 @@ def emo_map_home(game_id: str):
         for p in _personas.TRADER_PERSONAS]
     return {"status": "ok",
             "persona": {"original": "gamerun_clone", "underscore": _GAME_CLONE_SPRITE,
-                        "initial": "내 클론"},
+                        "initial": run.clone_name},   # T-28 — 맵 네임플레이트=클론 이름
             "pos": pos, "npcs": npcs, "places": _place_labels(walker)}
 
 
@@ -592,607 +434,3 @@ def emo_map_walk(game_id: str):
 def emo_map_approach(game_id: str, fx: int, fy: int, cx: int, cy: int):
     """만남 시 NPC→클론 옆칸 실 길찾기(구 approach와 동일). 순수."""
     return {"steps": _meeting_approach((fx, fy), (cx, cy))}
-
-
-# --------------------------------------------------------------------------- #
-# Request models
-# --------------------------------------------------------------------------- #
-class InterviewAnswerBody(BaseModel):
-    session_id: str
-    qid: str
-    text: str
-    use_llm: bool = False
-
-
-class ClonePreviewBody(BaseModel):
-    answers: dict
-
-
-@app.post("/control/clone/preview")
-def control_clone_preview(body: ClonePreviewBody):
-    """T-231 §5.5 — 인터뷰 확정 화면용 성향 프리뷰(순수, 게임 미생성).
-
-    답변이 만들 클론의 함정별 취약점을 보여주고, 사용자가 '확정'한 뒤에야
-    포트폴리오 단계로 넘어간다(한 페이지 한 목적).
-    """
-    spec = _clone_spec.build_clone_spec(body.answers)
-    traits = [
-        {"id": trap_id, "name": _traps_get(trap_id).name, "score": round(score, 1)}
-        for trap_id, score in spec.trap_scores.items()
-    ]
-    return {"status": "ok", "trap_scores": spec.trap_scores, "traits": traits}
-
-
-@app.get("/control/interview/next")
-def control_interview_next(session_id: str, use_llm: bool = False):
-    """§5.3 대화형 인터뷰 — 다음 질문(구조는 고정, 표현은 opt-in LLM)."""
-    answers = _INTERVIEWS.setdefault(session_id, {})
-    q = _interview_llm.next_question_llm(answers, use_llm=use_llm)
-    return {"status": "ok", "done": q is None, "next": q}
-
-
-@app.post("/control/interview/answer")
-def control_interview_answer(body: InterviewAnswerBody):
-    """§5.3 자유 텍스트 답변 → 옵션 스케일로 해석(§5.3.2 출력 스키마 고정) 후 저장."""
-    if _question_by_id(body.qid) is None:
-        return {"status": "error", "error": "unknown qid"}
-    answers = _INTERVIEWS.setdefault(body.session_id, {})
-    answers[body.qid] = _interview_llm.interpret_answer(body.qid, body.text, use_llm=body.use_llm)
-    q = _interview_llm.next_question_llm(answers, use_llm=body.use_llm)
-    if q is not None:
-        return {"status": "ok", "done": False, "next": q}
-    return {"status": "ok", "done": True, "answers": dict(answers)}
-
-
-class GameStartBody(BaseModel):
-    game_id: str
-    answers: dict = {}
-    symbol: str = "DOGE"
-    start_price: float = 100.0
-    start_stats: dict | None = None
-    # T-215 D1 — "분산해서 시작" 토글. {category: 0~100 비중, 합계 100} 주면
-    # 최대 비중 카테고리가 주력, 나머지는 day0부터 2차 포지션으로 채워진다.
-    # 없으면(기본) 기존 단일종목(symbol) 경로 그대로.
-    allocations: dict[str, float] | None = None
-    # T-273 — 마을 분위기 프리셋(balanced|aggressive|conservative).
-    village: str = "balanced"
-    # T-303 — 플레이어가 지은 에이전트 이름(미지정=기본 문구).
-    clone_name: str | None = None
-
-
-# T-265 — /day/advance 멱등성 캐시: game_id → (마지막 idem_key, 그 응답).
-# /review(2026-07-03): ①체크-후-쓰기 레이스 — FastAPI가 sync 핸들러를 스레드풀로
-# 돌려 같은 키 2건이 동시에 캐시 미스로 통과할 수 있다 → 게임별 락으로 직렬화.
-# ②무한 성장 — 게임당 응답 1건이 영구 잔류 → 상한 초과 시 FIFO 축출.
-_ADVANCE_IDEM: dict[str, tuple[str, dict]] = {}
-_ADVANCE_IDEM_MAX = 256
-_ADVANCE_LOCKS: dict[str, threading.Lock] = {}
-_ADVANCE_LOCKS_GUARD = threading.Lock()
-
-
-def _advance_lock(game_id: str) -> threading.Lock:
-    with _ADVANCE_LOCKS_GUARD:
-        lock = _ADVANCE_LOCKS.get(game_id)
-        if lock is None:
-            if len(_ADVANCE_LOCKS) >= _ADVANCE_IDEM_MAX:
-                _ADVANCE_LOCKS.pop(next(iter(_ADVANCE_LOCKS)))
-            lock = _ADVANCE_LOCKS[game_id] = threading.Lock()
-        return lock
-
-
-class GameAdvanceBody(BaseModel):
-    game_id: str
-    news_id: str | None = None
-    strategy: str | None = None
-    # None(기본) = GameRun.rapport(1:1 대화와 공유하는 §11.4.4 래포 풀)를 자동
-    # 사용. 값을 명시하면 그걸로 오버라이드(배치/테스트 전용) — 일반 플레이에서
-    # 프론트가 이 필드를 보내면 실제 래포가 무시되는 버그였다(사용자 피드백
-    # 2026-07-01 "1:1대화가 제대로 진행이 안돼").
-    rapport: float | None = None
-    roll: float = 100.0
-    agent_pressure: float = 0.0
-    # T-265(게이트 4c) — 클라이언트 생성 멱등성 키. 같은 키 재전송이면 하루를 다시
-    # 진행하지 않고 저장된 응답을 반환한다(응답 유실 → 재시도 → 이중 적용 차단).
-    idem_key: str | None = None
-
-
-class GameNewRunBody(BaseModel):
-    game_id: str
-    run_id: str | None = None
-
-
-@app.post("/control/game/start")
-def control_game_start(body: GameStartBody):
-    """§12.4 — 인터뷰 답변으로 클론 생성 → 회차 세션 시작(신 엔진 정본).
-
-    T-302(사용자 "30일 너무 길다") — 서비스 길이는 GAME_DAYS(10일). 엔진
-    기본값(30)은 run_loop 동치성·기존 테스트를 위해 불변.
-    """
-    spec = _clone_spec.build_clone_spec(body.answers)
-    allocations = {c: p for c, p in (body.allocations or {}).items() if p and p > 0}
-    if allocations:
-        # 최대 비중 = 주력(§8.3 T-215 D4 전제). 전 카테고리가 day0 지수정규화로
-        # 거의 동일가(§6.1.1)라 start_price를 공통 기준가로 그대로 쓴다(기존
-        # 단일종목 경로와 동일한 근사 수준 — 별도 fate_line day0 조회 불필요).
-        primary_cat = max(allocations, key=allocations.get)
-        total = body.start_price
-        primary_qty = (allocations[primary_cat] / 100.0) * total / body.start_price
-        initial_positions = {
-            cat: {"avg_cost": body.start_price, "quantity": (pct / 100.0) * total / body.start_price}
-            for cat, pct in allocations.items() if cat != primary_cat
-        }
-        g = _GameRun(spec, category=primary_cat, start_price=body.start_price,
-                     start_stats=body.start_stats, start_quantity=primary_qty,
-                     initial_positions=initial_positions, run_id="run1",
-                     village=body.village, days=GAME_DAYS,
-                     clone_name=body.clone_name or "내 클론")
-    else:
-        g = _GameRun(spec, category=_category_for_symbol(body.symbol),
-                     start_price=body.start_price, start_stats=body.start_stats,
-                     run_id="run1", village=body.village, days=GAME_DAYS,
-                     clone_name=body.clone_name or "내 클론")
-    _GAMES[body.game_id] = g
-    _persist_game(body.game_id, g)
-    return {"status": "ok", "state": g.state()}
-
-
-@app.get("/control/game/state")
-def control_game_state(game_id: str):
-    g = _get_game(game_id)
-    if g is None:
-        return {"status": "error", "error": "no game"}
-    return {"status": "ok", "state": g.state()}
-
-
-def _news_seed(game_id: str, day: int) -> int:
-    """(game_id, day) 고정 시드 — hash()는 프로세스마다 달라 재시작 안정성이 없음."""
-    return zlib.crc32(f"news:{game_id}:{day}".encode())
-
-
-def _drawn_news_today(game_id: str, g: "_GameRun") -> list[dict]:
-    """그날 뽑힌 3지선다(서버가 정본) — /news 응답과 게시판 트리거가 공유."""
-    return _news.draw_three(_news.load_news_pool(),
-                            random.Random(_news_seed(game_id, g.day)))
-
-
-@app.get("/control/game/news")
-def control_game_news(game_id: str, seed: int | None = None):
-    """§7 그날 아침 뉴스 3지선다.
-
-    seed 미지정이면 (game_id, day)로 파생 — 같은 날엔 같은 3개, 날이 바뀌면 새 3개.
-    (T-223에서 수정: 프론트가 seed=0 고정으로 불러 43개 풀에서 매일 같은 3개만
-    나오던 결함. 명시 seed는 배치/테스트용으로 유지.)
-    """
-    g = _get_game(game_id)
-    if seed is None and g is not None:
-        picked = _drawn_news_today(game_id, g)
-    else:
-        picked = _news.draw_three(_news.load_news_pool(), random.Random(seed or 0))
-    return {"status": "ok", "news": [
-        {"id": n["id"], "tone": n["tone"], "headline": n["headline"],
-         "triggers": n.get("triggers", [])} for n in picked]}
-
-
-class GameAvoidBody(BaseModel):
-    game_id: str
-    slot_a: int
-    slot_b: int
-
-
-@app.get("/control/game/day/preview")
-def control_game_preview(game_id: str):
-    """§9.2.1 전날밤 — 내일 일과 + 마주칠 NPC(뉴스·위기는 비공개)."""
-    g = _get_game(game_id)
-    if g is None:
-        return {"status": "error", "error": "no game"}
-    return {"status": "ok", **g.preview_day()}
-
-
-@app.post("/control/game/day/avoid")
-def control_game_avoid(body: GameAvoidBody):
-    """§9.2.1 회피 — 일과 항목 하나의 순서만 바꿔 마주칠 NPC를 피한다."""
-    g = _get_game(body.game_id)
-    if g is None:
-        return {"status": "error", "error": "no game"}
-    meetings = g.avoid(body.slot_a, body.slot_b)
-    _persist_game(body.game_id, g)
-    return {"status": "ok", "schedule": dict(g.schedule), "meetings": meetings}
-
-
-def _siren_today(game_id: str, day: int) -> bool:
-    """T-271 — 사이렌 발생 판정. game_id 시드 결정론(회차 무관 — §13.6 거울:
-    run이 달라도 같은 날 떠야 회차 비교가 같은 시험지가 된다)."""
-    return zlib.crc32(f"siren:{game_id}:{day}".encode()) % 100 < _T.SIREN_PROB_PCT
-
-
-@app.get("/control/game/day/siren")
-def control_game_siren(game_id: str):
-    """T-271 — 오늘 사이렌이 뜨는 날인지 + 이미 소비했는지. 순수 조회(무변이)."""
-    g = _get_game(game_id)
-    if g is None:
-        return {"status": "error", "error": "no game"}
-    return {"status": "ok", "day": g.day,
-            "active": _siren_today(game_id, g.day) and not g.finished,
-            "used": g.day in g._siren_log}
-
-
-class GameSirenBody(BaseModel):
-    game_id: str
-    day: int
-    choice: str   # bad | good | skip
-
-
-@app.post("/control/game/day/siren")
-def control_game_siren_choose(body: GameSirenBody):
-    """T-271 — 사이렌 선택 적용. 그날의 사이렌 1개(자연 멱등, 4c ①),
-    _advance_lock으로 동시 POST·advance와 직렬화(4c ②)."""
-    g = _get_game(body.game_id)
-    if g is None:
-        return {"status": "error", "error": "no game"}
-    with _advance_lock(body.game_id):
-        if not _siren_today(body.game_id, body.day):
-            return {"status": "error", "error": "no siren today"}
-        try:
-            eff = g.siren_choice(body.day, body.choice)
-        except ValueError as e:
-            return {"status": "error", "error": str(e)}
-    _persist_game(body.game_id, g)
-    return {"status": "ok", **eff, "state": g.state()}
-
-
-@app.get("/control/game/history")
-def control_game_history(game_id: str):
-    """T-269 — 진행 이력(발자취): 일별 뉴스 선택·만남·소셜 액션·일과. 순수 조회.
-
-    T-300 — 일별 npc_trades(그날 매매한 다른 에이전트, 결정론 파생)도 동봉.
-    """
-    g = _get_game(game_id)
-    if g is None:
-        return {"status": "error", "error": "no game"}
-    days = g.history()
-    for d in days:
-        d["npc_trades"] = [
-            {"id": p["id"], "name": p["name"], "action": action}
-            for p in _personas.TRADER_PERSONAS
-            if (action := _npc_traders.npc_action_on_day(p, g.fl, g.category, d["day"]))]
-    return {"status": "ok", "run_id": g.run_id, "days": days}
-
-
-@app.get("/control/game/chat_log")
-def control_game_chat_log(game_id: str, npc_id: str):
-    """T-288 — 메신저 대화방: 이 NPC와의 일자별 대화 로그. 순수 조회.
-
-    만남 대사는 결정론 재생성(meeting_talk, 그날 밤 스탯 스냅샷 기준 —
-    표시 당시와 동일 시드), 권유는 방향·성패 요약(당시 문장은 래포/기억
-    의존이라 박제하지 않았음 — 요약으로 충분, §9.2.2).
-    """
-    g = _get_game(game_id)
-    if g is None:
-        return {"status": "error", "error": "no game"}
-    snaps = g.store.snapshots(g.run_id)
-    # 오늘(아직 스냅샷 없음)의 권유도 보여야 한다 — 소셜 로그 날짜와 합집합.
-    social_days = {e.get("day") for e in g._social_log
-                   if e.get("kind") == "persuade" and e.get("npc_id") == npc_id}
-    days = []
-    for day in sorted(set(snaps) | social_days):
-        s = snaps.get(day)
-        entries = []
-        if s is not None and npc_id in (s.met or []):
-            entries.append({
-                "kind": "meeting",
-                "lines": _meeting_talk.dialogue(
-                    game_id, day, npc_id, dict(s.emotion_stats or {}))})
-        for e in g._social_log:
-            if (e.get("day") == day and e.get("kind") == "persuade"
-                    and e.get("npc_id") == npc_id):
-                entries.append({"kind": "persuade",
-                                "direction": e.get("direction"),
-                                "accepted": bool(e.get("accepted"))})
-        if entries:
-            days.append({"day": day, "entries": entries})
-    return {"status": "ok", "npc_id": npc_id, "days": days}
-
-
-class GameRelocateBody(BaseModel):
-    game_id: str
-    slot: int
-    place: str
-
-
-@app.post("/control/game/day/relocate")
-def control_game_relocate(body: GameRelocateBody):
-    """T-272b — 전날밤: 이 슬롯의 행선지를 지정(스왑 등가 — 회피와 동일 파워).
-
-    같은 (slot, place) 재전송은 no-op(자연 멱등 — 게이트 4c ①). 스왑 대상
-    슬롯 탐색은 서버가 수행(클라이언트 stale schedule 무해 — 4c ②).
-    """
-    g = _get_game(body.game_id)
-    if g is None:
-        return {"status": "error", "error": "no game"}
-    try:
-        preview = g.relocate(body.slot, body.place)
-    except ValueError as e:
-        return {"status": "error", "error": str(e)}
-    _persist_game(body.game_id, g)
-    return {"status": "ok", **preview}
-
-
-class GameDesignateBody(BaseModel):
-    game_id: str
-    slot: int
-    npc_id: str | None = None   # None = 지정 해제(클론에게 맡김)
-
-
-@app.post("/control/game/day/designate")
-def control_game_designate(body: GameDesignateBody):
-    """T-272a — 전날밤: 이 슬롯의 대화 상대를 플레이어가 지정(§9.2.1b 덮어쓰기).
-
-    같은 (slot, npc) 재전송은 같은 결과(자연 멱등 — 게이트 4c ①). 후보 밖
-    NPC는 거부. 지정은 그날 하루만 유효.
-    """
-    g = _get_game(body.game_id)
-    if g is None:
-        return {"status": "error", "error": "no game"}
-    try:
-        preview = g.designate(body.slot, body.npc_id)
-    except ValueError as e:
-        return {"status": "error", "error": str(e)}
-    _persist_game(body.game_id, g)
-    return {"status": "ok", **preview}
-
-
-class GamePersuadeBody(BaseModel):
-    game_id: str
-    npc_id: str
-    direction: str  # "calm" | "escalate"
-    roll: float = 100.0
-    escalation: float = 0.0
-
-
-class GameFgiBody(BaseModel):
-    game_id: str
-    tone: str
-    roll: float = 100.0
-
-
-@app.post("/control/game/social/persuade")
-def control_game_persuade(body: GamePersuadeBody):
-    """§9.2.2 1:1 권유 — 위기개입과 같은 래포 풀(§11.4.4)."""
-    g = _get_game(body.game_id)
-    if g is None:
-        return {"status": "error", "error": "no game"}
-    out = g.persuade(body.npc_id, body.direction, roll=body.roll, escalation=body.escalation)
-    _persist_game(body.game_id, g)
-    return {"status": "ok", **out}
-
-
-@app.post("/control/game/social/fgi")
-def control_game_fgi(body: GameFgiBody):
-    """§9.2.3 FGI 단톡방 — 익명 톤 얹기(래포 무관, 약하고 불확실)."""
-    g = _get_game(body.game_id)
-    if g is None:
-        return {"status": "error", "error": "no game"}
-    out = g.fgi_post(body.tone, roll=body.roll)
-    _persist_game(body.game_id, g)
-    return {"status": "ok", **out}
-
-
-@app.get("/control/game/day/board")
-def control_game_board(game_id: str, use_llm: bool = False):
-    """T-223/T-253 게시판 — 이벤트 날만 열림, 같은 날 재호출 = 같은 피드.
-
-    LLM 대화 생성은 서버 env `MV_BOARD_LLM=1`(운영자 스위치)이나 use_llm 쿼리로
-    켠다 — 키 없음·실패·검증 탈락이면 오프라인 결정론 대화로 폴백(과금 게이트).
-    """
-    g = _get_game(game_id)
-    if g is None:
-        return {"status": "error", "error": "no game"}
-    llm_on = use_llm or os.environ.get("MV_BOARD_LLM") == "1"
-    board = g.board_today(_drawn_news_today(game_id, g), use_llm=llm_on)
-    _persist_game(game_id, g)
-    # T-303 — 게시글/댓글의 클론 표기를 지은 이름으로(표현만, 아카이브 불변).
-    def _rename(posts):
-        for p in posts or []:
-            if p.get("author_id") == "clone":
-                p["author"] = g.clone_name
-            for c in p.get("comments", []):
-                if c.get("author_id") == "clone":
-                    c["author"] = g.clone_name
-    _rename(board.get("posts"))
-    if board.get("recent"):
-        _rename(board["recent"].get("posts"))
-    return {"status": "ok", **board}
-
-
-@app.get("/control/game/day/approach")
-def control_game_approach(game_id: str, fx: int, fy: int, cx: int, cy: int):
-    """T-304 — 만남 시점 실좌표 접근 경로(순수 함수, 무변이·멱등 GET).
-
-    맵이 만남 직전 NPC의 실제 타일에서 클론 옆 칸까지의 실 길찾기 경로를 받아
-    벽 뚫기 없이 걸어오게 한다(정적 approach는 밴드 종료 시점 기준이라 어긋남).
-    """
-    _ = game_id   # 시그니처 일관성용(경로는 게임 무관 순수 함수)
-    return {"status": "ok", "steps": _meeting_approach((fx, fy), (cx, cy))}
-
-
-@app.get("/control/game/day/crisis_check")
-def control_game_crisis_check(game_id: str, news_id: str | None = None):
-    """오늘 위기가 실제 발생하는지 부작용 없이 미리 조회(사용자 피드백 — 위기
-    개입은 상시 노출이 아니라 실제 위기가 터진 순간에만 이벤트로 뜬다)."""
-    g = _get_game(game_id)
-    if g is None:
-        return {"status": "error", "error": "no game"}
-    news_item = None
-    if news_id:
-        pool = _news.load_news_pool()
-        news_item = next((n for n in pool.news if n["id"] == news_id), None)
-    preview = g.preview_crisis(news=news_item)
-    return {"status": "ok", **preview}
-
-
-@app.post("/control/game/day/advance")
-def control_game_advance(body: GameAdvanceBody):
-    """하루 1칸 진행 — 뉴스 선택·개입(A/B/C) 반영 후 정산. Day30이면 카드.
-
-    T-265 — 같은 idem_key 재전송이면 저장된 응답 반환(재적용 없음). 게임별 락으로
-    동시 재시도를 직렬화(체크-후-쓰기 레이스 차단, 게이트 4c-②).
-    """
-    with _advance_lock(body.game_id):
-        return _do_advance(body)
-
-
-def _do_advance(body: GameAdvanceBody):
-    g = _get_game(body.game_id)
-    if g is None:
-        return {"status": "error", "error": "no game"}
-    if body.idem_key is not None:
-        cached = _ADVANCE_IDEM.get(body.game_id)
-        if cached is not None and cached[0] == body.idem_key:
-            return cached[1]
-    news_item = None
-    if body.news_id:
-        pool = _news.load_news_pool()
-        news_item = next((n for n in pool.news if n["id"] == body.news_id), None)
-    # rapport 명시 시에만 오버라이드(intervention 직접 구성) — 그 외엔 strategy만
-    # 넘겨 GameRun이 자신의 공유 래포 풀(self.rapport)을 쓰게 한다.
-    intervention = (_Intervention(body.strategy, body.rapport)
-                    if (body.strategy and body.rapport is not None) else None)
-    strategy_arg = body.strategy if intervention is None else None
-    snap = g.advance_day(news=news_item, intervention=intervention, strategy=strategy_arg,
-                         roll=body.roll, agent_pressure=body.agent_pressure)
-    out = {"status": "ok", "state": g.state()}
-    if snap is not None:
-        out["day_result"] = {"trap": snap.trap, "swayed": snap.swayed,
-                             "fund_flow": snap.fund_flow, "realized_pnl": snap.realized_pnl,
-                             "stats": snap.emotion_stats, "bundle": snap.bundle}
-        # T-301(사용자 "하루 끝나면 모달로") — 매매 서사를 정산 응답에 동봉:
-        # history()와 동일 산식(단일 소스), npc_trades는 그날 결정론 파생.
-        hist = g.history()
-        if hist:
-            out["day_result"]["trade"] = hist[-1]["trade"]
-        out["day_result"]["npc_trades"] = [
-            {"id": p["id"], "name": p["name"], "action": action}
-            for p in _personas.TRADER_PERSONAS
-            if (action := _npc_traders.npc_action_on_day(p, g.fl, g.category, snap.day))]
-    if g.finished and g.summary is not None:
-        # 게이트 4c-③(부분쓰기): advance_day(변이) 뒤에 예외가 나면 캐시 미기록
-        # 상태로 500 → 클라이언트 재시도가 하루를 이중 적용한다. 카드 실패는
-        # 응답에서 빼되 캐시·정산은 반드시 완료(카드는 /card로 재조회 가능).
-        try:
-            out["card"] = _result_card.result_card(g.summary)
-        except Exception:  # noqa: BLE001
-            pass
-    if body.idem_key is not None:
-        if len(_ADVANCE_IDEM) >= _ADVANCE_IDEM_MAX:
-            _ADVANCE_IDEM.pop(next(iter(_ADVANCE_IDEM)))
-        _ADVANCE_IDEM[body.game_id] = (body.idem_key, out)
-    _persist_game(body.game_id, g)
-    return out
-
-
-@app.get("/control/game/day/scene")
-def control_game_scene(game_id: str, use_llm: bool = False):
-    """§12.0 표현 — 마지막 하루 결정을 연출명령+대사로(맵이 연기). LLM은 opt-in."""
-    g = _get_game(game_id)
-    if g is None or g.last_snap is None:
-        return {"status": "error", "error": "no scene"}
-    return {"status": "ok",
-            "scene": _presentation.narrate(g.last_snap, g.clone_spec, use_llm=use_llm)}
-
-
-@app.get("/control/game/card")
-def control_game_card(game_id: str):
-    """§14 회차 결과카드(완주 시)."""
-    g = _get_game(game_id)
-    if g is None or g.summary is None:
-        return {"status": "error", "error": "not finished"}
-    return {"status": "ok", "card": _result_card.result_card(g.summary)}
-
-
-@app.post("/control/game/newrun")
-def control_game_newrun(body: GameNewRunBody):
-    """§13 다음 회차 — 같은 운명선 다시(클론 리셋, 요약 누적)."""
-    g = _get_game(body.game_id)
-    if g is None:
-        return {"status": "error", "error": "no game"}
-    g.new_run(run_id=body.run_id)
-    _persist_game(body.game_id, g)
-    return {"status": "ok", "state": g.state()}
-
-
-@app.get("/control/game/leaderboard")
-def control_game_leaderboard(game_id: str):
-    """T-245 §13.7 — 마을 수익률 순위(클론+NPC 8, 배경 정보 톤 — 경쟁 목표화 금지 M4)."""
-    g = _get_game(game_id)
-    if g is None:
-        return {"status": "error", "error": "no game"}
-    total = (g.last_snap.total_asset if g.last_snap is not None
-             else g.holding["cash"] + g.holding["quantity"] * g.last_price)
-    clone_pct = round((total - g.initial_total) / g.initial_total * 100.0, 2) \
-        if g.initial_total else 0.0
-    board = [{"id": "clone", "name": g.clone_name, "return_pct": clone_pct}]
-    for p in _personas.TRADER_PERSONAS:
-        board.append({"id": p["id"], "name": p["name"],
-                      "return_pct": _npc_traders.npc_return_pct(p, g.fl, g.category, g.day)})
-    board.sort(key=lambda e: e["return_pct"], reverse=True)
-    clone_rank = next(i + 1 for i, e in enumerate(board) if e["id"] == "clone")
-    return {"status": "ok", "board": board, "clone_rank": clone_rank, "total": len(board)}
-
-
-@app.get("/control/game/day/trades")
-def control_game_trades(game_id: str, day: int | None = None):
-    """T-256 — 그날 매매 순간 가시화용. 순수 파생(무변이).
-
-    기본 day = 마지막으로 정산된 날(g.day-1). 클론은 그날 스냅샷의 fund_flow,
-    NPC는 npc_action_on_day(수익률 규칙과 단일 소스).
-    """
-    g = _get_game(game_id)
-    if g is None:
-        return {"status": "error", "error": "no game"}
-    d = day if day is not None else max(0, g.day - 1)
-    trades = []
-    # 리뷰 수정 — fund_flow 전체 매핑: hold_winner(익절 거부)는 거래가 없으므로
-    # 연출 생략(안 한 거래를 "매수!"로 보여주던 왜곡), 번들이면 첫 실거래 사용.
-    _FLOW_ACTION = {"to_cash": "sell", "to_stable": "sell",
-                    "to_hotter": "buy", "concentrate": "buy"}
-    if g.last_snap is not None and g.day - 1 == d:
-        flows = ([b.get("fund_flow") for b in (g.last_snap.bundle or [])]
-                 or [g.last_snap.fund_flow])
-        action = next((_FLOW_ACTION[f] for f in flows if f in _FLOW_ACTION), None)
-        if action:
-            trades.append({"id": "gamerun_clone", "name": g.clone_name, "action": action})
-    for p in _personas.TRADER_PERSONAS:
-        action = _npc_traders.npc_action_on_day(p, g.fl, g.category, d)
-        if action:
-            trades.append({"id": p["id"], "name": p["name"], "action": action})
-    return {"status": "ok", "day": d, "trades": trades}
-
-
-@app.get("/control/game/compare_days")
-def control_game_compare_days(game_id: str, run_a: str, run_b: str):
-    """T-227 §13.6 — 두 회차의 행동이 갈린 날 목록(비교 화면의 탭 소스)."""
-    g = _get_game(game_id)
-    if g is None:
-        return {"status": "error", "error": "no game"}
-    if not _runs.runs_comparable(g.store, run_a, run_b):
-        return {"status": "error", "error": "unknown or empty run"}
-    return {"status": "ok", "days": _runs.diverging_days(g.store, run_a, run_b)}
-
-
-@app.get("/control/game/compare")
-def control_game_compare(game_id: str, run_a: str, run_b: str, day: int):
-    """§13.6 회차 비교 — 한 게임의 두 회차를 같은 Day로 겹쳐 본다(거울)."""
-    g = _get_game(game_id)
-    if g is None:
-        return {"status": "error", "error": "no game"}
-    cmp = _runs.compare_runs(g.store, run_a, run_b, day)
-    return {"status": "ok", **cmp}
-
-
-@app.get("/control/game/summaries")
-def control_game_summaries(game_id: str):
-    """결과 카드 모음(§14) — 이 게임에서 완주한 전 회차 요약 목록."""
-    g = _get_game(game_id)
-    if g is None:
-        return {"status": "error", "error": "no game"}
-    return {"status": "ok", "summaries": [dataclasses.asdict(s) for s in g.store.summaries()]}

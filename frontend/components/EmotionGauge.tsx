@@ -1,18 +1,18 @@
 "use client";
 
-import { ShieldAlert, TrendingUp, Waves, Activity } from "lucide-react";
+import { ShieldAlert, TrendingUp, Waves, Activity, Sprout } from "lucide-react";
 import { AXES, AXIS_LABEL, Axis, Emotion } from "@/lib/emoApi";
 import PixelPanel from "@/components/pixel/PixelPanel";
 
-// T-5 · T-12 — 4축 감정 게이지. 이모지 대신 lucide 아이콘.
+// T-5 · T-12 · T-37 — 함정 4축 + 긍정 '평정'(green) 감정 게이지. 이모지 대신 lucide.
 const ICON: Record<Axis, typeof ShieldAlert> = {
-  fear: ShieldAlert, greed: TrendingUp, anxiety: Waves, restlessness: Activity,
+  fear: ShieldAlert, greed: TrendingUp, anxiety: Waves, restlessness: Activity, composure: Sprout,
 };
 const COLOR: Record<Axis, string> = {
-  fear: "bg-sky-500", greed: "bg-amber-500", anxiety: "bg-violet-500", restlessness: "bg-teal-500",
+  fear: "bg-sky-500", greed: "bg-amber-500", anxiety: "bg-violet-500", restlessness: "bg-teal-500", composure: "bg-green-500",
 };
 const TEXT: Record<Axis, string> = {
-  fear: "text-sky-600", greed: "text-amber-600", anxiety: "text-violet-600", restlessness: "text-teal-600",
+  fear: "text-sky-600", greed: "text-amber-600", anxiety: "text-violet-600", restlessness: "text-teal-600", composure: "text-green-600",
 };
 
 export default function EmotionGauge({
@@ -31,7 +31,7 @@ export default function EmotionGauge({
           const v = Math.round(emotion[axis] ?? 0);
           const Icon = ICON[axis];
           return (
-            <div key={axis} className="flex items-center gap-2 text-[11px]">
+            <div key={axis} className={`flex items-center gap-2 text-[11px] ${axis === "composure" ? "border-t border-black/10 pt-2 mt-1" : ""}`}>
               <Icon className={`w-4 h-4 shrink-0 ${TEXT[axis]}`} aria-hidden />
               <span className="w-8 shrink-0 text-pixel-muted">{AXIS_LABEL[axis]}</span>
               <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden border border-black/10">

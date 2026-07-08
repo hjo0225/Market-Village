@@ -1,45 +1,8 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import PixelButton from "@/components/pixel/PixelButton";
-import PixelPanel from "@/components/pixel/PixelPanel";
-import OnboardingOverlay from "@/components/OnboardingOverlay";
-import { getGameId } from "@/lib/session";
-
-export default function MainMenu() {
-  const router = useRouter();
-  const [hasGame, setHasGame] = useState(false);
-
-  useEffect(() => {
-    setHasGame(!!getGameId());
-  }, []);
-
-  return (
-    <main className="min-h-screen flex items-center justify-center bg-white p-6">
-      <OnboardingOverlay />
-      <PixelPanel tone="cloud" className="w-full max-w-md p-8 text-center animate-pixel-pop">
-        <div className="text-5xl mb-3">🪞</div>
-        <h1 className="text-2xl font-extrabold mb-1">Market Village</h1>
-        <p className="text-sm text-pixel-muted mb-8">
-          블라인드 처리된 실제 과거 코인 시장에서<br />내 거울 클론이 10일을 산다
-        </p>
-        <div className="flex flex-col gap-3">
-          <PixelButton size="lg" onClick={() => router.push("/setup")}>
-            🧬 새 게임 시작
-          </PixelButton>
-          <PixelButton
-            size="lg" variant="secondary"
-            disabled={!hasGame}
-            onClick={() => router.push("/history")}
-          >
-            📊 회차 기록 보기
-          </PixelButton>
-          {!hasGame && (
-            <p className="text-xs text-pixel-muted mt-1">회차 기록은 게임을 한 번 시작한 뒤 볼 수 있어요</p>
-          )}
-        </div>
-      </PixelPanel>
-    </main>
-  );
+// 루트 진입점 = 신 감정게임(/emo). 레거시 /play 흐름(setup·play·report·history·compare)은
+// 은퇴(2026-07-08, 사용자 결정). 백엔드 인프라(personas·fate_line·_banded_route 등)는
+// /emo 맵 브릿지가 재사용하므로 유지 — 프론트 레거시 '페이지'만 제거한다.
+export default function Home() {
+  redirect("/emo");
 }

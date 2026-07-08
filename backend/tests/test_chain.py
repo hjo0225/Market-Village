@@ -72,3 +72,40 @@ def test_apply_choice_updates_emotion_and_rapport():
 def test_apply_choice_rejects_unknown():
     with pytest.raises(ValueError):
         apply_chain_choice(_emo(), 0.0, FIXTURE["panic_ant"][1], "Z")
+
+
+# --- T-26: 데드락 회귀 잠금 (실 데이터로 1→2→3 진행 가능해야) ------------- #
+from sim.chain import CHAIN_NPCS, load_chains  # noqa: E402
+
+
+def _best_rapport_choice(event: dict) -> str:
+    """그 단계에서 rapport를 가장 많이 올리는 선택지 id."""
+    return max(event["choices"], key=lambda c: c.get("rapport", 0))["id"]
+
+
+@pytest.mark.parametrize("npc", CHAIN_NPCS)
+def test_full_chain_reachable_with_best_rapport_choices(npc):
+    """T-26 데드락 회귀: 실 npc_chains.json에서, 각 단계 최고-rapport 선택지를
+    고르면 rapport 누적이 게이트를 넘어 stage 1→2→3가 전부 발동해야 한다.
+
+    이전(gate 3.0 vs stage1 최고 +2)엔 stage2가 영구 차단돼 동행 체인이
+    stage1 인트로만 반복되고 절대 진행하지 못했다(사용자 "1:1이 작동 안 함").
+    """
+    chains = load_chains()
+    stages = chains[npc]
+    emo = _emo()
+    rapport = 0.0
+    progress: dict[str, int] = {}
+    reached = []
+    for day in range(1, 4):
+        stage = maybe_trigger(7, day, npc, progress, rapport, prob=1.0)
+        assert stage is not None, (
+            f"{npc}: day{day} 체인 발동 실패 — rapport={rapport} 게이트 미달(데드락)"
+        )
+        reached.append(stage)
+        ev = stages[stage]
+        if ev.get("choices"):
+            cid = _best_rapport_choice(ev)
+            emo, rapport = apply_chain_choice(emo, rapport, ev, cid)
+        progress[npc] = stage
+    assert reached == [1, 2, 3], f"{npc}: 진행 단계 {reached} != [1,2,3]"

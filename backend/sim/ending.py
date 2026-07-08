@@ -65,19 +65,27 @@ _ENDINGS: dict[str, dict] = {
 }
 
 
-def emotion_controlled(verdict: str) -> bool:
-    """감정축 2단계: 중립(균형)만 감정+(통제됨). 과열·위축은 감정−."""
-    return verdict == "중립"
+# T-37 — 평정(composure)이 이 이상이면 성향이 기울어도 '자기통제됨'으로 본다.
+COMPOSURE_GOOD = 60.0
 
 
-def grade_2x2(verdict: str, wealth_level: str) -> str:
+def emotion_controlled(verdict: str, composure: float = 50.0) -> bool:
+    """감정 통제: 판정이 중립(균형)이거나, **평정(자기통제)이 높으면** 통제됨(감정+).
+    평정은 원칙 있는 선택으로 쌓은 자기통제라, 성향이 과열/위축으로 기울어도
+    스스로 다스렸다고 본다 — '돈은 못 벌어도 자신을 이긴' 좋은 엔딩의 근거."""
+    return verdict == "중립" or composure >= COMPOSURE_GOOD
+
+
+def grade_2x2(verdict: str, wealth_level: str, composure: float = 50.0) -> str:
     """회차 비교용 2×2 등급(엔딩 종류와 무관하게 병기)."""
-    return _GRADE[(emotion_controlled(verdict), wealth_level == "high")]
+    return _GRADE[(emotion_controlled(verdict, composure), wealth_level == "high")]
 
 
-def decide_ending(verdict: str, wealth_level: str, special_count: int) -> dict:
-    """엔딩 결정(문서 §4.2). 특수이벤트 N회 이상이면 히든 E5, 아니면 4분기."""
-    good = emotion_controlled(verdict)
+def decide_ending(verdict: str, wealth_level: str, special_count: int,
+                  composure: float = 50.0) -> dict:
+    """엔딩 결정(문서 §4.2). 특수이벤트 N회 이상이면 히든 E5, 아니면 4분기.
+    평정이 높으면 감정 통제(good)로 쳐 E1/E3(좋은 엔딩) 쪽으로 간다(T-37)."""
+    good = emotion_controlled(verdict, composure)
     hi = wealth_level == "high"
     if special_count >= SPECIAL_EVENT_ENDING_N:
         ending_id = "E5"
@@ -94,6 +102,6 @@ def decide_ending(verdict: str, wealth_level: str, special_count: int) -> dict:
     return {
         "id": ending_id,
         "title": data["title"],
-        "grade": grade_2x2(verdict, wealth_level),
+        "grade": grade_2x2(verdict, wealth_level, composure),
         "epilogue": list(data["epilogue"]),
     }

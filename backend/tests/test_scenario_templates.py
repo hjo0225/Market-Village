@@ -41,6 +41,40 @@ def test_every_choice_delta_uses_valid_axes():
                 assert axis in AXES, f"{cat}/{ch['id']} 잘못된 축 {axis!r}"
 
 
+def test_choice_labels_have_no_trap_name_prefix():
+    """T-23: 선택지 라벨은 함정명 접두(추격매수 등)를 노출하지 않는다 —
+    유독 chase만 '추격매수 —' 접두가 붙어 다른 선택지와 톤이 어긋났다."""
+    scenarios = load_scenarios()
+    for cat, sc in scenarios.items():
+        for ch in sc["choices"]:
+            assert "추격매수" not in ch["label"], (
+                f"{cat}/{ch['id']} 라벨에 함정명 접두: {ch['label']!r}"
+            )
+    # chase 선택지는 접두 없이 '놓칠 수 없다'만 남긴다.
+    chase = next(c for c in get_scenario("market_surge")["choices"] if c["id"] == "chase")
+    assert chase["label"] == "놓칠 수 없다"
+
+
+def test_buy_choices_are_composite_multi_axis():
+    """T-27: 매수류 선택지는 단일 축(greed)이 아니라 여러 축을 복합 변동시킨다 —
+    사용자 "구매하면 무조건 탐욕만 오른다"의 해소. 각 매수 선택지는 ≥3축을 건드리고,
+    greed 단독 지배(다른 축 합보다 크지 않게)가 아니어야 한다."""
+    scenarios = load_scenarios()
+    buys = {
+        "market_crash": "buy_dip",
+        "market_surge": "chase",
+        "market_volatile": "day_trade",
+    }
+    for cat, cid in buys.items():
+        ch = next(c for c in scenarios[cat]["choices"] if c["id"] == cid)
+        deltas = ch["deltas"]
+        moved = [a for a, v in deltas.items() if v != 0]
+        assert len(moved) >= 3, f"{cat}/{cid} 복합 아님(축 {moved})"
+        greed = abs(deltas.get("greed", 0))
+        others = sum(abs(v) for a, v in deltas.items() if a != "greed")
+        assert others >= greed, f"{cat}/{cid} greed 단독 지배({deltas})"
+
+
 def test_choice_ids_unique_within_scenario():
     scenarios = load_scenarios()
     for cat, sc in scenarios.items():
