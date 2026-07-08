@@ -15,7 +15,7 @@ import uuid
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from . import emo_store
+from . import disposition_report, emo_store
 from .emo_game import EmoGameRun
 from .fate_line import CATEGORIES, load_fate_line
 from .player_emotion.verdict import compute_verdict
@@ -210,3 +210,13 @@ def ending(game_id: str) -> dict:
     if not run.is_over:
         raise HTTPException(status_code=409, detail="game not over yet")
     return run.ending()
+
+
+@router.get("/{game_id}/report")
+def report(game_id: str) -> dict:
+    """T-47d — 진단 리포트(1층 선언 vs 2층 실제 편향). 엔딩 후에만 공개
+    (플레이 중 숨김 = 관찰 오염 방지). 순수 GET·멱등."""
+    run = _get(game_id)
+    if not run.is_over:
+        raise HTTPException(status_code=409, detail="game not over yet")
+    return disposition_report.compute_report(run.disposition, run.actual_bias())
