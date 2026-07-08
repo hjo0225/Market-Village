@@ -1,5 +1,10 @@
-# T-308 — 도메인 없이 공인 IP+HTTP로 시작(팀 개발용). 도메인 생기면 아래를
-# `도메인명 { ... }`으로 바꾸면 Caddy가 Let's Encrypt TLS를 자동 발급한다.
-:80 {
+# marketvillage.app — Caddy가 Let's Encrypt TLS를 자동 발급·갱신한다.
+# .app은 HSTS preload TLD라 HTTPS 강제(브라우저가 http→https). www는 apex로 리다이렉트.
+# 전제: (1) DNS A레코드 marketvillage.app / www → 43.203.48.23  (2) EC2 보안그룹 443 인바운드 허용.
+marketvillage.app {
     reverse_proxy frontend:3000
+}
+
+www.marketvillage.app {
+    redir https://marketvillage.app{uri} permanent
 }
