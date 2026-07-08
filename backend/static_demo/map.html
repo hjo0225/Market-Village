@@ -130,7 +130,13 @@ function bootPhaser(walkers){
     // T-247 — 카메라는 목표 좌표가 아니라 실제 스프라이트를 따라간다(둘이 따로 놀지
     // 않게, 사용자 리포트 ①). lerp 0.08로 부드럽게 밀착.
     const camObj = sprites[cam.orig];
-    if (camObj) this.cameras.main.startFollow(camObj.s, true, 0.08, 0.08);
+    if (camObj) {
+      this.cameras.main.startFollow(camObj.s, true, 0.08, 0.08);
+      // 첫날 부팅 시 카메라 순간이동 방지(사용자 리포트 "첫날 시작할 때 순간이동"):
+      // startFollow만 걸면 카메라가 (0,0) 맵 코너에서 lerp로 ~1초간 클론까지 날아와
+      // 첫날에만 화면이 훅 밀린다. 첫 프레임부터 클론에 고정해 플라이인을 없앤다.
+      this.cameras.main.centerOn(camObj.s.x, camObj.s.y);
+    }
   }
   // T-238 — 지수 감속 보간(매 타일 도착 직전 멈칫 → 가다-서다)을 등속 이동으로.
   // o.speed(px/frame)는 스텝 간격에 맞춰 playSteps가 정해준다(다음 스텝에 맞춰 도착).
@@ -339,6 +345,7 @@ function setBubble(orig, text){
 // approach → L자 휴리스틱 순 폴백. 반환 true = 도중 무효화로 walked를 이미 보냄.
 async function playMeeting(m, band, gen, bg, speedup, doingAfter){
   const a = sprites[CLONE_ORIG], b = sprites[m.id];
+  let approachSteps = [];   // T-45 — 대화 후 되짚어 걸어 이탈시키는 데 재사용.
   if (a && b){
     let path = null;
     try {
@@ -349,9 +356,13 @@ async function playMeeting(m, band, gen, bg, speedup, doingAfter){
     } catch (e) { /* 아래 폴백 */ }
     if (path === null) path = (m.approach && m.approach.length)
       ? m.approach : approachPath(tileOf(b), tileOf(a));
-    // 상대가 멀리 있어도(화면 밖) 순간이동 없이 서둘러 온다 — 총 ~3.5초 상한.
+    // T-45(사용자 "에이전트가 갑자기 엄청 빠르게 뛰어와 어색") — 접근을 느긋하게.
+    // 기존 총 3.5초·스텝 하한 50ms는 먼 NPC가 스프린트로 달려왔다 → 총 ~5초·하한
+    // 95ms로 완화(배속 speedup 반영). 화면 밖에서 와도 순간이동은 없음.
     if (path.length){
-      const ms = Math.min(170, Math.max(50, Math.floor(3500 / path.length)));
+      approachSteps = path;
+      const budget = 5000 / Math.max(1, speedup || 1);
+      const ms = Math.min(200, Math.max(95, Math.floor(budget / path.length)));
       await playSteps(m.id, path, false, ms, HARD_CAP, gen);
     }
   }
@@ -395,6 +406,14 @@ async function playMeeting(m, band, gen, bg, speedup, doingAfter){
     if (doingAfter){
       setBubble(CLONE_ORIG, firstEmoji(doingAfter));
       reportActivity(doingAfter);
+    }
+    // T-45(사용자 "대화 끝난 에이전트가 사라져") — 대화 뒤 그 자리에 얼어붙어 있다가
+    // 카메라(클론 추적)가 떠나며 화면 밖으로 밀려 사라진 것처럼 보였다. 왔던 길을
+    // 되짚어 걸어 자연스럽게 이탈시킨다(fire-and-forget — 클론의 남은 하루는 그대로,
+    // 다음 밴드 재생이 이 스프라이트를 인수하면 물러남).
+    if (approachSteps.length > 1){
+      const back = approachSteps.slice(0, -1).reverse();
+      playSteps(m.id, back, false, 150, HARD_CAP, gen);
     }
   }
   return false;

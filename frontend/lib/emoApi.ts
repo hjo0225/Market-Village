@@ -114,3 +114,19 @@ export const NPC_NAME: Record<string, string> = {
   bull_hoper: "해나", troll: "광수", newbie: "소은", anon_veteran: "성찬",
   cheerleader: "라온", doomposter: "무경", chart_zealot: "태식", contrarian_fan: "아리",
 };
+
+// T-42 — npc_id → 초상 에셋 이름. 서버가 /assets/characters/profile/{name}.png(32×32
+// 얼굴)를 서빙(프론트는 next.config rewrites로 /assets/* 프록시). AdvDialogue 좌측
+// 프로필을 이 이미지로. 값은 backend/sim/personas.py의 각 persona `portrait` 필드와 일치.
+export const NPC_PORTRAIT: Record<string, string> = {
+  panic_ant: "Eddy_Lin", fomo_scalper: "Ryan_Park", conspiracy_influencer: "Klaus_Mueller",
+  value_investor: "Adam_Smith", quant_trader: "Yuriko_Yamamoto", macro_whale: "Wolfgang_Schulz",
+  contrarian: "Carmen_Ortiz", jackpot_gambler: "Carlos_Gomez",
+  bull_hoper: "Hailey_Johnson", troll: "Tom_Moreno", newbie: "Maria_Lopez", anon_veteran: "Giorgio_Rossi",
+  cheerleader: "Latoya_Williams", doomposter: "Arthur_Burton", chart_zealot: "Rajiv_Patel",
+  contrarian_fan: "Ayesha_Khan",
+};
+
+// 초상 이미지 경로(없으면 컴포넌트가 이니셜 폴백). speakerId가 매핑에 없으면 null.
+export const npcPortraitSrc = (npcId?: string): string | null =>
+  npcId && NPC_PORTRAIT[npcId] ? `/assets/characters/profile/${NPC_PORTRAIT[npcId]}.png` : null;
