@@ -57,4 +57,7 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+            # Caddyfile은 마운트 볼륨이라 up -d가 caddy를 재생성하지 않는다 → 명시 재시작으로
+            # 새 Caddyfile(도메인·TLS 등) 반영. Caddy가 재시작 시 /etc/caddy/Caddyfile 재로드.
+            docker compose -f docker-compose.prod.yml --env-file .env.production restart caddy
             docker image prune -f
