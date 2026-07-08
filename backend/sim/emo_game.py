@@ -21,8 +21,8 @@ from dataclasses import dataclass, field
 from . import avoidance, board_exposure, chain, companion
 from . import ending as _ending
 from . import scenario as _scenario
+from .disposition import BIAS_AXES, build_initial_emotion_v2, diagnose
 from .fate_line import CATEGORIES
-from .interview import build_initial_emotion
 from .personas import npc_scheds
 from .player_emotion.deltas import apply_delta, decay_toward_equilibrium
 from .player_emotion.log import EmotionLog, record_snapshot
@@ -30,6 +30,10 @@ from .player_emotion.state import PlayerEmotionState
 from .player_emotion.verdict import compute_verdict
 
 START_VALUE = 1_000_000.0
+
+# T-47c (RETRO 4b) — 편향축 표본이 이 미만이면 actual_bias에서 비노출(과소표본
+# 왜곡 방지). 비율식이라 1/1=100%처럼 과장되는 걸 막는다.
+BIAS_MIN_SAMPLE = 3
 
 DEFAULT_CLONE_NAME = "내 클론"   # T-28 — 이름 미입력 시 기본값
 _MAX_NAME_LEN = 12
@@ -109,6 +113,11 @@ class EmoGameRun:
     chains: dict = field(default_factory=chain.load_chains)
     cashout_offered: bool = False   # T-30c — 캐시아웃 딜레마는 게임당 1회만
     last_market: dict[str, float] = field(default_factory=dict)   # T-35 — 마지막 정산일 카테고리별 수익률(%)
+    # T-47c — 1층 정적 성향 진단(시작 시 diagnose, 플레이 중 불변) + 2층 실제 행동
+    # 편향 원장/집계. bias_tally[axis] = {"hits","opportunities"} → actual_bias 비율식.
+    disposition: dict | None = None
+    choice_history: list[dict] = field(default_factory=list)
+    bias_tally: dict[str, dict[str, int]] = field(default_factory=dict)
 
     # --- 생성 ------------------------------------------------------------- #
     @classmethod
@@ -122,13 +131,15 @@ class EmoGameRun:
         name: str | None = None,
     ) -> "EmoGameRun":
         run = cls(
-            emotion=build_initial_emotion(answers),
+            emotion=build_initial_emotion_v2(answers),
             events=list(events),
             cat_returns={c: list(cat_returns.get(c, [])) for c in CATEGORIES},
             seed=seed,
             clone_name=_clean_name(name),
             holdings=_holdings_from_allocation(allocation),
             clone_route=_default_route(len(events)),
+            disposition=diagnose(answers),   # T-47c — 1층 선언(시작 시 확정, 불변)
+            bias_tally={axis: {"hits": 0, "opportunities": 0} for axis in BIAS_AXES},
         )
         run._enter_day()   # day 0 노출 델타 1회 + companion 결정
         return run
@@ -257,6 +268,9 @@ class EmoGameRun:
             raise RuntimeError("no pending chain event")
         npc, stage = self.pending_chain["npc_id"], self.pending_chain["stage"]
         event = self.chains[npc][stage]
+        chosen = next((c for c in event.get("choices", []) if c["id"] == choice_id), None)
+        if chosen is not None:
+            self._record_bias(event.get("choices", []), chosen, "chain")
         self.emotion, new_rap = chain.apply_chain_choice(
             self.emotion, self.rapport.get(npc, 0.0), event, choice_id
         )
@@ -283,6 +297,35 @@ class EmoGameRun:
         if not self.is_over:
             self._resolve_companion()
 
+    # --- 편향 원장 (T-47c) ----------------------------------------------- #
+    def _record_bias(self, all_choices: list, chosen: dict, kind: str) -> None:
+        """한 결정점 기록 — 그 자리에 걸린 편향(opportunities: 어느 선택이든 태그된
+        축) + 실제로 고른 선택의 편향(hits)을 집계하고 원장에 남긴다. bias_tags
+        없는 선택점(대부분의 대화)은 무영향."""
+        opp = {t for ch in all_choices for t in ch.get("bias_tags", [])}
+        hit = set(chosen.get("bias_tags", []))
+        for axis in opp:
+            self.bias_tally.setdefault(axis, {"hits": 0, "opportunities": 0})
+            self.bias_tally[axis]["opportunities"] += 1
+        for axis in hit:
+            self.bias_tally.setdefault(axis, {"hits": 0, "opportunities": 0})
+            self.bias_tally[axis]["hits"] += 1
+        if opp:
+            self.choice_history.append({
+                "day": self.day, "kind": kind, "choice_id": chosen.get("id"),
+                "hits": sorted(hit), "opportunities": sorted(opp),
+            })
+
+    def actual_bias(self) -> dict[str, int]:
+        """2층 실제 편향(hits/opportunities×100). 표본 n<BIAS_MIN_SAMPLE 축은
+        비노출(RETRO 4b — 과소표본 비율 왜곡 방지). 리포트(T-47d)가 소비."""
+        out: dict[str, int] = {}
+        for axis, t in self.bias_tally.items():
+            opp = t.get("opportunities", 0)
+            if opp >= BIAS_MIN_SAMPLE:
+                out[axis] = round(t.get("hits", 0) / opp * 100)
+        return out
+
     def choose(self, choice_id: str) -> None:
         """하루 결산: 시장 실현(진입 배분) → 감정 델타+스냅샷 → 매매행동으로 배분
         리밸런싱 → 다음 날 진입.
@@ -294,6 +337,7 @@ class EmoGameRun:
             raise RuntimeError("game is over")
         event_id = self.events[self.day]
         choice = _scenario.get_choice(event_id, choice_id)   # 검증 먼저(변이 전)
+        self._record_bias(_scenario.get_scenario(event_id)["choices"], choice, "scenario")
 
         # 1) 오늘 시장 실현: 진입 시점 보유액에 카테고리별 수익률.
         #    T-35 — 그날 카테고리별 수익률(%)을 기록해 저녁 리포트에서 '오늘의 장'으로.
@@ -407,6 +451,9 @@ class EmoGameRun:
             "pending_chain": self.pending_chain,
             "cashout_offered": self.cashout_offered,
             "last_market": self.last_market,
+            "disposition": self.disposition,       # T-47c — str키 dict(BSON 안전)
+            "choice_history": self.choice_history,
+            "bias_tally": self.bias_tally,
             "log": [
                 {"turn": s.turn, "emotion": {
                     "fear": s.state.fear, "greed": s.state.greed,
@@ -454,4 +501,7 @@ class EmoGameRun:
             pending_chain=doc.get("pending_chain"),
             cashout_offered=bool(doc.get("cashout_offered", False)),
             last_market={k: float(v) for k, v in (doc.get("last_market") or {}).items()},
+            disposition=doc.get("disposition"),   # T-47c — 구 doc엔 없음(None)
+            choice_history=list(doc.get("choice_history") or []),
+            bias_tally={k: dict(v) for k, v in (doc.get("bias_tally") or {}).items()},
         )
