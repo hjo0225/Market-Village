@@ -118,6 +118,8 @@ class EmoGameRun:
     disposition: dict | None = None
     choice_history: list[dict] = field(default_factory=list)
     bias_tally: dict[str, dict[str, int]] = field(default_factory=dict)
+    # T-47f — 엔딩 리포트 서술(LLM or 결정론). 게임당 1회 생성 후 캐시(과금 상한·멱등).
+    report_narrative: list[str] | None = None
 
     # --- 생성 ------------------------------------------------------------- #
     @classmethod
@@ -454,6 +456,8 @@ class EmoGameRun:
             "disposition": self.disposition,       # T-47c — str키 dict(BSON 안전)
             "choice_history": self.choice_history,
             "bias_tally": self.bias_tally,
+            "report_narrative": self.report_narrative,   # T-47f — 캐시된 리포트 서술
+
             "log": [
                 {"turn": s.turn, "emotion": {
                     "fear": s.state.fear, "greed": s.state.greed,
@@ -504,4 +508,5 @@ class EmoGameRun:
             disposition=doc.get("disposition"),   # T-47c — 구 doc엔 없음(None)
             choice_history=list(doc.get("choice_history") or []),
             bias_tally={k: dict(v) for k, v in (doc.get("bias_tally") or {}).items()},
+            report_narrative=doc.get("report_narrative"),   # T-47f
         )

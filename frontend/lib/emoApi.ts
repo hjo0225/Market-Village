@@ -57,6 +57,7 @@ export interface DiagnosisReport {
   measured_axes?: string[];
   self_awareness?: number | null;
   insights?: string[];
+  narrative?: string[];   // T-47f — LLM(또는 결정론 폴백) 리치 서술
 }
 
 async function fetchJson<T>(input: RequestInfo, init?: RequestInit, retries = 1): Promise<T | null> {

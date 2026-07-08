@@ -68,14 +68,17 @@ export default function DiagnosisReport({ report }: { report: ReportData | null 
         </section>
       )}
 
-      {/* C — 인사이트(선언 seed × 실제 대조 서사) */}
-      {report.insights && report.insights.length > 0 && (
-        <section className="flex flex-col gap-2">
-          {report.insights.map((s, i) => (
-            <p key={i} className="text-[12px] leading-relaxed border-l-2 border-rose-300 pl-3">{s}</p>
-          ))}
-        </section>
-      )}
+      {/* C — 서술(LLM 리치, 폴백=결정론 인사이트) */}
+      {(() => {
+        const lines = (report.narrative && report.narrative.length > 0) ? report.narrative : report.insights;
+        return lines && lines.length > 0 ? (
+          <section className="flex flex-col gap-2 bg-black/[0.03] rounded-lg p-3">
+            {lines.map((s, i) => (
+              <p key={i} className="text-[12.5px] leading-relaxed">{s}</p>
+            ))}
+          </section>
+        ) : null;
+      })()}
     </div>
   );
 }

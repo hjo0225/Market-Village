@@ -16,6 +16,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from . import disposition_report, emo_store
+from . import llm as _llm
 from .emo_game import EmoGameRun
 from .fate_line import CATEGORIES, load_fate_line
 from .player_emotion.verdict import compute_verdict
@@ -219,4 +220,14 @@ def report(game_id: str) -> dict:
     run = _get(game_id)
     if not run.is_over:
         raise HTTPException(status_code=409, detail="game not over yet")
-    return disposition_report.compute_report(run.disposition, run.actual_bias())
+    rep = disposition_report.compute_report(run.disposition, run.actual_bias())
+    if rep.get("available"):
+        # T-47f — 서술은 게임당 1회만 생성(LLM 게이트·일일한도·캐시=llm.py, 실패 시
+        # 결정론 폴백). 첫 응답을 박제해 재요청에 재생(4d 멱등·과금 상한).
+        if run.report_narrative is None:
+            run.report_narrative = disposition_report.generate_narrative(
+                rep, run.ending(), _llm.default_client()
+            )
+            emo_store.save_run(game_id, run)
+        rep["narrative"] = run.report_narrative
+    return rep

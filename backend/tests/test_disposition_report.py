@@ -94,3 +94,49 @@ def test_report_endpoint_409_when_ongoing():
     with pytest.raises(HTTPException) as ei:
         emo_api.report(gid)
     assert ei.value.status_code == 409
+
+
+# ── 서술 계층 (T-47f) ───────────────────────────────────────────────────
+def test_deterministic_narrative_uses_numbers_and_coach():
+    rep = R.compute_report(DISP, {"panic": 100, "over": 0})
+    joined = " ".join(R._deterministic_narrative(rep, None))
+    assert str(rep["self_awareness"]) in joined   # 일치도 점수 인용
+    assert "규율" in joined                        # 공격투자형 코칭
+
+
+def test_generate_narrative_none_client_is_deterministic():
+    rep = R.compute_report(DISP, {"over": 100})
+    assert R.generate_narrative(rep, None, None) == R._deterministic_narrative(rep, None)
+
+
+def test_generate_narrative_llm_rewrites():
+    from sim.llm import FakeLLM
+    fake = FakeLLM(response='{"narrative": ["과신을 75로 봤지만 실제 100.", "말보다 손이 빨랐습니다."]}')
+    rep = R.compute_report(DISP, {"over": 100, "panic": 33})
+    assert R.generate_narrative(rep, None, fake) == ["과신을 75로 봤지만 실제 100.", "말보다 손이 빨랐습니다."]
+
+
+def test_generate_narrative_falls_back_on_bad_llm():
+    from sim.llm import FakeLLM
+    fake = FakeLLM(response="완전히 JSON이 아님")   # extract_json 실패 → 폴백
+    rep = R.compute_report(DISP, {"over": 100})
+    assert R.generate_narrative(rep, None, fake) == R._deterministic_narrative(rep, None)
+
+
+def test_report_endpoint_includes_narrative():
+    # conftest가 OS 키를 strip → default_client().available=False → 결정론 폴백.
+    gid = _played_game_id(days=4)
+    rep = emo_api.report(gid)
+    assert rep.get("narrative")   # 서술 존재(결정론)
+
+
+def test_report_endpoint_caches_narrative(monkeypatch):
+    from sim.llm import FakeLLM
+    fake = FakeLLM(response='{"narrative": ["한 번만 생성됩니다."]}')
+    monkeypatch.setattr(emo_api._llm, "default_client", lambda: fake)
+    gid = _played_game_id(days=4)
+    r1 = emo_api.report(gid)
+    r2 = emo_api.report(gid)
+    assert r1["narrative"] == ["한 번만 생성됩니다."]
+    assert r2["narrative"] == r1["narrative"]
+    assert len(fake.calls) == 1   # 캐시 → 두 번째는 LLM 미호출(과금 상한)
