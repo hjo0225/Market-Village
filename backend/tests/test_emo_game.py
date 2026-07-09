@@ -47,6 +47,22 @@ def test_board_is_idempotent_get():
     assert len(b1["scenario"]["choices"]) == 3
 
 
+# --- v3 §B: 게시판 {coin} 플레이스홀더 — 오늘 |변동률| 최대 카테고리 심볼 --- #
+def test_board_substitutes_coin_with_biggest_move_category_symbol():
+    # meme(DOGE)만 크게 흔들리게, 나머지는 0으로 고정 → meme이 항상 최대.
+    returns = {"large_stable": [0.0], "mid_alt": [0.0], "meme": [-0.5], "stable": [0.0]}
+    r = EmoGameRun.new(ANSWERS, ["market_crash"], returns, seed=1)
+    board = r.board()
+    assert "{coin}" not in board["scenario"]["text"]
+    assert "DOGE" in board["scenario"]["text"]
+
+
+def test_board_coin_symbol_picks_largest_absolute_move_deterministically():
+    returns = {"large_stable": [0.01], "mid_alt": [0.5], "meme": [-0.05], "stable": [0.0]}
+    r = EmoGameRun.new(ANSWERS, ["market_crash"], returns, seed=1)
+    assert r._biggest_move_symbol() == "XRP"   # mid_alt = XRP, |0.5| 최대
+
+
 def test_exposure_delta_applied_once_on_entering_day():
     # 급락 진입 → 초기 대비 fear 상승(노출 델타 1회 적용).
     r = _run()

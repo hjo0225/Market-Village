@@ -34,10 +34,43 @@ def test_day_frames_has_20_entries():
 
 
 def test_day_frame_wraps_past_20_via_modulo():
+    # total_days 생략(레거시 호출) — 이전 동작 그대로 전체 20개를 단순 순환.
     assert ST.day_frame(0) == ST.DAY_FRAMES[0]
     assert ST.day_frame(19) == ST.DAY_FRAMES[19]
     assert ST.day_frame(20) == ST.DAY_FRAMES[0]
     assert ST.day_frame(25) == ST.DAY_FRAMES[5]
+
+
+# --- v3 §A: total_days를 주면 마지막 날·전야가 고정 핀 ---------------------- #
+def test_day_frame_pins_last_day_and_eve_with_total_days():
+    total = 10
+    assert ST.day_frame(total - 1, total) == "마지막 날. 첫날과 같은 하늘."
+    assert ST.day_frame(total - 2, total) == "전야. 마을이 평소보다 다정하다."
+    assert ST.day_frame(total - 1, total) == ST.DAY_FRAMES[-1]
+    assert ST.day_frame(total - 2, total) == ST.DAY_FRAMES[-2]
+
+
+def test_day_frame_non_pinned_days_sequential_from_front_excluding_pinned():
+    # 마지막 2개(전야·마지막 날)를 제외한 나머지 18개를 앞에서부터 순서대로.
+    total = 10
+    cycle = ST.DAY_FRAMES[:-2]
+    for day in range(total - 2):   # day 0..7 (마지막 2일 제외)
+        assert ST.day_frame(day, total) == cycle[day % len(cycle)]
+
+
+def test_day_frame_pinned_frames_never_appear_in_non_pinned_days():
+    total = 10
+    pinned = {ST.DAY_FRAMES[-1], ST.DAY_FRAMES[-2]}
+    for day in range(total - 2):
+        assert ST.day_frame(day, total) not in pinned
+
+
+def test_day_frame_wraps_within_cycle_when_total_days_exceeds_cycle_len():
+    # 축소된 순환 목록(18개) 범위를 넘으면 그 안에서 wrap.
+    cycle = ST.DAY_FRAMES[:-2]
+    total = len(cycle) + 5   # 23 → day 18..22는 전야/마지막날 제외한 일반일
+    # day 18(=len(cycle))은 wrap해 cycle[0]과 같아야 함(마지막 2일은 total-2, total-1).
+    assert ST.day_frame(len(cycle), total) == cycle[0]
 
 
 # --- PLACE_FLAVOR 키 == 실제 장소 상수 집합 -------------------------------- #
@@ -63,21 +96,24 @@ def test_plan_response_contains_morning():
     assert body["morning"]["text"] == ST.DAY_FRAMES[0]
 
 
-def test_plan_response_morning_advances_and_wraps_with_day():
+def test_plan_response_morning_advances_and_pins_eve_and_last_day():
+    # v3 §A — total_days(=25)를 아는 실제 플레이에서, 마지막 날(24)·전야(23)는
+    # 항상 그 고정 프레임이어야 하고 그 외 날은 day_frame(day, total_days)와 일치.
     c = _client()
-    gid = _start(c, days=25)
+    total = 25
+    gid = _start(c, days=total)
     plan = {"오전": "집", "오후": "집", "저녁": "집"}
-    for expected_day in range(21):
+    for expected_day in range(total):
         body = c.get(f"/emo/{gid}/plan").json()
         assert body["morning"]["day"] == expected_day
-        assert body["morning"]["text"] == ST.day_frame(expected_day)
+        assert body["morning"]["text"] == ST.day_frame(expected_day, total)
+        if expected_day == total - 1:
+            assert body["morning"]["text"] == "마지막 날. 첫날과 같은 하늘."
+        if expected_day == total - 2:
+            assert body["morning"]["text"] == "전야. 마을이 평소보다 다정하다."
         c.post(f"/emo/{gid}/plan", json={"plan": plan})
         board = c.get(f"/emo/{gid}/board").json()
         c.post(f"/emo/{gid}/choose", json={"choice_id": board["scenario"]["choices"][0]["id"]})
-    # day 20 wrapped → 같은 텍스트가 day 0과 동일해야 함(day % 20).
-    body20 = c.get(f"/emo/{gid}/plan").json()
-    assert body20["morning"]["day"] == 21
-    assert body20["morning"]["text"] == ST.DAY_FRAMES[21 % 20]
 
 
 # --- flavor 규칙: NPC-aware(§2) -------------------------------------------- #

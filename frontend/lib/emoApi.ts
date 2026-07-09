@@ -25,7 +25,22 @@ export interface EmoState {
   last_market: Record<string, number>;   // T-35 — 정산일 카테고리별 수익률(%)
   ending: Ending | null;
   settlement?: Settlement;   // §5.1 — 직전 정산 1회성 스냅샷(없으면 구버전 폴백, I6)
+  ticker?: TickerRow[];   // v3 §B — 카테고리별 시세 현황판(없으면 티커 바 숨김, I6)
+  tier?: Tier;   // v3 §C2 — 통제 티어(없으면 배지 숨김, I6)
+  diagnosis?: StartDiagnosis;   // v3 §D1 — POST /start 응답에만 실림(없으면 진단 카드 스킵, I6)
 }
+
+// v3 §B — GET /emo/catalog?seed=N 응답 코인 1종. 시기(date) 정보는 절대 없음
+// (엔딩 전까지 블라인드 유지). 배분 화면 실명화 + 티커 바에 사용.
+export interface CatalogCoin { category: string; symbol: string; name: string; color: string; }
+export interface Catalog { coins: CatalogCoin[]; }
+
+// v3 §B — 시세 현황판 1행(카테고리당). index는 시작=100 기준 누적곱(운명선 그대로).
+export interface TickerRow { category: string; symbol: string; name: string; day_pct: number; index: number; }
+
+// v3 §C2 — 통제 티어(감정 통제 지표 기반, 상태에서 파생·저장 안 함). 5티어:
+// 새싹→불개미 졸업→평정 수련→강철 멘탈→마을의 현자.
+export interface Tier { name: string; icon: string; score: number; next_at: number | null; }
 
 export interface Dilemma { title: string; text: string; gain?: boolean; choices: Choice[]; place?: string; }
 
@@ -80,6 +95,15 @@ export interface SettlementMarketRow { category: string; pct: number; before: nu
 export interface SettlementPortfolio { before: number; after: number; pnl_pct: number; }
 export interface SettlementRebalance { risk_share_before: number; risk_share_after: number; }
 export interface EmotionStep { source: string; label: string; deltas: Record<string, number>; }
+// v3 §C1 — 원인 카드(어제 선택 → 오늘 성과). Day 0(전날 없음)은 생략(옵셔널).
+export interface Attribution {
+  actual_pnl_pct: number;
+  counterfactual_pnl_pct: number;
+  delta_pct: number;
+  cause_choice_label: string;
+  text: string;
+}
+
 export interface Settlement {
   day: number;
   choice: SettlementChoice;
@@ -89,6 +113,7 @@ export interface Settlement {
   emotion_steps: EmotionStep[];
   emotion_before: Record<string, number>;
   emotion_after: Record<string, number>;
+  attribution?: Attribution;   // v3 §C1 — 없으면(day 0 등) 원인 카드 단계 스킵(I6)
 }
 
 // T-47d — 진단 리포트(1층 선언 vs 2층 실제 편향). 엔딩 후에만 노출.
@@ -98,7 +123,7 @@ export interface BiasComparison {
   low_sample?: boolean;   // T-48c — 임계 근접(n<5) → 신뢰 주의
 }
 export interface TimelineEntry { day: number; kind: string; biases: string[]; }   // T-48d
-export interface BlindReveal { category: string; symbol: string; name: string; date: string; }   // T-49c
+export interface BlindReveal { category: string; symbol: string; name: string; date: string; period?: string; }   // T-49c
 export interface DiagnosisReport {
   available: boolean;
   declared_type?: string;
@@ -112,6 +137,18 @@ export interface DiagnosisReport {
   narrative?: string[];   // T-47f — LLM(또는 결정론 폴백) 리치 서술
   timeline?: TimelineEntry[];   // T-48d — 인과 타임라인
   blind_reveal?: BlindReveal[];   // T-49c — 엔딩 후 실제 종목·시기
+  blind_reveal_headline?: string | null;   // v3 §B — 기준 장세(meme)의 시기 공개 한 줄
+}
+
+// v3 §D1 — POST /emo/start 응답에 실리는 진단 결과(설문 직후 카드). disposition.diagnose()가
+// 이미 계산하는 값의 노출 + 문항별 기여 분해. 없으면(구버전 폴백) 진단 카드 스킵, 브릿지로 직행(I6).
+export interface DiagnosisAxis { axis: string; label: string; score: number; max: number; }
+export interface DiagnosisContribution { q: string; q_label: string; choice_label: string; axis: string; points: number; }
+export interface StartDiagnosis {
+  declared_type: string;
+  axes: DiagnosisAxis[];
+  contributions: DiagnosisContribution[];
+  summary: string[];
 }
 
 async function fetchJson<T>(input: RequestInfo, init?: RequestInit, retries = 1): Promise<T | null> {
@@ -136,10 +173,15 @@ const postJson = <T>(path: string, body: Record<string, unknown>) =>
     body: JSON.stringify(body),
   }, 0); // 변이는 재시도 없음
 
+// T-48f — 20일 → 제품 결정으로 10일 복귀, 표본 부족은 low_sample 표시로 흡수(v3 §A).
 export const startEmo = (
-  answers: Record<string, number>, seed: number, days = 20,
+  answers: Record<string, number>, seed: number, days = 10,
   allocations?: Record<string, number>, name?: string,
 ) => postJson<EmoState>("/emo/start", { answers, seed, days, allocations, name });
+
+// v3 §B — GET /emo/catalog?seed=N(신규, 멱등). 배분 화면 진입 시 seed를 먼저 뽑아
+// 호출하고, 그 seed로 이후 start를 호출한다(카탈로그와 실제 게임의 시장이 일치).
+export const getCatalog = (seed: number) => getJson<Catalog>(`/emo/catalog?seed=${seed}`);
 
 export const getState = (id: string) => getJson<EmoState>(`/emo/${id}/state`);
 export const getBoard = (id: string) => getJson<Board>(`/emo/${id}/board`);

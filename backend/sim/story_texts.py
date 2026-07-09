@@ -38,11 +38,37 @@ DAY_FRAMES: list[str] = [
 ]
 
 
-def day_frame(day: int) -> str:
-    """day 인덱스의 아침 내레이션. day가 20을 넘으면 순환(day % len)."""
+# v3 §A — 마지막 2개 프레임(전야·마지막 날)은 항상 그 자리에 고정되고, 일반
+# 순환 표본에서는 제외된다. DAY_FRAMES[-1]="마지막 날...", DAY_FRAMES[-2]="전야...".
+_PINNED_LAST = DAY_FRAMES[-1] if DAY_FRAMES else ""
+_PINNED_EVE = DAY_FRAMES[-2] if len(DAY_FRAMES) >= 2 else ""
+_CYCLE_FRAMES = DAY_FRAMES[:-2] if len(DAY_FRAMES) >= 2 else list(DAY_FRAMES)
+
+
+def day_frame(day: int, total_days: int | None = None) -> str:
+    """day 인덱스의 아침 내레이션.
+
+    v3 §A — `total_days`를 주면(총 일수를 아는 실제 플레이): **마지막 날은
+    항상 "마지막 날. 첫날과 같은 하늘.", 마지막 전날은 항상 "전야. 마을이
+    평소보다 다정하다."**로 고정하고, 그 외 날은 나머지 프레임(마지막 2개
+    제외)을 앞에서부터 순서대로 배정한다(넘치면 그 축소된 목록 안에서 wrap).
+
+    `total_days`를 생략하면(레거시 호출부·테스트) 이전 동작(전체 DAY_FRAMES를
+    day % len로 단순 순환)을 유지한다 — 하위 호환."""
     if not DAY_FRAMES:
         return ""
-    return DAY_FRAMES[day % len(DAY_FRAMES)]
+    if total_days is None:
+        return DAY_FRAMES[day % len(DAY_FRAMES)]
+    if total_days <= 0:
+        return DAY_FRAMES[day % len(DAY_FRAMES)]
+    last_idx = total_days - 1
+    if day == last_idx:
+        return _PINNED_LAST
+    if total_days >= 2 and day == last_idx - 1:
+        return _PINNED_EVE
+    if not _CYCLE_FRAMES:
+        return _PINNED_LAST
+    return _CYCLE_FRAMES[day % len(_CYCLE_FRAMES)]
 
 
 # §2 — 장소 기본 플레이버 한 줄. 키는 place_effects.PLACE_EFFECTS(=PLAN_PLACES)의
