@@ -35,6 +35,7 @@ def render_board(
     *,
     seed: int | None = None,
     day: int | None = None,
+    coin_symbol: str | None = None,
 ) -> dict:
     """순수 표시용 게시판(글+댓글+시나리오). 감정 상태를 변이하지 않는다.
 
@@ -43,18 +44,25 @@ def render_board(
 
     seed·day를 주면(호출자=emo_game.board()) §4.2 3-of-6 풀 선택이 적용된
     choices를 반환한다(get_scenario(event_id, seed, day)). 생략하면(레거시
-    호출부) 6개 전부(하위 호환)."""
+    호출부) 6개 전부(하위 호환).
+
+    §B — `coin_symbol`을 주면 scenario.text의 `{coin}` 플레이스홀더를 그
+    심볼로 치환한다(그날 |변동률| 최대 카테고리, 호출자=emo_game.board()가
+    결정론으로 계산). 생략하면(레거시 호출부) 치환 없음(하위 호환)."""
     if event_id not in EVENT_CATEGORIES:
         raise ValueError(f"unknown board event_id: {event_id!r}")
     context = EVENT_TO_CONTEXT[event_id]
     conv = offline_conversation(context, {}, drawn_news or [], rng)
     scenario = get_scenario(event_id, seed, day)
+    text = scenario["text"]
+    if coin_symbol:
+        text = text.replace("{coin}", coin_symbol)
     return {
         "event_id": event_id,
         "context": context,
         "verdict": conv["verdict"],
         "threads": conv["threads"],
-        "scenario": {"text": scenario["text"], "choices": scenario["choices"]},
+        "scenario": {"text": text, "choices": scenario["choices"]},
     }
 
 

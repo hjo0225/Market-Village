@@ -67,9 +67,14 @@ class FateLine:
         return (max(closes) - min(closes)) if closes else 0.0
 
     def reveal(self) -> list[dict]:
-        """T-49c — 엔딩 후 블라인드 해제: 각 카테고리의 실제 종목·시기(`_meta_origin`).
-        플레이 중엔 절대 노출 금지(관찰 오염) — 게임 종료 리포트에서만 호출한다.
-        `_meta_origin` = "upbit:KRW-DOGE:2021-04-20 00:00:00"."""
+        """T-49c/v3 §B — 엔딩 후 블라인드 해제: 각 카테고리의 실제 종목·시기
+        (`_meta_origin`). 플레이 중엔 절대 노출 금지(관찰 오염) — 게임 종료
+        리포트에서만 호출한다. `_meta_origin` = "upbit:KRW-DOGE:2021-04-20 00:00:00".
+
+        v3 §B — 설계 전환: 종목명은 카탈로그(coins.py)로 이미 플레이 중 공개돼
+        있으므로, 엔딩 리빌의 핵심은 **"언제였는지"**(period)다. symbol/name도
+        계속 포함하지만(프론트가 재구성할 수 있게), `period`("20XX년 X월")를
+        센터피스로 추가한다."""
         _coin = {"BTC": "비트코인", "XRP": "리플", "DOGE": "도지코인",
                  "USDT": "테더", "ETH": "이더리움"}
         out: list[dict] = []
@@ -77,8 +82,13 @@ class FateLine:
             parts = str(info.get("_meta_origin", "")).split(":")
             symbol = parts[1].replace("KRW-", "") if len(parts) > 1 else ""
             date = parts[2][:10] if len(parts) > 2 else ""
+            period = ""
+            if len(date) >= 7:   # "YYYY-MM-DD" → "YYYY년 M월"
+                year, month = date[:4], date[5:7]
+                period = f"{year}년 {int(month)}월"
             out.append({"category": cat, "symbol": symbol,
-                        "name": _coin.get(symbol, symbol), "date": date})
+                        "name": _coin.get(symbol, symbol), "date": date,
+                        "period": period})
         return out
 
     def public_view(self) -> dict[str, dict]:

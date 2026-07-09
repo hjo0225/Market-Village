@@ -13,6 +13,7 @@ from sim.board_exposure import (
     EVENT_TO_CONTEXT,
     apply_choice,
     build_board_exposure,
+    render_board,
 )
 from sim.player_emotion.state import PlayerEmotionState
 
@@ -75,3 +76,22 @@ def test_apply_choice_rejects_unknown_choice():
 def test_build_rejects_unknown_event():
     with pytest.raises(ValueError):
         build_board_exposure("nope", _neutral(), random.Random(1))
+
+
+# --- v3 §B: {coin} 플레이스홀더 치환 -------------------------------------- #
+def test_render_board_substitutes_coin_placeholder_when_given():
+    out = render_board("market_crash", random.Random(1), coin_symbol="DOGE")
+    assert "{coin}" not in out["scenario"]["text"]
+    assert "DOGE" in out["scenario"]["text"]
+
+
+def test_render_board_leaves_placeholder_untouched_without_coin_symbol():
+    # 레거시 호출부(coin_symbol 생략) — 텍스트는 원본 그대로(플레이스홀더 있으면 남는다).
+    out = render_board("market_crash", random.Random(1))
+    assert "{coin}" in out["scenario"]["text"]
+
+
+def test_render_board_coin_substitution_deterministic():
+    a = render_board("market_surge", random.Random(2), coin_symbol="BTC")
+    b = render_board("market_surge", random.Random(2), coin_symbol="BTC")
+    assert a["scenario"]["text"] == b["scenario"]["text"]
