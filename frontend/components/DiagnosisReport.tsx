@@ -3,6 +3,7 @@
 // T-47e — 엔딩 후 진단 리포트. 1층 '선언된 자아'(진단 유형) vs 2층 '실제 행동'
 // (편향) 괴리를 보여준다. 데이터는 GET /emo/{id}/report(disposition_report.py).
 import { DiagnosisReport as ReportData, CATEGORY_LABEL, Category } from "@/lib/emoApi";
+import { TermText } from "@/components/Term";
 
 const TYPE_DESC: Record<string, string> = {
   안정형: "한 푼도 잃지 않는 것이 목표. 원금 보전 최우선.",
@@ -30,7 +31,7 @@ export default function DiagnosisReport({ report }: { report: ReportData | null 
         <div className="text-[12px] text-pixel-muted">{TYPE_DESC[report.declared_type ?? ""] ?? ""}</div>
         {report.subdimension?.text && (
           <p className="mt-2 text-[12px] leading-relaxed border-l-2 border-black/10 pl-3">
-            {report.subdimension.text}
+            <TermText text={report.subdimension.text} />
           </p>
         )}
       </section>
@@ -100,7 +101,7 @@ export default function DiagnosisReport({ report }: { report: ReportData | null 
         return lines && lines.length > 0 ? (
           <section className="flex flex-col gap-2 bg-black/[0.03] rounded-lg p-3">
             {lines.map((s, i) => (
-              <p key={i} className="text-[12.5px] leading-relaxed">{s}</p>
+              <p key={i} className="text-[12.5px] leading-relaxed"><TermText text={s} /></p>
             ))}
           </section>
         ) : null;

@@ -20,6 +20,7 @@ import DailyPlan from "@/components/DailyPlan";
 import TickerBar from "@/components/TickerBar";
 import TierBadge from "@/components/TierBadge";
 import CoachMark from "@/components/CoachMark";
+import Term from "@/components/Term";
 import { PlanView, CatalogCoin } from "@/lib/emoApi";
 
 // §3.1/§3.2/§3.3 — 정적 스토리 씬 스크립트(원문 그대로, LLM 호출 없음·I5).
@@ -60,6 +61,11 @@ const DEFAULT_LEVELS: Record<Category, Level> = {
 // 받은 실제 종목명 아래에 카테고리 성격을 덧붙여 감을 잡게 한다.
 const CATEGORY_FLAVOR: Record<Category, string> = {
   large_stable: "대장주", mid_alt: "중견 알트", meme: "급등급락", stable: "안정적 페그", cash: "시장 밖 현금",
+};
+// §2.1 — 배분 화면 카테고리별 용어 사전 키(있으면 라벨에 Term 적용). mid_alt는
+// "알트코인", meme은 "밈코인"이 정확한 사전 키(CATEGORY_FLAVOR 표현과는 별개).
+const CATEGORY_TERM: Partial<Record<Category, string>> = {
+  large_stable: "대장주", mid_alt: "알트코인", meme: "밈코인",
 };
 
 // T-47e — 정적 성향 진단 7문항(spec docs/STATIC_DISPOSITION_SPEC.md §1). 값=점수
@@ -257,6 +263,7 @@ export default function EmoPage() {
           choiceLabel: pickedLabel,
           market: ns.last_market,
           settlement: ns.settlement,   // §5.1 — 있으면 DayReport가 cascade 단계 추가(I6: 없으면 폴백)
+          prevTier: prev.tier, nextTier: ns.tier,   // §3③ — 리포트 티어 게이지(없으면 생략, I6)
         });
       }
     })();
@@ -496,13 +503,16 @@ export default function EmoPage() {
                 {CATEGORIES.map((c: Category) => {
                   const pct = totalW > 0 ? Math.round((LEVEL_WEIGHT[levels[c]] / totalW) * 100) : 0;
                   const coin = catalog?.find((k) => k.category === c);
+                  const termKey = CATEGORY_TERM[c];
                   return (
                     <div key={c} className="flex items-center gap-3 text-[12px]">
                       <span className="w-28 shrink-0 text-pixel-muted leading-tight">
                         {coin ? (
                           <>
                             {coin.name}({coin.symbol})
-                            <span className="block text-[10px] opacity-70">{CATEGORY_FLAVOR[c]}</span>
+                            <span className="block text-[10px] opacity-70">
+                              {termKey ? <Term term={termKey}>{CATEGORY_FLAVOR[c]}</Term> : CATEGORY_FLAVOR[c]}
+                            </span>
                           </>
                         ) : (
                           CATEGORY_LABEL[c]

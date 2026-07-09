@@ -7,6 +7,7 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import { StartDiagnosis } from "@/lib/emoApi";
 import PixelPanel from "@/components/pixel/PixelPanel";
 import PixelButton from "@/components/pixel/PixelButton";
+import { TermText } from "@/components/Term";
 
 export default function DiagnosisCard({
   diagnosis, onConfirm,
@@ -77,7 +78,7 @@ export default function DiagnosisCard({
         {diagnosis.summary.length > 0 && (
           <section className="mb-6 flex flex-col gap-2 bg-black/[0.03] rounded-lg p-3">
             {diagnosis.summary.map((s, i) => (
-              <p key={i} className="text-[12.5px] leading-relaxed">{s}</p>
+              <p key={i} className="text-[12.5px] leading-relaxed"><TermText text={s} /></p>
             ))}
           </section>
         )}
