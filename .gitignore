@@ -102,6 +102,7 @@ node_modules
 
 # 기획 문서(바이너리, 레포에 싣지 않음)
 *.docx
+/scenariodoc
 
 # build artifacts
 *.tsbuildinfo

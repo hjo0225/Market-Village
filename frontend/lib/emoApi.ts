@@ -24,6 +24,7 @@ export interface EmoState {
   band_places?: Record<string, string>;   // T-50d — 밴드별 장소(도서관/마켓 도착 시 장소 딜레마)
   last_market: Record<string, number>;   // T-35 — 정산일 카테고리별 수익률(%)
   ending: Ending | null;
+  settlement?: Settlement;   // §5.1 — 직전 정산 1회성 스냅샷(없으면 구버전 폴백, I6)
 }
 
 export interface Dilemma { title: string; text: string; gain?: boolean; choices: Choice[]; place?: string; }
@@ -45,6 +46,47 @@ export interface ChainEvent {
 }
 
 export interface Ending { id: string; title: string; grade: string; epilogue: string[]; }
+
+// §2.2 — 「오늘의 일과」 편성. forecast는 실제 정산 적용치와 동일 소스(I3) — 프론트는
+// 화살표(▲/▲▲/▲▲▲, 크기 1~3)로만 시각화, badges로 확률적 요소(npc/dilemma/quiet) 표시.
+export interface PlanNpcPreview { npc_id: string; name: string; portrait: string; }
+export type PlanBadge = "npc" | "dilemma" | "quiet";
+export interface PlanBandOption {
+  place: string;
+  cost: number;
+  forecast: Record<string, number>;   // 축별 델타(실제 정산치와 동일 함수 출처)
+  npcs: PlanNpcPreview[];
+  badges: PlanBadge[];
+  flavor: string;
+}
+export interface PlanBand { band: string; options: PlanBandOption[]; }
+export interface PlanFixedSlot { kind: string; label: string; }
+export interface PlanView {
+  day: number;
+  budget: number;
+  locked: boolean;
+  current_plan: Record<string, string> | null;
+  fixed: Record<string, PlanFixedSlot>;
+  bands: PlanBand[];
+}
+
+// §5.1 — 정산 캐스케이드 1회성 스냅샷(choose() 응답에 포함). 없으면(state.settlement
+// undefined) 구버전 폴백 — DayReport는 기존 sleep→report 그대로 동작(I6).
+export interface SettlementChoice { id: string; label: string; position: number; }
+export interface SettlementMarketRow { category: string; pct: number; before: number; after: number; }
+export interface SettlementPortfolio { before: number; after: number; pnl_pct: number; }
+export interface SettlementRebalance { risk_share_before: number; risk_share_after: number; }
+export interface EmotionStep { source: string; label: string; deltas: Record<string, number>; }
+export interface Settlement {
+  day: number;
+  choice: SettlementChoice;
+  market: SettlementMarketRow[];
+  portfolio: SettlementPortfolio;
+  rebalance: SettlementRebalance;
+  emotion_steps: EmotionStep[];
+  emotion_before: Record<string, number>;
+  emotion_after: Record<string, number>;
+}
 
 // T-47d — 진단 리포트(1층 선언 vs 2층 실제 편향). 엔딩 후에만 노출.
 export interface BiasComparison {
@@ -115,6 +157,12 @@ export const designate = (id: string, npc_id: string) =>
   postJson<EmoState>(`/emo/${id}/designate`, { npc_id });
 export const getEnding = (id: string) => getJson<Ending>(`/emo/${id}/ending`);
 export const getReport = (id: string) => getJson<DiagnosisReport>(`/emo/${id}/report`);
+
+// §2.2 — 「오늘의 일과」 편성. GET은 멱등(404면 아직 백엔드 미배포 → 호출부가 자동
+// 편성 폴백, I6). POST는 재시도 없음(플랜은 하루 1회 잠금, I4).
+export const getPlan = (id: string) => getJson<PlanView>(`/emo/${id}/plan`);
+export const submitPlan = (id: string, plan: Record<string, string>) =>
+  postJson<EmoState>(`/emo/${id}/plan`, { plan });
 
 // 감정 축 표시 메타(라벨·색·아이콘 키). 함정 4축 + 긍정 '평정'. 이모지 금지 — lucide.
 export const NEGATIVE_AXES = ["fear", "greed", "anxiety", "restlessness"] as const;

@@ -83,6 +83,7 @@ def _state(run: EmoGameRun, game_id: str) -> dict:
         "has_cashout_dilemma": run.cashout_available(),   # T-30c
         "band_places": run.band_places(),   # T-50d — 밴드별 장소(장소 딜레마 발동 판정용)
         "last_market": run.last_market,   # T-35 — 마지막 정산일 카테고리별 수익률(%)
+        "settlement": run.last_settlement,   # §5.1 — 마지막 choose() 정산 캐스케이드(없으면 None)
 
         "ending": run.ending() if run.is_over else None,
     }
@@ -117,6 +118,10 @@ class AvoidBody(BaseModel):
     day_b: int
 
 
+class PlanBody(BaseModel):
+    plan: dict[str, str]
+
+
 # --- 엔드포인트 ------------------------------------------------------- #
 @router.post("/start")
 def start(body: StartBody) -> dict:
@@ -141,6 +146,30 @@ def board(game_id: str) -> dict:
     if run.is_over:
         raise HTTPException(status_code=409, detail="game is over")
     return run.board()
+
+
+@router.get("/{game_id}/plan")
+def plan(game_id: str) -> dict:
+    """§2.2 — 오늘의 일과 편성 미리보기(순수 GET, 멱등, I4)."""
+    run = _get(game_id)
+    if run.is_over:
+        raise HTTPException(status_code=409, detail="game is over")
+    return run.plan_preview()
+
+
+@router.post("/{game_id}/plan")
+def plan_submit(game_id: str, body: PlanBody) -> dict:
+    """§2.2 — 오늘의 일과 편성 제출. 예산 초과/잘못된 장소=400, 이미 제출·게임
+    종료=409."""
+    run = _get(game_id)
+    try:
+        run.submit_plan(body.plan)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    emo_store.save_run(game_id, run)
+    return _state(run, game_id)
 
 
 @router.get("/{game_id}/chain")
@@ -196,6 +225,16 @@ def place_dilemma_choose(game_id: str, place: str, body: ChoiceBody) -> dict:
 @router.post("/{game_id}/choose")
 def choose(game_id: str, body: ChoiceBody) -> dict:
     run = _get(game_id)
+    if not run.is_over:
+        # §4.2 — 오늘 게시판에 노출된 3개 밖의 선택지 id는 거부(6개 풀 전체가
+        # 아니라 오늘의 추첨된 3개만 유효). board()는 순수·멱등이라 여기서 다시
+        # 불러도 상태를 바꾸지 않는다.
+        exposed_ids = {c["id"] for c in run.board()["scenario"]["choices"]}
+        if body.choice_id not in exposed_ids:
+            raise HTTPException(
+                status_code=400,
+                detail=f"choice {body.choice_id!r} not exposed today",
+            )
     try:
         run.choose(body.choice_id)
     except (ValueError, RuntimeError) as e:

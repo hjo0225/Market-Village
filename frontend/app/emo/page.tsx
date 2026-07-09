@@ -14,6 +14,25 @@ import DiagnosisReport from "@/components/DiagnosisReport";
 import MapBackground, { MapBackgroundHandle } from "@/components/MapBackground";
 import PixelPanel from "@/components/pixel/PixelPanel";
 import PixelButton from "@/components/pixel/PixelButton";
+import StoryScene, { StoryCut } from "@/components/StoryScene";
+import DailyPlan from "@/components/DailyPlan";
+import { PlanView } from "@/lib/emoApi";
+
+// §3.1/§3.2/§3.3 — 정적 스토리 씬 스크립트(원문 그대로, LLM 호출 없음·I5).
+const PROLOGUE_CUTS: StoryCut[] = [
+  { bg: "dark", lines: ["어떤 판단은, 내가 한 게 아니라 내 기분이 한 것이었다."] },
+  { lines: ["마켓 빌리지. 주민 전원이 코인을 하는 작은 마을.", "이곳에 당신을 닮은 클론이 이사를 온다."] },
+  { lines: ["클론은 당신의 습관대로 기뻐하고, 당신의 습관대로 흔들린다.", "그러니 먼저 — 당신이 어떤 사람인지 알려주세요."] },
+];
+const BRIDGE_CUTS = (cloneName: string): StoryCut[] => [
+  { lines: [`……여기가 마켓 빌리지구나. 이삿짐이라곤 지갑 하나.`], speaker: cloneName },
+  { lines: ["마을 사람들은 전부 코인을 한다. 단톡방은 하루 종일 울린다.", "카페의 동수, 광장의 재훈, 펍 구석의 만식…… 곧 다 알게 된다."] },
+  { lines: ["당신이 해줄 일은 하나. 클론의 하루를 짜주는 것.", "어디서 시간을 보내는지가, 마음을 만든다. 마음이, 지갑을 지킨다."] },
+  { lines: ["그럼 — 첫째 날."] },
+];
+const ENDING_PRE_CUT: StoryCut[] = [
+  { lines: ["열흘 남짓, 클론의 계절이 끝났다. 이제 거울을 볼 시간."] },
+];
 
 // T-30 · 초기 배분 UX — 슬라이더 대신 높음/중간/낮음(가중치). 백엔드가 합으로
 // 정규화하므로 상대 가중치만 보내면 된다(low1·med2·high3).
@@ -71,6 +90,18 @@ export default function EmoPage() {
   const boardPickRef = useRef<((id: string) => void) | null>(null);
   const day = state?.day ?? -1;
 
+  // §3 — 스토리 씬 게이트. "prologue"=이름→진단 사이, "bridge"=배분 완료→Day0 시작
+  // 사이, "endingPre"=엔딩 텍스트 앞 1컷. null이면 씬 없음(평시).
+  const [storyScene, setStoryScene] = useState<"prologue" | "bridge" | "endingPre" | null>(null);
+  const [endingCutDone, setEndingCutDone] = useState(false);   // §3.3 — 엔딩 1컷은 1회만
+  const pendingStartRef = useRef<EmoState | null>(null);   // bridge 씬 종료 후 진입할 state
+
+  // §2.3 — 「오늘의 일과」 편성 화면. GET /plan이 404(백엔드 미배포)거나 이미
+  // locked면 조용히 자동 편성(기존 루트, I6)으로 폴백.
+  const [planView, setPlanView] = useState<PlanView | null>(null);
+  const planGateRef = useRef<(() => void) | null>(null);
+  const [planBusy, setPlanBusy] = useState(false);
+
   const setRun = useCallback((s: EmoState) => { stateRef.current = s; setState(s); }, []);
 
   // T-22/A — 하루 일과: 클론이 시간대별로 걷고, 그 도중 만남·게시판이 등장한다.
@@ -79,11 +110,26 @@ export default function EmoPage() {
   // (사용자: "선택 후 남은 하루를 걷고" — 선택=하루 끝이 아니라 하루 중 반응.)
   useEffect(() => {
     if (day < 0) return;
-    const s = stateRef.current;
+    let s = stateRef.current;
     if (!s || s.is_over) { setBoard(null); setChain(null); return; }
     let cancelled = false;
     (async () => {
       setBoard(null); setChain(null); setDilemma(null);
+      // §2.3 — 하루 시작 시 「오늘의 일과」 편성 게이트. GET /plan이 성공하고
+      // 잠기지 않았으면 편성 화면을 띄우고 확정(POST)/자동편성(스킵)을 기다린다.
+      // 404 등으로 null이면 조용히 건너뛰어 기존 자동 루트로(I6).
+      const pv = await api.getPlan(s.game_id);
+      if (cancelled) return;
+      if (pv && !pv.locked) {
+        setPlanView(pv);
+        await new Promise<void>((resolve) => { planGateRef.current = resolve; });
+        planGateRef.current = null;
+        setPlanView(null);
+        // confirmPlan이 POST 성공 시 stateRef를 새 band_places로 갱신했을 수 있어
+        // 재확보(장소 딜레마 판단이 최신 편성을 봐야 함).
+        s = stateRef.current ?? s;
+      }
+      if (cancelled) return;
       // T-30c — 하루 시작에 캐시아웃 딜레마(발동 조건 충족 시 1회). 날짜는 안 넘어감.
       if (s.has_cashout_dilemma) {
         const dil = await api.getDilemma(s.game_id);
@@ -159,6 +205,7 @@ export default function EmoPage() {
           prevHoldings: prev.holdings, nextHoldings: ns.holdings,   // T-38 — 카테고리별 변화
           choiceLabel: pickedLabel,
           market: ns.last_market,
+          settlement: ns.settlement,   // §5.1 — 있으면 DayReport가 cascade 단계 추가(I6: 없으면 폴백)
         });
       }
     })();
@@ -208,6 +255,8 @@ export default function EmoPage() {
     }
   }, [state?.is_over, state?.game_id, report]);
 
+  // §3.2 — 자산 배분 완료(POST /start 성공) → 브릿지 씬 → Day 0 시작. 씬 종료
+  // (건너뛰기 포함) 시 pendingStartRef의 state로 진입(bridgeDone이 처리).
   const start = async () => {
     setBusy(true); setError(null);
     const seed = Math.floor(Math.random() * 100000);
@@ -215,9 +264,15 @@ export default function EmoPage() {
     const weights: Record<string, number> = {};
     CATEGORIES.forEach((c) => { weights[c] = LEVEL_WEIGHT[levels[c]]; });
     const s = await api.startEmo(answers, seed, 20, weights, name.trim());   // T-48f — 20일(표본 견고화)
-    if (s) setRun(s);
+    if (s) { pendingStartRef.current = s; setStoryScene("bridge"); }
     else setError("게임을 시작하지 못했어요. 잠시 후 다시 시도해 주세요.");
     setBusy(false);
+  };
+  const bridgeDone = () => {
+    setStoryScene(null);
+    const s = pendingStartRef.current;
+    pendingStartRef.current = null;
+    if (s) setRun(s);
   };
 
   // 만남(체인) 응답 — 걷기 도중. day 불변이라 일과 시퀀스 재실행 안 함.
@@ -268,8 +323,29 @@ export default function EmoPage() {
     if (ns) setRun(ns);
   };
 
+  // §2.3 — 「오늘의 일과」 확정: POST /plan → 성공하면 상태 갱신 후 걷기 시퀀스로
+  // 진입(게이트 해제). 실패해도 게이트는 풀어 자동 루트로 이어간다(I6 폴백).
+  const confirmPlan = async (assignment: Record<string, string>) => {
+    const s = stateRef.current; if (!s) return;
+    setPlanBusy(true); setError(null);
+    const ns = await api.submitPlan(s.game_id, assignment);
+    setPlanBusy(false);
+    if (ns) setRun(ns);
+    else setError("일과 편성에 실패했어요. 자동 편성으로 진행할게요.");
+    planGateRef.current?.();
+  };
+  // "자동 편성" 스킵 — 플랜 미제출, 기존 자동 루트 유지(I6).
+  const skipPlan = () => { planGateRef.current?.(); };
+
+  // §3.1 — 이름 입력(step 0) → 설문(step 1) 사이 프롤로그. 이름을 확정하면 씬을
+  // 먼저 보여주고, 씬이 끝나면(건너뛰기 포함) step 1로 진입.
+  const toDiagnosis = () => setStoryScene("prologue");
+  const prologueDone = () => { setStoryScene(null); setStep(1); };
+
   // ---------- 온보딩 위저드(T-29: 한 화면 한 목적 — 이름 → 진단 → 배분) ----------
   if (!state) {
+    if (storyScene === "prologue") return <StoryScene cuts={PROLOGUE_CUTS} onDone={prologueDone} />;
+    if (storyScene === "bridge") return <StoryScene cuts={BRIDGE_CUTS(name.trim() || "클론")} onDone={bridgeDone} />;
     const diagnosisReady = QUESTIONS.every((q) => q.key in answers);
     const totalW = CATEGORIES.reduce((s, c) => s + LEVEL_WEIGHT[levels[c]], 0);
     const STEP_TITLE = ["이사 온 날", "투자 성향 진단", "초기 자산 배분"];
@@ -296,7 +372,7 @@ export default function EmoPage() {
                 autoFocus
                 className="w-full px-3 py-2.5 text-[14px] rounded-lg border-2 border-black/15 bg-white focus:border-black/40 outline-none"
                 onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") setStep(1); }}
+                onKeyDown={(e) => { if (e.key === "Enter") toDiagnosis(); }}
               />
             </div>
           )}
@@ -369,7 +445,7 @@ export default function EmoPage() {
               <PixelButton
                 size="lg" className="flex-1"
                 disabled={step === 1 && !diagnosisReady}
-                onClick={() => setStep((s) => s + 1)}
+                onClick={() => (step === 0 ? toDiagnosis() : setStep((s) => s + 1))}
               >
                 다음 →
               </PixelButton>
@@ -386,6 +462,10 @@ export default function EmoPage() {
 
   // ---------- 엔딩 ----------
   if (state.is_over && state.ending) {
+    // §3.3 — 엔딩 텍스트 앞 짧은 1컷("열흘 남짓…"). 1회만 보여주고 넘어간다.
+    if (!endingCutDone) {
+      return <StoryScene cuts={ENDING_PRE_CUT} onDone={() => setEndingCutDone(true)} />;
+    }
     const e = state.ending;
     return (
       <main className="min-h-screen bg-pixel-path flex items-start justify-center p-4 overflow-y-auto">
@@ -404,7 +484,7 @@ export default function EmoPage() {
           {/* T-47e — 진단 리포트(선언 vs 실제 편향) */}
           <DiagnosisReport report={report} />
 
-          <PixelButton size="lg" className="w-full mt-6" onClick={() => { setState(null); setAnswers({}); setReport(null); setStep(0); }}>
+          <PixelButton size="lg" className="w-full mt-6" onClick={() => { setState(null); setAnswers({}); setReport(null); setStep(0); setEndingCutDone(false); setStoryScene(null); }}>
             다시 시작
           </PixelButton>
         </PixelPanel>
@@ -536,6 +616,18 @@ export default function EmoPage() {
 
       {/* T-33/T-34 — 취침 암전 + 하루 정산 리포트 */}
       {dayReport && <DayReport data={dayReport} onNext={advanceDay} />}
+
+      {/* §2.3 — 「오늘의 일과」 편성(하루 시작 게이트). 확정 → POST /plan → 기존
+          4밴드 걷기 시퀀스 시작. "자동 편성" → 플랜 미제출, 기존 자동 루트(I6). */}
+      {planView && (
+        <DailyPlan
+          plan={planView}
+          cloneName={state.clone_name}
+          onConfirm={confirmPlan}
+          onSkip={skipPlan}
+          busy={planBusy}
+        />
+      )}
     </main>
   );
 }

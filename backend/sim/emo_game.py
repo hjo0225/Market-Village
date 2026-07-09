@@ -20,10 +20,11 @@ from dataclasses import dataclass, field
 
 from . import avoidance, board_exposure, chain, companion
 from . import ending as _ending
+from . import place_effects as _place_effects
 from . import scenario as _scenario
 from .disposition import BIAS_AXES, build_initial_emotion_v2, diagnose
 from .fate_line import CATEGORIES
-from .personas import npc_scheds
+from .personas import TRADER_PERSONAS, npc_scheds
 from .player_emotion.deltas import apply_delta, decay_toward_equilibrium
 from .player_emotion.log import EmotionLog, record_snapshot
 from .player_emotion.state import PlayerEmotionState
@@ -120,6 +121,12 @@ def _default_route(n: int, seed: int = 0) -> list[str]:
     return [cycle[i % len(cycle)] for i in range(n)]
 
 
+def _emotion_to_dict(e: PlayerEmotionState) -> dict[str, float]:
+    """§5.1 settlement 직렬화용 — 감정 상태를 5축 dict로."""
+    return {"fear": e.fear, "greed": e.greed, "anxiety": e.anxiety,
+            "restlessness": e.restlessness, "composure": e.composure}
+
+
 @dataclass
 class EmoGameRun:
     emotion: PlayerEmotionState
@@ -152,6 +159,10 @@ class EmoGameRun:
     bias_tally: dict[str, dict[str, int]] = field(default_factory=dict)
     # T-47f — 엔딩 리포트 서술(LLM or 결정론). 게임당 1회 생성 후 캐시(과금 상한·멱등).
     report_narrative: list[str] | None = None
+    # §2.2 — 오늘의 일과 편성(플랜). {"오전":장소,"오후":장소,"저녁":장소} or None(미제출).
+    day_plan: dict[str, str] | None = None
+    plan_locked_day: int | None = None   # 플랜을 잠근 날짜(하루 1회 제출 가드, I4)
+    last_settlement: dict | None = None   # §5.1 — 마지막 choose() 정산 캐스케이드(1회성, state에 유지)
 
     # --- 생성 ------------------------------------------------------------- #
     @classmethod
@@ -218,11 +229,15 @@ class EmoGameRun:
         return self.log
 
     def board(self) -> dict:
-        """현재 날의 게시판(표시용, 멱등). 감정/상태를 변이하지 않는다."""
+        """현재 날의 게시판(표시용, 멱등). 감정/상태를 변이하지 않는다.
+
+        §4.2 — scenario.choices는 6개 풀에서 (seed, day, event_id)로 결정론
+        추첨한 3개(방어/관망/공격 1개씩)만 노출한다(I2/I4)."""
         if self.is_over:
             raise RuntimeError("game is over")
         return board_exposure.render_board(
-            self.events[self.day], _day_rng(self.seed, self.day)
+            self.events[self.day], _day_rng(self.seed, self.day),
+            seed=self.seed, day=self.day,
         )
 
     # --- 진행 ------------------------------------------------------------- #
@@ -260,13 +275,20 @@ class EmoGameRun:
         오늘의 장소(P) → 저녁 다른 곳(c)으로 돌려 이동을 짧게 쪼갠다. **오후(슬롯
         5·6)는 반드시 오늘의 장소 P** — 동행이 거기서 만나므로(_emo_meetings 오후
         밴드). a·c는 P가 아닌 곳에서 날짜 결정론으로 뽑는다(같은 날 재생 가능).
-        구 GameRun.schedule과 같은 형태({슬롯:장소})라 좌표 기계가 그대로 소비한다."""
+        구 GameRun.schedule과 같은 형태({슬롯:장소})라 좌표 기계가 그대로 소비한다.
+
+        §2.2 — 오늘 플랜이 잠겨 있으면(day_plan/plan_locked_day==day) 오전(슬롯2)·
+        저녁(슬롯7)을 플랜의 장소로 교체한다. 점심(슬롯4=게시판 강제노출)·오후(슬롯
+        5·6=동행 만남)는 플랜과 무관하게 불변(I6 — 기존 동행·게시판 로직 보호)."""
         place = self.clone_route[self.day] if self.day < len(self.clone_route) else "집_차트"
         others = [p for p in _ROUTE_CYCLE if p != place] or [place]
         a = others[self.day % len(others)]
         c = others[(self.day + 2) % len(others)]
         # T-50c — 낮 방문 3~4곳 가변(짝수날=4: 오전에 b 한 곳 더, 홀수날=3). 오후(5·6)=P 불변.
         b = others[(self.day + 4) % len(others)] if self.day % 2 == 0 else a
+        if self.day_plan is not None and self.plan_locked_day == self.day:
+            a = self.day_plan.get("오전", a)
+            c = self.day_plan.get("저녁", c)
         return {1: "집_차트", 2: a, 3: b, 4: place,
                 5: place, 6: place, 7: c, 8: "집_차트"}
 
@@ -363,34 +385,113 @@ class EmoGameRun:
         return out
 
     def choose(self, choice_id: str) -> None:
-        """하루 결산: 시장 실현(진입 배분) → 감정 델타+스냅샷 → 매매행동으로 배분
+        """하루 결산: 시장 실현(진입 배분) → 선택 감정델타 → 플랜 장소 효과 →
+        (그날 체인이 있었으면 이미 반영된) → 밤 감쇠 → 매매행동으로 배분
         리밸런싱 → 다음 날 진입.
 
         재산은 행동의 결과다: 오늘 시장 이동은 '어제 정한 배분'만큼 각 카테고리에
         맞고, 오늘 선택의 매매(손절=현금↑, 추격=위험자산↑)는 '다음 날' 이동에
-        반영된다. 손절 후 반등을 놓치고, 버티면 반등을 타는 행동적 인과가 생긴다."""
+        반영된다. 손절 후 반등을 놓치고, 버티면 반등을 타는 행동적 인과가 생긴다.
+
+        §5.1 — last_settlement에 「선택 → 수익률 → 감정」 캐스케이드를 기록한다.
+        I1: market/portfolio는 오늘의 선택과 무관(cat_returns 그대로) — 선택은
+        rebalance(다음 날 노출)에만 반영된다.
+
+        노출-풀 검증(§4.2 "노출 안 된 id로 choose 시 400")은 HTTP 레이어
+        (emo_api.choose)에서 board()의 오늘자 3개 노출과 비교해 수행한다 — 엔진
+        메서드 자체는 6개 풀 전체에서 조회 가능해야 기존 엔진 레벨 테스트(I6,
+        board() GET 없이 임의 seed/day로 직접 choose 호출)가 계속 통과한다."""
         if self.is_over:
             raise RuntimeError("game is over")
         event_id = self.events[self.day]
-        choice = _scenario.get_choice(event_id, choice_id)   # 검증 먼저(변이 전)
+        choice = _scenario.get_choice(event_id, choice_id)   # 검증 먼저(변이 전, 6개 풀 전체)
         self._record_bias(_scenario.get_scenario(event_id)["choices"], choice, "scenario")
 
-        # 1) 오늘 시장 실현: 진입 시점 보유액에 카테고리별 수익률.
+        day_for_settlement = self.day
+        emotion_before = self.emotion
+
+        # 1) 오늘 시장 실현: 진입 시점 보유액에 카테고리별 수익률(I1 — cat_returns 불가침).
         #    T-35 — 그날 카테고리별 수익률(%)을 기록해 저녁 리포트에서 '오늘의 장'으로.
         self.last_market = {}
+        portfolio_before = self.portfolio_value
+        market_steps = []
         for cat in CATEGORIES:
             series = self.cat_returns.get(cat, [])
             ret = series[self.day] if self.day < len(series) else 0.0
             self.last_market[cat] = round(ret * 100, 2)
-            self.holdings[cat] = round(self.holdings.get(cat, 0.0) * (1.0 + ret), 2)
+            before = self.holdings.get(cat, 0.0)
+            after = round(before * (1.0 + ret), 2)
+            self.holdings[cat] = after
+            market_steps.append({
+                "category": cat, "pct": round(ret * 100, 2),
+                "before": before, "after": after,
+            })
+        portfolio_after_market = self.portfolio_value
 
-        self.emotion = apply_delta(self.emotion, choice["deltas"])
+        # 2) 감정 캐스케이드: 선택 → (플랜 장소) → (체인은 낮에 이미 반영됨) → 밤 감쇠.
+        # 각 step의 deltas는 '실제 상태 변화량'(클램프 반영 후 차분)이라 클램핑으로
+        # 잘려도 emotion_before + Σsteps == emotion_after가 정확히 성립한다(스펙 §5.1).
+        emotion_steps: list[dict] = []
+
+        def _push_step(source: str, label: str, prev: PlayerEmotionState,
+                        nxt: PlayerEmotionState, extra: dict | None = None) -> None:
+            actual = {
+                axis: round(getattr(nxt, axis) - getattr(prev, axis), 4)
+                for axis in ("fear", "greed", "anxiety", "restlessness", "composure")
+            }
+            if any(v != 0 for v in actual.values()):
+                step = {"source": source, "label": label, "deltas": actual}
+                if extra:
+                    step.update(extra)
+                emotion_steps.append(step)
+
+        state = emotion_before
+        next_state = apply_delta(state, choice["deltas"])
+        _push_step("choice", "선택의 여파", state, next_state)
+        state = next_state
+
+        if self.day_plan is not None and self.plan_locked_day == self.day:
+            for band in _place_effects.PLAN_BANDS:
+                place = self.day_plan.get(band)
+                if place is None:
+                    continue
+                next_state = apply_delta(state, _place_effects.place_forecast(place))
+                _push_step("place", f"{place}에 다녀와서", state, next_state, {"place": place})
+                state = next_state
+
+        self.emotion = state
         self.log = record_snapshot(self.log, self.day, self.emotion)
 
-        # 2) 매매행동 → 배분 리밸런싱(다음 날 이동에 반영).
+        risk_share_before = self._risk_share()
+        # 3) 매매행동 → 배분 리밸런싱(다음 날 이동에 반영). I1 — 오늘의 선택은
+        #    market/portfolio가 아니라 '내일의 노출'(rebalance)에만 영향을 준다.
         self._rebalance(float(choice.get("position", 0.0)))
+        risk_share_after = self._risk_share()
+
+        state_before_decay = self.emotion
         self.day += 1
-        self._enter_day()
+        self._enter_day()   # is_over가 아니면 내부에서 decay_toward_equilibrium 적용
+        _push_step("decay", "하루가 저물며", state_before_decay, self.emotion)
+        emotion_after = self.emotion
+
+        self.last_settlement = {
+            "day": day_for_settlement,
+            "choice": {"id": choice["id"], "label": choice["label"],
+                       "position": float(choice.get("position", 0.0))},
+            "market": market_steps,
+            "portfolio": {
+                "before": portfolio_before, "after": portfolio_after_market,
+                "pnl_pct": (round((portfolio_after_market - portfolio_before) / portfolio_before * 100, 2)
+                            if portfolio_before else 0.0),
+            },
+            "rebalance": {
+                "risk_share_before": round(risk_share_before, 4),
+                "risk_share_after": round(risk_share_after, 4),
+            },
+            "emotion_steps": emotion_steps,
+            "emotion_before": _emotion_to_dict(emotion_before),
+            "emotion_after": _emotion_to_dict(emotion_after),
+        }
 
     # --- 캐시아웃 딜레마 (T-30c, #3-A) ----------------------------------- #
     def _risk_share(self) -> float:
@@ -480,6 +581,66 @@ class EmoGameRun:
         self.emotion = apply_delta(self.emotion, chosen.get("deltas", {}))
         self.place_dilemmas_done.append(key)
 
+    # --- 일과 편성 플랜 (§2.2) --------------------------------------------- #
+    def plan_locked(self) -> bool:
+        """오늘 플랜이 이미 제출·잠겼는지(I4 — 하루 1회 제출 가드)."""
+        return self.day_plan is not None and self.plan_locked_day == self.day
+
+    def _plan_band_npcs(self, band: str, place: str) -> list[dict]:
+        """그 밴드가 커버하는 슬롯(오전→슬롯2, 오후→슬롯5·6, 저녁→슬롯7)에 그
+        장소 일정이 있는 personas.py NPC 목록(npc_id/name/portrait)."""
+        slots = {"오전": (2,), "오후": (5, 6), "저녁": (7,)}.get(band, ())
+        out: list[dict] = []
+        seen: set[str] = set()
+        for p in TRADER_PERSONAS:
+            sched = p.get("sched", {})
+            if any(sched.get(s) == place for s in slots) and p["id"] not in seen:
+                seen.add(p["id"])
+                out.append({"npc_id": p["id"], "name": p["name"], "portrait": p["portrait"]})
+        return out
+
+    def plan_preview(self) -> dict:
+        """GET /plan 응답 본문(순수·멱등, I4) — 스펙 §2.2."""
+        board = self.board() if not self.is_over else None
+        fixed_label = board["scenario"]["text"] if board else ""
+        current_plan = dict(self.day_plan) if self.plan_locked() else None
+        bands = []
+        for band in _place_effects.PLAN_BANDS:
+            options = []
+            for place in _place_effects.PLAN_PLACES:
+                npcs = self._plan_band_npcs(band, place)
+                options.append({
+                    "place": place,
+                    "cost": _place_effects.place_cost(place),
+                    "forecast": _place_effects.place_forecast(place),
+                    "npcs": npcs,
+                    "badges": _place_effects.place_badges(place, npcs),
+                    "flavor": _place_effects.PLACE_FLAVOR.get(place, ""),
+                })
+            bands.append({"band": band, "options": options})
+        return {
+            "day": self.day,
+            "budget": _place_effects.PLAN_BUDGET,
+            "locked": self.plan_locked(),
+            "current_plan": current_plan,
+            "fixed": {"점심": {"kind": "board", "label": "단톡방 확인", "text": fixed_label}},
+            "bands": bands,
+        }
+
+    def submit_plan(self, plan: dict[str, str]) -> None:
+        """POST /plan — 플랜 검증·잠금·오늘 band_places(day_schedule) 반영.
+
+        검증 실패는 ValueError(→ 400), 이미 잠겼거나 게임 종료면 RuntimeError
+        (→ 409)."""
+        if self.is_over:
+            raise RuntimeError("game is over")
+        if self.plan_locked():
+            raise RuntimeError("plan already submitted for today")
+        _place_effects.validate_plan(plan)   # ValueError → 400(호출자)
+        self.day_plan = {b: plan[b] for b in _place_effects.PLAN_BANDS}
+        self.plan_locked_day = self.day
+        self._resolve_companion()   # a/c 변경은 companion에 영향 없음(오후=P 불변)이지만 명시적으로 재확정
+
     # --- 종료 ------------------------------------------------------------- #
     def ending_inputs(self) -> dict:
         """엔딩 분기 입력(T-13): 감정 압축판정 + 재산 수준 + 특수이벤트 누적."""
@@ -527,6 +688,9 @@ class EmoGameRun:
             "choice_history": self.choice_history,
             "bias_tally": self.bias_tally,
             "report_narrative": self.report_narrative,   # T-47f — 캐시된 리포트 서술
+            "day_plan": self.day_plan,                    # §2.2
+            "plan_locked_day": self.plan_locked_day,      # §2.2
+            "last_settlement": self.last_settlement,      # §5.1
 
             "log": [
                 {"turn": s.turn, "emotion": {
@@ -580,4 +744,7 @@ class EmoGameRun:
             choice_history=list(doc.get("choice_history") or []),
             bias_tally={k: dict(v) for k, v in (doc.get("bias_tally") or {}).items()},
             report_narrative=doc.get("report_narrative"),   # T-47f
+            day_plan=doc.get("day_plan"),                    # §2.2 — 구 doc엔 없음(None)
+            plan_locked_day=doc.get("plan_locked_day"),       # §2.2
+            last_settlement=doc.get("last_settlement"),       # §5.1
         )

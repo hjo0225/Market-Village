@@ -32,17 +32,23 @@ def render_board(
     event_id: str,
     rng: random.Random,
     drawn_news: list[dict] | None = None,
+    *,
+    seed: int | None = None,
+    day: int | None = None,
 ) -> dict:
     """순수 표시용 게시판(글+댓글+시나리오). 감정 상태를 변이하지 않는다.
 
     같은 (event_id, 같은 시드의 rng)면 항상 같은 결과 → GET 멱등·재생 가능
     (PLAN-READY 4d). 미지의 event_id면 ValueError.
-    """
+
+    seed·day를 주면(호출자=emo_game.board()) §4.2 3-of-6 풀 선택이 적용된
+    choices를 반환한다(get_scenario(event_id, seed, day)). 생략하면(레거시
+    호출부) 6개 전부(하위 호환)."""
     if event_id not in EVENT_CATEGORIES:
         raise ValueError(f"unknown board event_id: {event_id!r}")
     context = EVENT_TO_CONTEXT[event_id]
     conv = offline_conversation(context, {}, drawn_news or [], rng)
-    scenario = get_scenario(event_id)
+    scenario = get_scenario(event_id, seed, day)
     return {
         "event_id": event_id,
         "context": context,
