@@ -143,7 +143,8 @@ def test_plan_forecast_matches_actual_settlement_deltas():
     c.post(f"/emo/{gid}/plan", json={"plan": plan})
     board = c.get(f"/emo/{gid}/board").json()
     choice_id = board["scenario"]["choices"][0]["id"]
-    state = c.post(f"/emo/{gid}/choose", json={"choice_id": choice_id}).json()
+    state = c.post(f"/emo/{gid}/choose",
+                   json={"choice_id": choice_id, "coin_target": "meme"}).json()
     settlement = state["settlement"]
     place_steps = [s for s in settlement["emotion_steps"] if s["source"] == "place"]
     assert len(place_steps) == 3
@@ -167,7 +168,8 @@ def test_no_plan_submitted_keeps_legacy_auto_route():
     before = c.get(f"/emo/{gid}/state").json()
     board = c.get(f"/emo/{gid}/board").json()
     choice_id = board["scenario"]["choices"][0]["id"]
-    state = c.post(f"/emo/{gid}/choose", json={"choice_id": choice_id}).json()
+    state = c.post(f"/emo/{gid}/choose",
+                   json={"choice_id": choice_id, "coin_target": "meme"}).json()
     assert state["day"] == before["day"] + 1
     settlement = state["settlement"]
     # 플랜 미제출 → place 스텝이 없다(자동 루트, 장소 효과 미적용).
@@ -180,7 +182,8 @@ def test_plan_get_after_day_advances_shows_fresh_unlocked_plan():
     plan = {"오전": "카페", "오후": "마켓", "저녁": "집"}
     c.post(f"/emo/{gid}/plan", json={"plan": plan})
     board = c.get(f"/emo/{gid}/board").json()
-    c.post(f"/emo/{gid}/choose", json={"choice_id": board["scenario"]["choices"][0]["id"]})
+    c.post(f"/emo/{gid}/choose",
+           json={"choice_id": board["scenario"]["choices"][0]["id"], "coin_target": "meme"})
     got = c.get(f"/emo/{gid}/plan").json()
     assert got["day"] == 1
     assert got["locked"] is False

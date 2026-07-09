@@ -113,7 +113,8 @@ def test_plan_response_morning_advances_and_pins_eve_and_last_day():
             assert body["morning"]["text"] == "전야. 마을이 평소보다 다정하다."
         c.post(f"/emo/{gid}/plan", json={"plan": plan})
         board = c.get(f"/emo/{gid}/board").json()
-        c.post(f"/emo/{gid}/choose", json={"choice_id": board["scenario"]["choices"][0]["id"]})
+        c.post(f"/emo/{gid}/choose",
+               json={"choice_id": board["scenario"]["choices"][0]["id"], "coin_target": "meme"})
 
 
 # --- flavor 규칙: NPC-aware(§2) -------------------------------------------- #

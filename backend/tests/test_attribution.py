@@ -32,7 +32,7 @@ def _cat(returns):
 # --- day 0: attribution 생략 ------------------------------------------------ #
 def test_attribution_absent_on_day_zero():
     run = EmoGameRun.new(ANSWERS, ["market_crash"] * 3, _cat([-0.1, 0.05, 0.02]), seed=1)
-    run.choose("cut")
+    run.choose("sell", coin_target="meme")
     assert run.last_settlement["attribution"] is None
 
 
@@ -40,7 +40,9 @@ def test_attribution_absent_on_day_zero_via_api():
     c = _client()
     gid = c.post("/emo/start", json={"answers": ANSWERS, "seed": 1, "days": 3}).json()["game_id"]
     board = c.get(f"/emo/{gid}/board").json()
-    state = c.post(f"/emo/{gid}/choose", json={"choice_id": board["scenario"]["choices"][0]["id"]}).json()
+    state = c.post(f"/emo/{gid}/choose",
+                   json={"choice_id": board["scenario"]["choices"][0]["id"],
+                         "coin_target": "meme"}).json()
     assert state["settlement"]["attribution"] is None
 
 
@@ -48,24 +50,24 @@ def test_attribution_absent_on_day_zero_via_api():
 def test_counterfactual_holdings_saved_post_market_pre_rebalance():
     run = EmoGameRun.new(ANSWERS, ["market_crash"] * 2, _cat([-0.1, 0.05]), seed=1)
     even = 1_000_000 / 5
-    run.choose("cut")   # position -0.6(방어) → cut 이후 위험자산이 줄어든 holdings와는 달라야 함
-    # counterfactual = 시장 실현만 반영(각 카테고리 -10%), 리밸런스는 미반영.
+    run.choose("sell", coin_target="meme")   # position -0.5(방어) → 매도 후 holdings와는 달라야 함
+    # counterfactual = 시장 실현만 반영(각 카테고리 -10%), 매매는 미반영.
     expected = round(even * 0.9, 2)
     for cat in CATEGORIES:
         assert run.counterfactual_holdings[cat] == expected
-    assert run.counterfactual_holdings[CASH] == even   # cash는 시장 수익률 0, 리밸런스 전이라 불변
-    # 실제 holdings는 cut(손절)으로 위험자산 → 현금 이동이 반영돼 달라야 한다.
+    assert run.counterfactual_holdings[CASH] == even   # cash는 시장 수익률 0, 매매 전이라 불변
+    # 실제 holdings는 sell(매도)로 meme → 현금 이동이 반영돼 달라야 한다.
     assert run.holdings != run.counterfactual_holdings
 
 
 # --- 수학 검증 --------------------------------------------------------------- #
 def test_attribution_math_matches_hand_computation():
-    # day0: -10% 전 카테고리, cut(방어, position -0.6) → 위험자산 상당 부분이 현금화.
+    # day0: -10% 전 카테고리, sell(방어, position -0.5) → meme 일부가 현금화.
     # day1: +5% 반등 → 방어가 반등을 놓쳤어야 하므로 delta<0(counterfactual이 더 좋음).
     run = EmoGameRun.new(ANSWERS, ["market_crash"] * 3, _cat([-0.1, 0.05, 0.0]), seed=1)
-    run.choose("cut")
+    run.choose("sell", coin_target="meme")
     cf_snapshot = dict(run.counterfactual_holdings)
-    run.choose("cut")
+    run.choose("sell", coin_target="meme")
     attr = run.last_settlement["attribution"]
 
     cf_before = sum(cf_snapshot.values())
@@ -83,7 +85,7 @@ def test_attribution_math_matches_hand_computation():
 
 def test_attribution_delta_pct_equals_actual_minus_counterfactual():
     run = EmoGameRun.new(ANSWERS, ["market_crash"] * 3, _cat([-0.1, 0.05, 0.03]), seed=2)
-    run.choose("cut")
+    run.choose("sell", coin_target="meme")
     run.choose("hold")
     attr = run.last_settlement["attribution"]
     assert attr["delta_pct"] == round(attr["actual_pnl_pct"] - attr["counterfactual_pnl_pct"], 2)
@@ -91,18 +93,18 @@ def test_attribution_delta_pct_equals_actual_minus_counterfactual():
 
 def test_attribution_cause_choice_label_is_previous_days_choice():
     run = EmoGameRun.new(ANSWERS, ["market_crash"] * 3, _cat([-0.1, 0.05, 0.0]), seed=1)
-    run.choose("plan_check")   # "미리 정해둔 손절선만 확인하고 앱을 끈다"
-    run.choose("cut")
+    run.choose("hold")   # 급락 유지 라벨이 다음 날 원인 카드의 cause_choice_label
+    run.choose("sell", coin_target="meme")
     attr = run.last_settlement["attribution"]
-    assert attr["cause_choice_label"] == "미리 정해둔 손절선만 확인하고 앱을 끈다"
+    assert attr["cause_choice_label"] == "버틴다 — 평정을 붙잡고 계획대로"
 
 
 # --- 4종 정적 템플릿 ---------------------------------------------------------- #
 def test_attribution_text_defense_success_when_avoided_bigger_loss():
     # 방어(position<0) 후 시장이 더 빠졌다면(반사실이 더 나빴다면) "성공" 문구.
     run = EmoGameRun.new(ANSWERS, ["market_crash"] * 3, _cat([-0.05, -0.3, 0.0]), seed=1)
-    run.choose("cut")   # position -0.6
-    run.choose("cut")
+    run.choose("sell", coin_target="meme")   # position -0.5(방어)
+    run.choose("sell", coin_target="meme")
     attr = run.last_settlement["attribution"]
     assert attr["delta_pct"] >= 0
     assert "덕분에" in attr["text"]
@@ -112,8 +114,8 @@ def test_attribution_text_defense_success_when_avoided_bigger_loss():
 def test_attribution_text_defense_loss_when_missed_rebound():
     # 방어 후 시장이 반등했다면(반사실이 더 좋았다면) "손해" 문구.
     run = EmoGameRun.new(ANSWERS, ["market_crash"] * 3, _cat([-0.1, 0.2, 0.0]), seed=1)
-    run.choose("cut")   # position -0.6(방어)
-    run.choose("cut")
+    run.choose("sell", coin_target="meme")   # position -0.5(방어)
+    run.choose("sell", coin_target="meme")
     attr = run.last_settlement["attribution"]
     assert attr["delta_pct"] < 0
     assert "오히려" in attr["text"]
@@ -121,8 +123,8 @@ def test_attribution_text_defense_loss_when_missed_rebound():
 
 def test_attribution_text_aggressive_success_when_rally_continues():
     run = EmoGameRun.new(ANSWERS, ["market_surge"] * 3, _cat([0.1, 0.15, 0.0]), seed=1)
-    run.choose("all_in_reserve")   # position 0.6(공격)
-    run.choose("chase")
+    run.choose("buy", coin_target="meme")   # position 0.4(공격)
+    run.choose("buy", coin_target="meme")
     attr = run.last_settlement["attribution"]
     assert attr["delta_pct"] >= 0
     assert "더 태운 덕분에" in attr["text"]
@@ -130,8 +132,8 @@ def test_attribution_text_aggressive_success_when_rally_continues():
 
 def test_attribution_text_aggressive_loss_when_reversal_hits():
     run = EmoGameRun.new(ANSWERS, ["market_surge"] * 3, _cat([0.1, -0.2, 0.0]), seed=1)
-    run.choose("all_in_reserve")   # position 0.6(공격)
-    run.choose("chase")
+    run.choose("buy", coin_target="meme")   # position 0.4(공격)
+    run.choose("buy", coin_target="meme")
     attr = run.last_settlement["attribution"]
     assert attr["delta_pct"] < 0
     assert "더 물렸다" in attr["text"]
@@ -140,7 +142,7 @@ def test_attribution_text_aggressive_loss_when_reversal_hits():
 # --- 직렬화-복원 ------------------------------------------------------------- #
 def test_counterfactual_holdings_survive_serialization_roundtrip():
     run = EmoGameRun.new(ANSWERS, ["market_crash"] * 3, _cat([-0.1, 0.05, 0.0]), seed=1)
-    run.choose("cut")
+    run.choose("sell", coin_target="meme")
     doc = run.to_doc()
     assert doc["counterfactual_holdings"] == run.counterfactual_holdings
     assert doc["counterfactual_choice_label"] == run.counterfactual_choice_label
@@ -149,7 +151,7 @@ def test_counterfactual_holdings_survive_serialization_roundtrip():
     assert restored.counterfactual_choice_label == run.counterfactual_choice_label
     assert restored.counterfactual_choice_position == run.counterfactual_choice_position
     # 복원 후에도 다음날 attribution이 정상 계산돼야 한다.
-    restored.choose("cut")
+    restored.choose("sell", coin_target="meme")
     assert restored.last_settlement["attribution"] is not None
 
 
@@ -170,9 +172,12 @@ def test_attribution_present_in_settlement_via_api_after_day1():
     c = _client()
     gid = c.post("/emo/start", json={"answers": ANSWERS, "seed": 5, "days": 4}).json()["game_id"]
     board0 = c.get(f"/emo/{gid}/board").json()
-    c.post(f"/emo/{gid}/choose", json={"choice_id": board0["scenario"]["choices"][0]["id"]})
+    c.post(f"/emo/{gid}/choose",
+           json={"choice_id": board0["scenario"]["choices"][0]["id"], "coin_target": "meme"})
     board1 = c.get(f"/emo/{gid}/board").json()
-    state = c.post(f"/emo/{gid}/choose", json={"choice_id": board1["scenario"]["choices"][0]["id"]}).json()
+    state = c.post(f"/emo/{gid}/choose",
+                   json={"choice_id": board1["scenario"]["choices"][0]["id"],
+                         "coin_target": "meme"}).json()
     attr = state["settlement"]["attribution"]
     assert attr is not None
     assert set(attr) == {

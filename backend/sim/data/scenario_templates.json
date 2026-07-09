@@ -4,25 +4,19 @@
     "title": "급락",
     "text": "간밤에 시장이 무너졌다. {coin} 시세가 두 자릿수로 빠졌고, 커뮤니티는 패닉이다. 당신의 손은 어디로 향하는가?",
     "choices": [
-      {"id": "cut", "label": "지금 바로 손절한다", "deltas": {"fear": 8, "anxiety": 4, "composure": -4}, "position": -0.6, "bias_tags": ["panic"]},
-      {"id": "hold", "label": "버틴다 — 원래 계획대로", "deltas": {"fear": -6, "anxiety": -2, "composure": 6}, "position": 0.0, "bias_tags": ["loss"]},
-      {"id": "buy_dip", "label": "저가 매수 기회다, 더 담는다", "deltas": {"greed": 6, "anxiety": 5, "fear": 2, "composure": -4}, "position": 0.3, "bias_tags": ["over"]},
-      {"id": "plan_check", "label": "미리 정해둔 손절선만 확인하고 앱을 끈다", "deltas": {"composure": 5, "restlessness": -4, "fear": -2}, "position": -0.5, "bias_tags": ["disp"]},
-      {"id": "read_thread", "label": "단톡방 정독. 다들 뭐라는지 끝까지 읽는다", "deltas": {"anxiety": 5, "fear": 3, "restlessness": 2}, "position": 0.0, "bias_tags": ["panic"]},
-      {"id": "add_reserve", "label": "이 가격이면 오히려 기회다, 예비금 일부를 넣는다", "deltas": {"greed": 7, "fear": -3, "composure": -2}, "position": 0.4, "bias_tags": ["over"]}
+      {"id": "buy", "action": "buy", "label": "이 가격이면 기회다 — 탐욕에 이끌려 더 담는다", "consume_axis": "greed", "consume_fraction": 0.2, "position": 0.4, "bias_tags": ["over"]},
+      {"id": "sell", "action": "sell", "label": "더 빠지기 전에 — 공포에 밀려 던진다", "consume_axis": "fear", "consume_fraction": 0.5, "position": -0.5, "bias_tags": ["panic"]},
+      {"id": "hold", "action": "hold", "label": "버틴다 — 평정을 붙잡고 계획대로", "consume_axis": "composure", "consume_fraction": 0.1, "position": 0.0, "bias_tags": ["loss"]}
     ]
   },
   "market_surge": {
     "id": "market_surge",
     "title": "급등",
-    "text": "안 산 {coin} 시세가 하루에 40% 올랐다. 채팅방은 '지금이라도 타라'로 도배됐다. 막차인가, 함정인가?",
+    "text": "보유한 {coin} 시세가 하루에 40% 뛰었다. 채팅방은 '지금이라도 더 타라'로 도배됐다. 막차인가, 함정인가?",
     "choices": [
-      {"id": "chase", "label": "놓칠 수 없다", "deltas": {"greed": 7, "anxiety": 6, "restlessness": 5, "fear": 2, "composure": -6}, "position": 0.3, "bias_tags": ["fomo", "over"]},
-      {"id": "small", "label": "조금만 태워본다", "deltas": {"greed": 2, "anxiety": 2, "composure": 1}, "position": 0.1},
-      {"id": "watch", "label": "관망한다", "deltas": {"greed": -6, "restlessness": -4, "composure": 6}, "position": -0.2},
-      {"id": "close_app", "label": "앱을 닫고 원래 하려던 일을 한다", "deltas": {"composure": 6, "greed": -3, "restlessness": -3}, "position": -0.3, "bias_tags": ["disp"]},
-      {"id": "screenshot_regret", "label": "차트 캡처만 해두고 아쉬움을 곱씹는다", "deltas": {"anxiety": 4, "greed": 3, "restlessness": 3}, "position": 0.1, "bias_tags": ["fomo"]},
-      {"id": "all_in_reserve", "label": "이번엔 확실하다, 예비금까지 태운다", "deltas": {"greed": 9, "restlessness": 4, "fear": 3, "composure": -7}, "position": 0.6, "bias_tags": ["fomo", "over"]}
+      {"id": "buy", "action": "buy", "label": "놓칠 수 없다 — 탐욕에 이끌려 더 태운다", "consume_axis": "greed", "consume_fraction": 0.2, "position": 0.4, "bias_tags": ["fomo"]},
+      {"id": "sell", "action": "sell", "label": "반납하기 전에 — 오른 김에 익절한다", "consume_axis": "fear", "consume_fraction": 0.5, "position": -0.5, "bias_tags": ["disp"]},
+      {"id": "hold", "action": "hold", "label": "흔들리지 않는다 — 평정을 붙잡고 계속 간다", "consume_axis": "composure", "consume_fraction": 0.1, "position": 0.0}
     ]
   },
   "rumor_spread": {
@@ -30,12 +24,9 @@
     "title": "루머",
     "text": "출처 불명의 상장폐지설이 돈다. 확인된 건 없지만 가격은 이미 흔들리기 시작했다.",
     "choices": [
-      {"id": "panic_sell", "label": "일단 팔고 본다", "deltas": {"fear": 6, "anxiety": 8, "composure": -5}, "position": -0.6, "bias_tags": ["panic"]},
-      {"id": "verify", "label": "공식 발표부터 확인한다", "deltas": {"anxiety": -8, "fear": -2, "composure": 6}, "position": 0.0},
-      {"id": "ignore", "label": "무시한다", "deltas": {"anxiety": 2, "restlessness": 2, "composure": 2}, "position": 0.0, "bias_tags": ["loss"]},
-      {"id": "partial_exit", "label": "정해둔 비중만큼만 미리 덜어낸다", "deltas": {"composure": 5, "anxiety": -3, "fear": -1}, "position": -0.3, "bias_tags": ["disp"]},
-      {"id": "scroll_endless", "label": "댓글창을 끝까지 내려본다, 다들 뭐라는지 끝까지 읽는다", "deltas": {"anxiety": 6, "fear": 3, "greed": 2}, "position": 0.25, "bias_tags": ["panic"]},
-      {"id": "buy_the_fear", "label": "루머로 빠진 값이면 싸다, 담는다", "deltas": {"greed": 6, "anxiety": 3, "fear": -2}, "position": 0.3, "bias_tags": ["over"]}
+      {"id": "buy", "action": "buy", "label": "루머로 빠졌으면 싸다 — 탐욕에 이끌려 담는다", "consume_axis": "greed", "consume_fraction": 0.2, "position": 0.4, "bias_tags": ["over"]},
+      {"id": "sell", "action": "sell", "label": "일단 판다 — 공포에 밀려 던진다", "consume_axis": "fear", "consume_fraction": 0.5, "position": -0.5, "bias_tags": ["panic"]},
+      {"id": "hold", "action": "hold", "label": "확인 전엔 안 움직인다 — 평정을 붙잡고 버틴다", "consume_axis": "composure", "consume_fraction": 0.1, "position": 0.0, "bias_tags": ["loss"]}
     ]
   },
   "market_volatile": {
@@ -43,12 +34,9 @@
     "title": "변동성 폭발",
     "text": "{coin} 시세가 위아래로 10%씩 출렁인다. 잔고가 분 단위로 널을 뛴다. 시세창에서 눈을 뗄 수가 없다.",
     "choices": [
-      {"id": "day_trade", "label": "단타로 대응한다", "deltas": {"restlessness": 9, "anxiety": 6, "greed": 3, "composure": -5}, "position": 0.1, "bias_tags": ["over"]},
-      {"id": "step_away", "label": "창을 끄고 자리를 뜬다", "deltas": {"restlessness": -10, "anxiety": -4, "composure": 6}, "position": -0.3},
-      {"id": "stare", "label": "계속 지켜본다", "deltas": {"restlessness": 4, "anxiety": 2, "composure": -2}, "position": 0.0},
-      {"id": "fixed_schedule", "label": "정해둔 시간에만 확인하기로 한다", "deltas": {"composure": 6, "restlessness": -5, "anxiety": -2}, "position": -0.2, "bias_tags": ["disp"]},
-      {"id": "count_swings", "label": "위아래 폭을 손가락으로 세어보며 타이밍을 잰다", "deltas": {"restlessness": 6, "anxiety": 3, "greed": 2}, "position": 0.25, "bias_tags": ["over"]},
-      {"id": "ride_the_wave", "label": "출렁이는 만큼 물타기로 맞춰간다", "deltas": {"greed": 5, "restlessness": 5, "composure": -4}, "position": 0.4, "bias_tags": ["over"]}
+      {"id": "buy", "action": "buy", "label": "출렁일 때 물타기 — 탐욕에 이끌려 맞춰간다", "consume_axis": "greed", "consume_fraction": 0.2, "position": 0.4, "bias_tags": ["over"]},
+      {"id": "sell", "action": "sell", "label": "못 견디겠다 — 공포에 밀려 정리한다", "consume_axis": "fear", "consume_fraction": 0.5, "position": -0.5, "bias_tags": ["panic"]},
+      {"id": "hold", "action": "hold", "label": "정해둔 대로만 — 평정을 붙잡고 안 흔들린다", "consume_axis": "composure", "consume_fraction": 0.1, "position": 0.0}
     ]
   }
 }

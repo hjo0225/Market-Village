@@ -59,8 +59,8 @@ def test_restart_falls_back_to_db(monkeypatch):
 def test_every_turn_snapshot_persists():
     # 매 턴 저장 → 스냅샷 누적이 보존됨.
     r = _run()
-    for cid in ["hold", "watch", "step_away"]:
-        r.choose(cid)
+    for _ in range(3):
+        r.choose("hold")   # 3일 유지로 진행(매 턴 스냅샷 1개)
         emo_store.save_run("g3", r)
     loaded = emo_store.load_run("g3")
     assert len(loaded.emotion_log.snapshots) == 3

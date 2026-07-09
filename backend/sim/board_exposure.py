@@ -102,9 +102,12 @@ def build_board_exposure(
 def apply_choice(
     emotion_state: PlayerEmotionState, event_id: str, choice_id: str
 ) -> PlayerEmotionState:
-    """시나리오 선택지의 결과 델타를 플레이어 상태에 적용한다(클램핑 포함).
+    """⚠️ T-53 이후 사용 안 함(orphaned·dead). 게시판 선택지가 고정 `deltas`에서
+    감정 '소모' 3액션으로 바뀌어 이 함수의 `ch["deltas"]`는 KeyError를 낸다.
+    현재는 `EmoGameRun.choose`(consume_axis + per-코인 매매)가 그 역할을 한다.
+    호출부 0(전수조사 확인) — 원칙3(죽은 코드 지우지 말고 언급)로 마커만 남긴다.
 
-    미지의 event_id/choice_id면 ValueError.
+    (원래) 시나리오 선택지의 결과 델타를 플레이어 상태에 적용. 미지 id면 ValueError.
     """
     scenario = get_scenario(event_id)
     for ch in scenario["choices"]:

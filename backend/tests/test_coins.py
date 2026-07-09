@@ -121,7 +121,7 @@ def test_ticker_day0_before_any_settlement_is_flat_index_100():
 def test_ticker_reflects_only_settled_days_no_future_leak():
     returns = _cat([0.1, 0.2, 0.3, 0.4, 0.5])   # 카테고리 모두 동일 시리즈(단순화)
     run = EmoGameRun.new(ANSWERS, ["market_crash"] * 5, returns, seed=1)
-    run.choose("cut")   # day0 정산 → day1 진입
+    run.choose("sell", coin_target="meme")   # day0 정산 → day1 진입
     for t in run.ticker():
         assert abs(t["index"] - 110.0) < 1e-6   # 100 * 1.1 (day0만 반영)
         assert abs(t["day_pct"] - 10.0) < 1e-6
@@ -137,8 +137,8 @@ def test_ticker_index_is_cumulative_product_matching_cat_returns():
         "stable": [0.0, 0.0, 0.0],
     }
     run = EmoGameRun.new(ANSWERS, ["market_crash"] * 3, returns, seed=1)
-    run.choose("cut")   # day0 정산
-    run.choose("cut")   # day1 정산
+    run.choose("sell", coin_target="meme")   # day0 정산
+    run.choose("sell", coin_target="meme")   # day1 정산
     expected_large = 100 * 1.1 * 0.9
     expected_meme = 100 * 1.2 * 1.2
     by_cat = {t["category"]: t for t in run.ticker()}
@@ -150,8 +150,8 @@ def test_ticker_deterministic_same_seed_same_day():
     returns = _cat([0.05, -0.03, 0.02])
     run_a = EmoGameRun.new(ANSWERS, ["market_crash"] * 3, returns, seed=42)
     run_b = EmoGameRun.new(ANSWERS, ["market_crash"] * 3, returns, seed=42)
-    run_a.choose("cut")
-    run_b.choose("cut")
+    run_a.choose("sell", coin_target="meme")
+    run_b.choose("sell", coin_target="meme")
     assert run_a.ticker() == run_b.ticker()
 
 

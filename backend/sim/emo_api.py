@@ -115,6 +115,7 @@ class StartBody(BaseModel):
 
 class ChoiceBody(BaseModel):
     choice_id: str
+    coin_target: str | None = None   # T-53 (F4) — 매수/매도 대상 코인(카테고리). 유지는 무시.
 
 
 class DesignateBody(BaseModel):
@@ -258,7 +259,7 @@ def choose(game_id: str, body: ChoiceBody) -> dict:
                 detail=f"choice {body.choice_id!r} not exposed today",
             )
     try:
-        run.choose(body.choice_id)
+        run.choose(body.choice_id, body.coin_target)
     except (ValueError, RuntimeError) as e:
         raise HTTPException(status_code=400, detail=str(e))
     emo_store.save_run(game_id, run)

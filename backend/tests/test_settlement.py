@@ -35,8 +35,9 @@ def test_emotion_before_plus_steps_equals_emotion_after_via_api():
     gid = c.post("/emo/start", json={"answers": ANSWERS, "seed": 5, "days": 6}).json()["game_id"]
     for _ in range(4):
         board = c.get(f"/emo/{gid}/board").json()
-        choice_id = board["scenario"]["choices"][0]["id"]
-        state = c.post(f"/emo/{gid}/choose", json={"choice_id": choice_id}).json()
+        choice_id = board["scenario"]["choices"][0]["id"]   # 매도(방어) — coin_target 필요
+        state = c.post(f"/emo/{gid}/choose",
+                       json={"choice_id": choice_id, "coin_target": "meme"}).json()
         settlement = state["settlement"]
         before = settlement["emotion_before"]
         after = settlement["emotion_after"]
@@ -59,7 +60,7 @@ def test_emotion_cascade_sum_holds_even_with_clamping():
         ANSWERS, ["market_crash"] * 3, _cat([-0.1] * 3), seed=1,
     )
     run.emotion = PlayerEmotionState(fear=99, greed=1, anxiety=99, restlessness=1, composure=99)
-    run.choose("cut")
+    run.choose("sell", coin_target="meme")
     settlement = run.last_settlement
     before = settlement["emotion_before"]
     after = settlement["emotion_after"]
@@ -76,8 +77,8 @@ def test_settlement_market_pct_matches_cat_returns_untouched_by_choice():
     returns = {"large": [0.05, -0.03], "alt": [0.02, 0.01], "meme": [-0.1, 0.2], "stable": [0.0, 0.0]}
     run_a = EmoGameRun.new(ANSWERS, ["market_crash", "market_surge"], returns, seed=1)
     run_b = EmoGameRun.new(ANSWERS, ["market_crash", "market_surge"], returns, seed=1)
-    run_a.choose("cut")     # 방어적 선택
-    run_b.choose("buy_dip")  # 공격적 선택
+    run_a.choose("sell", coin_target="meme")   # 방어적 선택(매도)
+    run_b.choose("buy", coin_target="meme")    # 공격적 선택(매수)
     for cat in CATEGORIES:
         pct_a = next(m["pct"] for m in run_a.last_settlement["market"] if m["category"] == cat)
         pct_b = next(m["pct"] for m in run_b.last_settlement["market"] if m["category"] == cat)
@@ -89,20 +90,20 @@ def test_settlement_market_pct_matches_cat_returns_untouched_by_choice():
 
 def test_settlement_choice_only_affects_rebalance_not_market():
     run = EmoGameRun.new(ANSWERS, ["market_crash"], _cat([-0.1]), seed=1)
-    run.choose("cut")
+    run.choose("sell", coin_target="meme")
     settlement = run.last_settlement
-    assert settlement["choice"]["id"] == "cut"
+    assert settlement["choice"]["id"] == "sell"
     assert "rebalance" in settlement
     assert "risk_share_before" in settlement["rebalance"]
     assert "risk_share_after" in settlement["rebalance"]
-    # cut(손절, position<0)은 위험 비중을 낮춘다.
+    # sell(매도, position<0)은 지정 위험코인을 현금화해 위험 비중을 낮춘다.
     assert settlement["rebalance"]["risk_share_after"] <= settlement["rebalance"]["risk_share_before"]
 
 
 # --- settlement 직렬화-복원 ------------------------------------------------ #
 def test_settlement_survives_serialization_roundtrip():
     run = EmoGameRun.new(ANSWERS, ["market_crash", "market_surge"], _cat([-0.1, 0.1]), seed=1)
-    run.choose("cut")
+    run.choose("sell", coin_target="meme")
     doc = run.to_doc()
     assert doc["last_settlement"] == run.last_settlement
     restored = EmoGameRun.from_doc(doc)
@@ -116,7 +117,8 @@ def test_state_endpoint_includes_settlement_after_choose():
     assert st0["settlement"] is None   # 아직 정산 전
     board = c.get(f"/emo/{gid}/board").json()
     choice_id = board["scenario"]["choices"][0]["id"]
-    after_choose = c.post(f"/emo/{gid}/choose", json={"choice_id": choice_id}).json()
+    after_choose = c.post(f"/emo/{gid}/choose",
+                          json={"choice_id": choice_id, "coin_target": "meme"}).json()
     assert after_choose["settlement"] is not None
     # 다음 GET에도 마지막 정산이 유지된다(스펙 §5.1 "구현 단순한 쪽").
     st1 = c.get(f"/emo/{gid}/state").json()
@@ -128,7 +130,8 @@ def test_settlement_choice_label_and_position_present():
     gid = c.post("/emo/start", json={"answers": ANSWERS, "seed": 3, "days": 4}).json()["game_id"]
     board = c.get(f"/emo/{gid}/board").json()
     chosen = board["scenario"]["choices"][0]
-    state = c.post(f"/emo/{gid}/choose", json={"choice_id": chosen["id"]}).json()
+    state = c.post(f"/emo/{gid}/choose",
+                   json={"choice_id": chosen["id"], "coin_target": "meme"}).json()
     settlement = state["settlement"]
     assert settlement["choice"]["id"] == chosen["id"]
     assert settlement["choice"]["label"] == chosen["label"]

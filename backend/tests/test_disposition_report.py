@@ -85,7 +85,7 @@ def _played_game_id(days=4):
     events = ["market_crash"] * days
     run = EmoGameRun.new(AGGRESSIVE, events, {c: [-0.1] * days for c in CATEGORIES}, seed=1)
     for _ in range(days):
-        run.choose("cut")
+        run.choose("sell", coin_target="meme")   # T-53: 급락 매도 = [panic]
     gid = "test-report-" + str(days)
     emo_store.save_run(gid, run)
     return gid

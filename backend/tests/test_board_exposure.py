@@ -23,13 +23,13 @@ def _neutral():
 
 
 def test_exposure_returns_display_threads_and_scenario():
-    # §4.1 — seed/day 없이 호출(레거시 경로)하면 6개 풀 전체가 반환된다(하위 호환).
-    # 3개 노출 선택은 get_scenario(event_id, seed, day)를 통해서만 적용된다.
+    # T-53 — 게시판 선택지 = 3액션(매수/매도/유지). seed/day 없는 레거시 경로도
+    # 3개 전부를 반환한다(풀 자체가 3개).
     out = build_board_exposure("market_crash", _neutral(), random.Random(1))
     assert out["threads"], "게시글이 비어있음"
     assert out["verdict"] in ("up", "down", "split")
     assert out["scenario"]["text"].strip()
-    assert len(out["scenario"]["choices"]) == 6
+    assert len(out["scenario"]["choices"]) == 3
 
 
 def test_all_four_events_map_to_a_board_context():
@@ -58,14 +58,6 @@ def test_deterministic_given_same_seed():
     b = build_board_exposure("rumor_spread", _neutral(), random.Random(7))
     assert a["threads"] == b["threads"]
     assert a["emotion_after"] == b["emotion_after"]
-
-
-def test_apply_choice_applies_scenario_delta():
-    # 급락 'cut'(손절) 선택 → fear 추가 상승.
-    before = _neutral()
-    after = apply_choice(before, "market_crash", "cut")
-    assert isinstance(after, PlayerEmotionState)
-    assert after.fear > before.fear
 
 
 def test_apply_choice_rejects_unknown_choice():
