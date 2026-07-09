@@ -47,6 +47,7 @@ const QUESTIONS: { key: string; text: string; options: [string, number][] }[] = 
 export default function EmoPage() {
   const [state, setState] = useState<EmoState | null>(null);
   const [board, setBoard] = useState<Board | null>(null);
+  const [boardStep, setBoardStep] = useState(0);   // T-41 — 여론 넘겨보기 인덱스(미연시, 글 단위)
   const [chain, setChain] = useState<ChainEvent | null>(null);
   const [dilemma, setDilemma] = useState<Dilemma | null>(null);   // T-30c 캐시아웃 딜레마
   const dilemmaPickRef = useRef<((id: string) => void) | null>(null);
@@ -114,12 +115,30 @@ export default function EmoPage() {
           // 그날 시장 이벤트 도착 — 걷기 정지, 반응만 받고(정산은 저녁) 게시판 닫음.
           const b = await api.getBoard(s.game_id);
           if (cancelled || !b) continue;
+          setBoardStep(0);   // T-41 — 여론 첫 글부터 넘겨보기
           setBoard(b);
           picked = await new Promise<string>((resolve) => { boardPickRef.current = resolve; });
           boardPickRef.current = null;
           pickedLabel = b.scenario.choices.find((c) => c.id === picked)?.label ?? "";
           if (cancelled) return;
           setBoard(null);   // 반응 후 닫고 남은 하루를 마저 걷는다
+        }
+        // T-50d — 장소 딜레마: 그 장소(도서관 익절복기·마켓 현실소비=disp 결정점)에
+        // 도착하면 발동. 오전·저녁만(점심=게시판·오후=동행과 겹침 방지). day 불변이라
+        // 일과 시퀀스 재실행 없음(멱등: 리로드 시 place_dilemmas_done가 이중적용 차단).
+        const bandPlace = s.band_places?.[band];
+        if ((band === "오전" || band === "저녁") && (bandPlace === "도서관" || bandPlace === "마켓")) {
+          const pdil = await api.getPlaceDilemma(s.game_id, bandPlace);
+          if (pdil && !cancelled) {
+            setDilemma({ ...pdil, gain: false });
+            const cid = await new Promise<string>((resolve) => { dilemmaPickRef.current = resolve; });
+            dilemmaPickRef.current = null;
+            setDilemma(null);
+            if (!cancelled) {
+              const ns = await api.choosePlaceDilemma(s.game_id, bandPlace, cid);
+              if (ns && !cancelled) setRun(ns);
+            }
+          }
         }
       }
       if (cancelled) return;
@@ -195,7 +214,7 @@ export default function EmoPage() {
     // T-30 — 높음/중간/낮음 → 상대 가중치(백엔드가 합으로 정규화).
     const weights: Record<string, number> = {};
     CATEGORIES.forEach((c) => { weights[c] = LEVEL_WEIGHT[levels[c]]; });
-    const s = await api.startEmo(answers, seed, 10, weights, name.trim());
+    const s = await api.startEmo(answers, seed, 20, weights, name.trim());   // T-48f — 20일(표본 견고화)
     if (s) setRun(s);
     else setError("게임을 시작하지 못했어요. 잠시 후 다시 시도해 주세요.");
     setBusy(false);
@@ -225,6 +244,9 @@ export default function EmoPage() {
   // 고른 반응의 position으로 매매 배지를 띄운다. 관망(-0.2)·소액 태움(0.1) 같은
   // **소극적 선택**엔 안 뜨게 결정적 매매(|position|≥0.25)만.
   const TRADE_FX_MIN = 0.25;
+  // T-41 — 게시판 여론 미연시 넘기기: 글(post)을 한 명씩 보고 클릭으로 다음 글 →
+  // 마지막 글 다음에 이벤트 요약+선택지가 뜬다(아래 advEvent board 분기).
+  const advanceBoard = () => setBoardStep((s) => s + 1);
   const reactBoard = (id: string) => {
     const pos = board?.scenario.choices.find((c) => c.id === id)?.position ?? 0;
     if (pos >= TRADE_FX_MIN) showTradeFlash("buy");
@@ -233,7 +255,8 @@ export default function EmoPage() {
   };
   // T-30c — 캐시아웃 딜레마 응답. 현금화(cash_out)=위험자산 매도 → 매매 배지.
   const resolveDilemma = (id: string) => {
-    if (id === "cash_out") showTradeFlash("sell");
+    // 현금화·익절·소비 = 이익 실현(매도) → 매도 배지. (T-50d: take_profit·spend)
+    if (id === "cash_out" || id === "take_profit" || id === "spend") showTradeFlash("sell");
     dilemmaPickRef.current?.(id);
   };
 
@@ -390,6 +413,9 @@ export default function EmoPage() {
   }
 
   // ---------- 플레이 (하이브리드 ADV: 상단 감정스트립 / 큰 맵 / 하단 JRPG 대사창) ----------
+  // T-41 — 게시판 여론 넘겨보기 중(글 3개를 한 명씩)에는 선택지 대신 여론 대사창만 뜬다.
+  // 마지막 글 다음(boardStep >= threads.length)에 비로소 이벤트 요약+선택지(advEvent board 분기).
+  const boardOnOpinion = !!board && !chain && !dilemma && boardStep < board.threads.length;
   const advEvent = dilemma
     ? { speakerId: undefined as string | undefined, speakerName: state.clone_name,
         title: dilemma.title, text: dilemma.text, choices: dilemma.choices,
@@ -398,8 +424,8 @@ export default function EmoPage() {
     ? { speakerId: chain.npc_id as string | undefined, speakerName: undefined as string | undefined,
         title: chain.title, text: chain.text, choices: chain.choices,
         run: resolveChain, tone: "chain" as const }
-    : board
-    ? { speakerId: board.threads[0]?.author_id, speakerName: board.threads[0] ? undefined : "게시판",
+    : board && boardStep >= board.threads.length
+    ? { speakerId: undefined as string | undefined, speakerName: "게시판",
         title: `게시판 · 여론 ${board.verdict}`, text: board.scenario.text,
         choices: board.scenario.choices, run: reactBoard, tone: "board" as const }
     : null;
@@ -439,15 +465,24 @@ export default function EmoPage() {
           </div>
         )}
 
-        {/* 게시판 여론 — 발화 NPC 코멘트 채팅(ADV 채팅, 맵 우상단) */}
-        {board && !chain && (
-          <div className="absolute top-2 right-2 z-10 flex flex-col gap-1 max-w-[55%] items-end">
-            {board.threads.slice(0, 3).map((t, i) => (
-              <div key={i} className="text-[11px] bg-white/90 text-black rounded-lg px-2 py-1 shadow border border-black/10">
-                <span className="font-bold">{NPC_NAME[t.author_id] ?? t.author_id}</span> {t.text}
-              </div>
-            ))}
-          </div>
+        {/* T-41 — 게시판 여론 미연시 넘기기: 우상단 동시노출 대신, 글(post)을 하단
+            대사창에서 한 명씩 표시하고 클릭(▶)으로 다음 글로 넘긴다. 마지막 글 다음에
+            이벤트 요약+선택지(advEvent board 분기)가 뜬다. */}
+        {boardOnOpinion && (
+          <button
+            type="button"
+            onClick={advanceBoard}
+            aria-label="다음 여론 보기"
+            className="absolute inset-x-0 bottom-0 z-10 p-2 sm:p-3 text-left cursor-pointer"
+          >
+            <AdvDialogue
+              speakerId={board!.threads[boardStep].author_id}
+              title={`게시판 여론 · ${boardStep + 1}/${board!.threads.length}`}
+              text={board!.threads[boardStep].text}
+              tone="board"
+            />
+            <div className="mt-1 pr-1 text-right text-[12px] font-extrabold text-white/85 animate-pulse">▶ 클릭</div>
+          </button>
         )}
 
         {/* choice 스크린 — say와 분리, 맵 중앙에 창형 메뉴 */}
@@ -470,8 +505,8 @@ export default function EmoPage() {
           </div>
         )}
 
-        {/* 걷기 상태(이벤트 없을 때) — 맵 하단 얇은 라벨 */}
-        {!advEvent && (
+        {/* 걷기 상태(이벤트·여론 없을 때) — 맵 하단 얇은 라벨 */}
+        {!advEvent && !boardOnOpinion && (
           <div className="absolute inset-x-0 bottom-2 z-10 flex justify-center">
             <span className="text-[12px] font-bold bg-black/55 text-white rounded px-3 py-1">
               {mapActivity ?? "클론이 하루를 보내는 중…"}

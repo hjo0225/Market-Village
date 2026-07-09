@@ -81,6 +81,7 @@ def _state(run: EmoGameRun, game_id: str) -> dict:
         "special_event_count": run.special_event_count,
         "has_pending_chain": run.pending_chain is not None,
         "has_cashout_dilemma": run.cashout_available(),   # T-30c
+        "band_places": run.band_places(),   # T-50d — 밴드별 장소(장소 딜레마 발동 판정용)
         "last_market": run.last_market,   # T-35 — 마지막 정산일 카테고리별 수익률(%)
 
         "ending": run.ending() if run.is_over else None,
@@ -98,7 +99,7 @@ def _get(game_id: str) -> EmoGameRun:
 class StartBody(BaseModel):
     answers: dict = {}
     seed: int = 0
-    days: int = 10
+    days: int = 20   # T-48f — 편향 표본 견고화(panic/loss n=3 턱걸이→6). 운명선 max 30.
     allocations: dict[str, float] | None = None   # {카테고리: 0~100 비중} — 합 정규화
     name: str | None = None   # T-28 — 클론 이름(미입력 시 백엔드 기본값)
 
@@ -175,6 +176,23 @@ def dilemma_choose(game_id: str, body: ChoiceBody) -> dict:
     return _state(run, game_id)
 
 
+@router.get("/{game_id}/place_dilemma/{place}")
+def place_dilemma(game_id: str, place: str) -> dict | None:
+    """T-50d — 장소 딜레마(도서관 익절복기·마켓 현실소비 = disp 결정점). 순수 GET."""
+    return _get(game_id).place_dilemma(place)
+
+
+@router.post("/{game_id}/place_dilemma/{place}/choose")
+def place_dilemma_choose(game_id: str, place: str, body: ChoiceBody) -> dict:
+    run = _get(game_id)
+    try:
+        run.resolve_place_dilemma(place, body.choice_id)
+    except (ValueError, RuntimeError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    emo_store.save_run(game_id, run)
+    return _state(run, game_id)
+
+
 @router.post("/{game_id}/choose")
 def choose(game_id: str, body: ChoiceBody) -> dict:
     run = _get(game_id)
@@ -220,8 +238,13 @@ def report(game_id: str) -> dict:
     run = _get(game_id)
     if not run.is_over:
         raise HTTPException(status_code=409, detail="game not over yet")
-    rep = disposition_report.compute_report(run.disposition, run.actual_bias())
+    rep = disposition_report.compute_report(
+        run.disposition, run.actual_bias(),
+        run.bias_tally, run.choice_history,   # T-48c 표본수 · T-48d 타임라인
+    )
     if rep.get("available"):
+        # T-49c — 엔딩 후 블라인드 해제(실제 종목·시기). 게임 종료라 관찰오염 없음.
+        rep["blind_reveal"] = load_fate_line().reveal()
         # T-47f — 서술은 게임당 1회만 생성(LLM 게이트·일일한도·캐시=llm.py, 실패 시
         # 결정론 폴백). 첫 응답을 박제해 재요청에 재생(4d 멱등·과금 상한).
         if run.report_narrative is None:

@@ -140,3 +140,39 @@ def test_report_endpoint_caches_narrative(monkeypatch):
     assert r1["narrative"] == ["한 번만 생성됩니다."]
     assert r2["narrative"] == r1["narrative"]
     assert len(fake.calls) == 1   # 캐시 → 두 번째는 LLM 미호출(과금 상한)
+
+
+# ── T-48c 표본수 · T-48d 타임라인 · T-49c 블라인드 공개 ─────────────────
+def test_report_includes_sample_and_low_flag():
+    tally = {"panic": {"hits": 4, "opportunities": 6}, "over": {"hits": 0, "opportunities": 2}}
+    rep = R.compute_report(DISP, {"panic": 67, "over": 0}, bias_tally=tally)
+    by = {c["axis"]: c for c in rep["bias_comparison"]}
+    assert by["panic"]["sample"] == 6 and by["panic"]["low_sample"] is False
+    assert by["over"]["sample"] == 2 and by["over"]["low_sample"] is True   # n<5 참고
+
+
+def test_report_timeline_skips_disciplined():
+    ch = [
+        {"day": 1, "kind": "scenario", "hits": ["panic"], "opportunities": ["panic", "loss"]},
+        {"day": 2, "kind": "scenario", "hits": [], "opportunities": ["panic", "loss"]},   # 절제
+        {"day": 3, "kind": "place", "hits": ["disp"], "opportunities": ["disp"]},
+    ]
+    rep = R.compute_report(DISP, {"panic": 100}, choice_history=ch)
+    tl = rep["timeline"]
+    assert [t["day"] for t in tl] == [1, 3]   # 절제한 day2 생략(신호 선명)
+    assert tl[0]["biases"] == ["패닉"] and tl[1]["biases"] == ["처분효과"]
+
+
+def test_fate_reveal_blind_origin():
+    from sim.fate_line import load_fate_line
+    rev = load_fate_line().reveal()
+    meme = next(r for r in rev if r["category"] == "meme")
+    assert meme["symbol"] == "DOGE" and meme["name"] == "도지코인"
+    assert meme["date"] == "2021-04-20"
+
+
+def test_report_endpoint_includes_reveal_and_sample():
+    gid = _played_game_id(days=4)
+    rep = emo_api.report(gid)
+    assert any(r["symbol"] == "DOGE" for r in rep.get("blind_reveal", []))   # T-49c
+    assert all("sample" in c for c in rep["bias_comparison"])                # T-48c
