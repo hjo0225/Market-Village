@@ -33,6 +33,15 @@ const BRIDGE_CUTS = (cloneName: string): StoryCut[] => [
 const ENDING_PRE_CUT: StoryCut[] = [
   { lines: ["열흘 남짓, 클론의 계절이 끝났다. 이제 거울을 볼 시간."] },
 ];
+// v2 §3.2 — 첫 게시판 진입 컷(게임당 1회, 컴포넌트 상태로만 관리). 첫 board 노출 직전.
+const FIRST_BOARD_CUT: StoryCut[] = [
+  { lines: ["점심. 단톡방이 울린다.", "이 마을에서 점심 메뉴보다 뜨거운 화제 — 오늘의 시장."] },
+];
+// v2 §3.3 — 반환점 컷(day == total_days//2, 게임당 1회). 그날 편성 화면 진입 전.
+const HALFWAY_CUTS = (cloneName: string): StoryCut[] => [
+  { lines: ["벌써 절반이구나. 처음엔 알림음마다 심장이 뛰었는데."], speaker: cloneName },
+  { lines: ["이제 어떤 알림은 그냥 지나가게 둔다. 그게 좋은 건지는, 끝에 가서 알겠지."] },
+];
 
 // T-30 · 초기 배분 UX — 슬라이더 대신 높음/중간/낮음(가중치). 백엔드가 합으로
 // 정규화하므로 상대 가중치만 보내면 된다(low1·med2·high3).
@@ -91,10 +100,15 @@ export default function EmoPage() {
   const day = state?.day ?? -1;
 
   // §3 — 스토리 씬 게이트. "prologue"=이름→진단 사이, "bridge"=배분 완료→Day0 시작
-  // 사이, "endingPre"=엔딩 텍스트 앞 1컷. null이면 씬 없음(평시).
-  const [storyScene, setStoryScene] = useState<"prologue" | "bridge" | "endingPre" | null>(null);
+  // 사이, "endingPre"=엔딩 텍스트 앞 1컷, "firstBoard"=첫 게시판 진입 전 1컷(v2 §3.2),
+  // "halfway"=반환점 1컷(v2 §3.3). null이면 씬 없음(평시).
+  const [storyScene, setStoryScene] = useState<"prologue" | "bridge" | "endingPre" | "firstBoard" | "halfway" | null>(null);
   const [endingCutDone, setEndingCutDone] = useState(false);   // §3.3 — 엔딩 1컷은 1회만
   const pendingStartRef = useRef<EmoState | null>(null);   // bridge 씬 종료 후 진입할 state
+  // v2 §3.2/§3.3 — 게임당 1회(컴포넌트 상태, 저장 불필요·런 재시작 시 다시 나옴).
+  const firstBoardSeenRef = useRef(false);
+  const halfwaySeenRef = useRef(false);
+  const storySceneGateRef = useRef<(() => void) | null>(null);
 
   // §2.3 — 「오늘의 일과」 편성 화면. GET /plan이 404(백엔드 미배포)거나 이미
   // locked면 조용히 자동 편성(기존 루트, I6)으로 폴백.
@@ -115,6 +129,16 @@ export default function EmoPage() {
     let cancelled = false;
     (async () => {
       setBoard(null); setChain(null); setDilemma(null);
+      // v2 §3.3 — 반환점 컷(day == total_days//2, 게임당 1회). 그날 편성 화면
+      // 진입 전에 보여준다.
+      if (!halfwaySeenRef.current && s.total_days > 0 && s.day === Math.floor(s.total_days / 2)) {
+        halfwaySeenRef.current = true;
+        setStoryScene("halfway");
+        await new Promise<void>((resolve) => { storySceneGateRef.current = resolve; });
+        storySceneGateRef.current = null;
+        setStoryScene(null);
+        if (cancelled) return;
+      }
       // §2.3 — 하루 시작 시 「오늘의 일과」 편성 게이트. GET /plan이 성공하고
       // 잠기지 않았으면 편성 화면을 띄우고 확정(POST)/자동편성(스킵)을 기다린다.
       // 404 등으로 null이면 조용히 건너뛰어 기존 자동 루트로(I6).
@@ -158,6 +182,15 @@ export default function EmoPage() {
         await mapRef.current?.playWalk(band, 2);   // 만남은 리스너가 도중 처리
         if (cancelled) return;
         if (band === boardBand) {
+          // v2 §3.2 — 첫 게시판 진입 컷(게임당 1회). 첫 board 노출 직전에 삽입.
+          if (!firstBoardSeenRef.current) {
+            firstBoardSeenRef.current = true;
+            setStoryScene("firstBoard");
+            await new Promise<void>((resolve) => { storySceneGateRef.current = resolve; });
+            storySceneGateRef.current = null;
+            setStoryScene(null);
+            if (cancelled) return;
+          }
           // 그날 시장 이벤트 도착 — 걷기 정지, 반응만 받고(정산은 저녁) 게시판 닫음.
           const b = await api.getBoard(s.game_id);
           if (cancelled || !b) continue;
@@ -490,6 +523,15 @@ export default function EmoPage() {
         </PixelPanel>
       </main>
     );
+  }
+
+  // v2 §3.2/§3.3 — 첫 게시판 진입 컷 / 반환점 컷(게임당 1회, 걷기 시퀀스가 게이트로
+  // 대기 중일 때 표시). 씬이 끝나면(건너뛰기 포함) storySceneGateRef를 풀어 재개.
+  if (storyScene === "firstBoard") {
+    return <StoryScene cuts={FIRST_BOARD_CUT} onDone={() => storySceneGateRef.current?.()} />;
+  }
+  if (storyScene === "halfway") {
+    return <StoryScene cuts={HALFWAY_CUTS(state.clone_name)} onDone={() => storySceneGateRef.current?.()} />;
   }
 
   // ---------- 플레이 (하이브리드 ADV: 상단 감정스트립 / 큰 맵 / 하단 JRPG 대사창) ----------

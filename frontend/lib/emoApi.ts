@@ -61,6 +61,8 @@ export interface PlanBandOption {
 }
 export interface PlanBand { band: string; options: PlanBandOption[]; }
 export interface PlanFixedSlot { kind: string; label: string; }
+// v2 §1 — 아침 내레이션(데이 프레임). day % 20으로 순환하는 정적 한 줄.
+export interface PlanMorning { day: number; text: string; }
 export interface PlanView {
   day: number;
   budget: number;
@@ -68,6 +70,7 @@ export interface PlanView {
   current_plan: Record<string, string> | null;
   fixed: Record<string, PlanFixedSlot>;
   bands: PlanBand[];
+  morning: PlanMorning;
 }
 
 // §5.1 — 정산 캐스케이드 1회성 스냅샷(choose() 응답에 포함). 없으면(state.settlement

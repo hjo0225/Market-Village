@@ -11,6 +11,7 @@ I3(예고=실행): PLAN_PREVIEW(GET /plan forecast)와 밤 정산 적용(EmoGame
 
 from __future__ import annotations
 
+from . import story_texts as _story_texts
 from .player_emotion.deltas import apply_delta
 from .player_emotion.state import PlayerEmotionState
 
@@ -51,17 +52,11 @@ PLACE_PERSONALITY: dict[str, str] = {
     "펍": "밤 분위기, NPC",
 }
 
-# 장소 플레이버 한 줄(전체_시나리오_일상물.md §7 재사용 + 집/도서관·마켓 보강).
-PLACE_FLAVOR: dict[str, str] = {
-    HOME_PLACE: "차트를 껐다. 3분 뒤 켰다. 인간이니까.",
-    "카페": "오늘의 원두: 어제랑 같음. 사장님의 자부심: 어제보다 큼.",
-    "도서관": "『마음이 흔들릴 때 읽는 책』은 항상 대출 중이다.",
-    "마켓": "계란 한 판 특가. 장바구니의 유일한 확실한 수익.",
-    "광장": "비둘기가 벤치 자리를 양보하지 않는다.",
-    "일터": "옆 팀 프린터가 또 말썽이다. 시장보다 예측 불가능한 유일한 것.",
-    "운동": "러닝 첫 1분: 오길 잘했다. 러닝 9분: 왜 왔지. 러닝 끝: 오길 잘했다.",
-    "펍": "누군가 노래를 신청했고, 전원이 후렴만 안다.",
-}
+# 장소 플레이버 한 줄 — §2(v2 스토리보강 스펙) 이관: 단일 소스는
+# story_texts.PLACE_FLAVOR. 이 이름은 하위 호환 별칭으로만 남긴다(기존
+# import 유지). plan_preview()는 story_texts.place_flavor()(NPC-aware)를
+# 직접 쓰고, 이 딕셔너리는 더 이상 plan 응답 생성에 쓰이지 않는다.
+PLACE_FLAVOR: dict[str, str] = _story_texts.PLACE_FLAVOR
 
 # 딜레마 가능성이 있는 장소(배지 "dilemma") — emo_game._PLACE_DILEMMAS와 정합.
 _DILEMMA_PLACES = frozenset({"도서관", "마켓"})

@@ -22,6 +22,7 @@ from . import avoidance, board_exposure, chain, companion
 from . import ending as _ending
 from . import place_effects as _place_effects
 from . import scenario as _scenario
+from . import story_texts as _story_texts
 from .disposition import BIAS_AXES, build_initial_emotion_v2, diagnose
 from .fate_line import CATEGORIES
 from .personas import TRADER_PERSONAS, npc_scheds
@@ -609,13 +610,17 @@ class EmoGameRun:
             options = []
             for place in _place_effects.PLAN_PLACES:
                 npcs = self._plan_band_npcs(band, place)
+                npc_ids = [n["npc_id"] for n in npcs]
                 options.append({
                     "place": place,
                     "cost": _place_effects.place_cost(place),
                     "forecast": _place_effects.place_forecast(place),
                     "npcs": npcs,
                     "badges": _place_effects.place_badges(place, npcs),
-                    "flavor": _place_effects.PLACE_FLAVOR.get(place, ""),
+                    # §2(v2) — NPC-aware 플레이버: 밴드에 NPC가 있으면
+                    # PLACE_NPC_FLAVOR[(place, npc_id 정렬 첫번째)] 우선, 없으면
+                    # PLACE_FLAVOR[place] 폴백(story_texts.place_flavor).
+                    "flavor": _story_texts.place_flavor(place, npc_ids),
                 })
             bands.append({"band": band, "options": options})
         return {
@@ -625,6 +630,8 @@ class EmoGameRun:
             "current_plan": current_plan,
             "fixed": {"점심": {"kind": "board", "label": "단톡방 확인", "text": fixed_label}},
             "bands": bands,
+            # §1(v2) — 아침 내레이션(데이 프레임). day >= 20이면 순환(day % 20).
+            "morning": {"day": self.day, "text": _story_texts.day_frame(self.day)},
         }
 
     def submit_plan(self, plan: dict[str, str]) -> None:

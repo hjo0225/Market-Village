@@ -1,10 +1,17 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { MessageSquare, Sparkles, Users as UsersIcon } from "lucide-react";
+import { MessageSquare, Sparkles, Users as UsersIcon, X } from "lucide-react";
 import { PlanView, PlanBandOption, AXIS_LABEL, Axis, npcPortraitSrc, NPC_NAME } from "@/lib/emoApi";
 import PixelPanel from "@/components/pixel/PixelPanel";
 import PixelButton from "@/components/pixel/PixelButton";
+
+// v2 §3.1 — Day 0 첫 편성 도움말(정적 2줄, 닫기 가능). 컴포넌트 상태로만 관리
+// (저장 불필요) — 닫으면 그 세션 동안 다시 안 뜬다.
+const FIRST_PLAN_HELP = [
+  "첫 일과다. 행동력 안에서 오전·오후·저녁을 채워주자.",
+  "어디서 시간을 보내는지가 마음을 만들고, 마음이 지갑을 지킨다.",
+];
 
 // §2.3 — 「오늘의 일과」 편성 화면. 오전/오후/저녁 3밴드에 장소를 배치(점심=게시판
 // 고정), 행동력 예산(PLAN_BUDGET) 안에서 트레이드오프. 카드의 forecast는 백엔드가
@@ -123,6 +130,8 @@ export default function DailyPlan({
 }) {
   const [assignment, setAssignment] = useState<Record<string, string>>({});
   const [previewKey, setPreviewKey] = useState<{ band: string; place: string } | null>(null);
+  const [helpDismissed, setHelpDismissed] = useState(false);
+  const showFirstPlanHelp = plan.day === 0 && !helpDismissed;
 
   const bandsByName = useMemo(() => {
     const m: Record<string, PlanBandOption[]> = {};
@@ -165,7 +174,7 @@ export default function DailyPlan({
     <div className="fixed inset-0 z-40 bg-pixel-path flex items-center justify-center p-2 sm:p-4">
       <PixelPanel tone="cloud" className="w-full max-w-4xl h-full sm:h-auto sm:max-h-[92vh] flex flex-col p-4 sm:p-5 overflow-hidden">
         {/* 상단: Day N + 행동력 게이지 */}
-        <div className="shrink-0 flex items-center justify-between flex-wrap gap-2 mb-3">
+        <div className="shrink-0 flex items-center justify-between flex-wrap gap-2 mb-1">
           <div>
             <div className="text-[11px] text-pixel-muted">{cloneName} · Day {plan.day + 1}</div>
             <h1 className="text-lg font-extrabold">오늘의 일과</h1>
@@ -183,6 +192,30 @@ export default function DailyPlan({
             </span>
           </div>
         </div>
+
+        {/* v2 §1 — 아침 내레이션(데이 프레임): 정적 한 줄, Day N 아래 */}
+        {plan.morning?.text && (
+          <p className="shrink-0 text-[12px] text-pixel-muted italic mb-3">{plan.morning.text}</p>
+        )}
+
+        {/* v2 §3.1 — Day 0 첫 편성 도움말(정적 2줄, 닫기 가능) */}
+        {showFirstPlanHelp && (
+          <div className="shrink-0 mb-3 flex items-start gap-2 rounded-lg border-2 border-black/15 bg-amber-50 p-2.5">
+            <div className="flex-1 flex flex-col gap-0.5">
+              {FIRST_PLAN_HELP.map((line, i) => (
+                <p key={i} className="text-[12px] font-bold text-amber-900 leading-relaxed">{line}</p>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setHelpDismissed(true)}
+              aria-label="도움말 닫기"
+              className="shrink-0 text-amber-900/60 hover:text-amber-900"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
 
         <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[160px_1fr] gap-3 overflow-hidden">
           {/* 좌측: 밴드 슬롯 + 점심 고정 */}

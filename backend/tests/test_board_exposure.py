@@ -22,11 +22,13 @@ def _neutral():
 
 
 def test_exposure_returns_display_threads_and_scenario():
+    # §4.1 — seed/day 없이 호출(레거시 경로)하면 6개 풀 전체가 반환된다(하위 호환).
+    # 3개 노출 선택은 get_scenario(event_id, seed, day)를 통해서만 적용된다.
     out = build_board_exposure("market_crash", _neutral(), random.Random(1))
     assert out["threads"], "게시글이 비어있음"
     assert out["verdict"] in ("up", "down", "split")
     assert out["scenario"]["text"].strip()
-    assert len(out["scenario"]["choices"]) == 3
+    assert len(out["scenario"]["choices"]) == 6
 
 
 def test_all_four_events_map_to_a_board_context():
