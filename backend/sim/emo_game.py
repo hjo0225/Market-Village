@@ -66,6 +66,11 @@ CASHOUT_EMOTION_PEAK = 72     # 탐욕 or 공포가 이 이상(감정 정점)일
 CASHOUT_RISK_SHARE = 0.35     # 위험자산 비중(뺄 게 있어야 함)
 _CASHOUT_FRAC = 0.7           # 현금화 선택 시 위험자산의 이 비율을 현금으로
 
+# T-52 (F4): 게시판 감정-소모 매매의 규모 계수. 매매액 = 감정 level 비례(level 100
+# → 지갑의 이 비율까지). 충동 크기(감정)가 곧 행동 크기 → 자기 편향이 눈에 보인다
+# (거울 강화, 4b). 잠정 튜닝치(플레이테스트 확정).
+TRADE_INTENSITY = 1.0
+
 # T-50d — 장소 딜레마(disp 처분효과 결정점): 도서관=익절 복기, 마켓=현실소비 유혹.
 # '이익을 너무 일찍 실현'(익절/소비) 선택 = disp 태깅 → 리포트에서 처분효과 측정
 # (T-48e 흡수 — 반복 결정점이 생겨 disp가 리포트에서 살아난다). 그 장소에 도착하면
@@ -255,6 +260,34 @@ class EmoGameRun:
                 w = (self.holdings.get(cat, 0.0) / risk_total
                      if risk_total > 0 else 1.0 / len(_RISK))
                 self.holdings[cat] = round(self.holdings.get(cat, 0.0) + moved * w, 2)
+
+    # --- per-코인 지정 매매 (T-52, F4) ----------------------------------- #
+    def _board_trade_size(self, level: float, wallet: float) -> float:
+        """감정 비례 매매 규모 — 감정 level(0~100)에 비례해 wallet의 일부.
+        level 100 → wallet×TRADE_INTENSITY, level 20 → 그 1/5(찔끔). [0,1] 클램프."""
+        frac = max(0.0, min(1.0, level / 100.0 * TRADE_INTENSITY))
+        return round(wallet * frac, 2)
+
+    def _buy_coin(self, cat: str, amount: float) -> float:
+        """현금 → cat 코인 1개 매수(가용 현금 한도). 실제 이동액 반환. _rebalance의
+        버킷 자동배분과 달리 지정 코인 1개에만 태운다(F4 3액션)."""
+        cash = self.holdings.get(CASH, 0.0)
+        moved = round(min(max(0.0, amount), cash), 2)
+        if moved <= 0.0:
+            return 0.0
+        self.holdings[CASH] = round(cash - moved, 2)
+        self.holdings[cat] = round(self.holdings.get(cat, 0.0) + moved, 2)
+        return moved
+
+    def _sell_coin(self, cat: str, amount: float) -> float:
+        """cat 코인 1개 → 현금 매도(보유 한도). 실제 이동액 반환. 보유 없으면 무매매."""
+        held = self.holdings.get(cat, 0.0)
+        moved = round(min(max(0.0, amount), held), 2)
+        if moved <= 0.0:
+            return 0.0
+        self.holdings[cat] = round(held - moved, 2)
+        self.holdings[CASH] = round(self.holdings.get(CASH, 0.0) + moved, 2)
+        return moved
 
     # --- 상태 조회 -------------------------------------------------------- #
     @property
