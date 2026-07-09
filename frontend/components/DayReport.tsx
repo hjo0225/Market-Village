@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Moon, TrendingUp, TrendingDown, Minus, ArrowRight } from "lucide-react";
-import { AXES, AXIS_LABEL, Axis, Emotion, CATEGORIES, CATEGORY_LABEL, Category, Settlement } from "@/lib/emoApi";
+import { AXES, AXIS_LABEL, Axis, Emotion, CATEGORIES, CATEGORY_LABEL, Category, Settlement, Attribution } from "@/lib/emoApi";
 import PixelPanel from "@/components/pixel/PixelPanel";
 import PixelButton from "@/components/pixel/PixelButton";
 
@@ -84,8 +84,13 @@ function positionBadge(position: number): { label: string; cls: string } {
 }
 
 function SettlementCascade({ settlement, onDone }: { settlement: Settlement; onDone: () => void }) {
-  // 스텝 = choice(1) + market(1, 전체 동시 카운팅) + portfolio(1) + rebalance(1) + emotion_steps(N개, 각각 1스텝).
-  const stepCount = 4 + settlement.emotion_steps.length;
+  // 스텝 = choice(1) + market(1, 전체 동시 카운팅) + portfolio(1) + [attribution(1) — 있을 때만,
+  // v3 §C1: 포트폴리오 다음에 삽입] + rebalance(1) + emotion_steps(N개, 각각 1스텝).
+  const hasAttribution = !!settlement.attribution;
+  const attributionStep = 3;                              // 포트폴리오(2) 다음
+  const rebalanceStep = hasAttribution ? 4 : 3;
+  const emoStepStart = rebalanceStep + 1;
+  const stepCount = emoStepStart + settlement.emotion_steps.length;
   const [step, setStep] = useState(0);
   const [emoRunning, setEmoRunning] = useState<Record<string, number>>({ ...settlement.emotion_before });
 
@@ -97,7 +102,6 @@ function SettlementCascade({ settlement, onDone }: { settlement: Settlement; onD
 
   // 감정 단계가 진행될 때마다 해당 시점까지의 누적 델타를 반영(스텝별 바 이동).
   useEffect(() => {
-    const emoStepStart = 3;   // choice, market, portfolio, rebalance = 0..3
     const doneEmoSteps = Math.max(0, Math.min(settlement.emotion_steps.length, step - emoStepStart));
     const running: Record<string, number> = { ...settlement.emotion_before };
     for (let i = 0; i < doneEmoSteps; i++) {
@@ -105,11 +109,12 @@ function SettlementCascade({ settlement, onDone }: { settlement: Settlement; onD
       Object.entries(deltas).forEach(([k, v]) => { running[k] = (running[k] ?? 0) + v; });
     }
     setEmoRunning(running);
-  }, [step, settlement]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, settlement, emoStepStart]);
 
   const badge = positionBadge(settlement.choice.position);
   const portfolioValue = useRollingNumber(settlement.portfolio.after, step >= 2);
-  const riskAfterPct = useRollingNumber(settlement.rebalance.risk_share_after * 100, step >= 3);
+  const riskAfterPct = useRollingNumber(settlement.rebalance.risk_share_after * 100, step >= rebalanceStep);
 
   const skip = () => onDone();
   const advance = () => {
@@ -172,8 +177,13 @@ function SettlementCascade({ settlement, onDone }: { settlement: Settlement; onD
             </div>
           )}
 
+          {/* v3 §C1 — 원인 카드: 포트폴리오 다음, 리밸런싱 전. attribution 없으면(day 0 등) 스킵(I6). */}
+          {hasAttribution && step >= attributionStep && (
+            <AttributionCard attribution={settlement.attribution!} />
+          )}
+
           {/* ④ 리스크 비중 화살표 */}
-          {step >= 3 && (
+          {step >= rebalanceStep && (
             <div className="animate-fade-in">
               <div className="flex items-center justify-between text-[13px]">
                 <span className="font-bold">리스크 노출</span>
@@ -188,10 +198,10 @@ function SettlementCascade({ settlement, onDone }: { settlement: Settlement; onD
           )}
 
           {/* ⑤ 감정 축별 단계 이동 */}
-          {step >= 4 && (
+          {step >= emoStepStart && (
             <div className="animate-fade-in">
               <div className="text-[12px] font-bold mb-1.5">
-                {settlement.emotion_steps[Math.min(step - 4, settlement.emotion_steps.length - 1)]?.label ?? "감정 변화"}
+                {settlement.emotion_steps[Math.min(step - emoStepStart, settlement.emotion_steps.length - 1)]?.label ?? "감정 변화"}
               </div>
               <div className="grid grid-cols-2 gap-2">
                 {AXES.map((a: Axis) => (
@@ -208,6 +218,36 @@ function SettlementCascade({ settlement, onDone }: { settlement: Settlement; onD
         <div className="text-[11px] text-pixel-muted text-center mt-4">화면을 눌러 계속</div>
       </PixelPanel>
     </button>
+  );
+}
+
+// v3 §C1 — 원인 카드: "어제의 나에게서 온 결과". 실제 vs 어제 리밸런스 안 했을 때(counterfactual)
+// pnl을 나란히 보여주고 델타를 강조한다.
+function AttributionCard({ attribution }: { attribution: Attribution }) {
+  const better = attribution.delta_pct >= 0;
+  return (
+    <div className="animate-fade-in rounded-lg border-2 border-black/15 p-3 bg-black/[0.02]">
+      <div className="text-[11px] text-pixel-muted mb-2">어제의 나에게서 온 결과</div>
+      <p className="text-[12.5px] leading-relaxed mb-3">{attribution.text}</p>
+      <div className="flex items-center justify-between gap-3 text-[12px]">
+        <div className="flex-1">
+          <div className="text-pixel-muted">실제</div>
+          <div className={`font-extrabold tabular-nums ${attribution.actual_pnl_pct >= 0 ? "text-rose-600" : "text-sky-600"}`}>
+            {attribution.actual_pnl_pct >= 0 ? "+" : ""}{attribution.actual_pnl_pct.toFixed(1)}%
+          </div>
+        </div>
+        <ArrowRight className="w-3 h-3 text-pixel-muted shrink-0" />
+        <div className="flex-1 text-right">
+          <div className="text-pixel-muted">어제 그대로였다면</div>
+          <div className={`font-bold tabular-nums ${attribution.counterfactual_pnl_pct >= 0 ? "text-rose-600" : "text-sky-600"}`}>
+            {attribution.counterfactual_pnl_pct >= 0 ? "+" : ""}{attribution.counterfactual_pnl_pct.toFixed(1)}%
+          </div>
+        </div>
+      </div>
+      <div className={`mt-2 text-[11px] font-bold text-right ${better ? "text-rose-600" : "text-sky-600"}`}>
+        차이 {attribution.delta_pct >= 0 ? "+" : ""}{attribution.delta_pct.toFixed(1)}%p · {attribution.cause_choice_label}
+      </div>
+    </div>
   );
 }
 
