@@ -24,11 +24,13 @@ def test_four_event_categories_present():
     assert set(EVENT_CATEGORIES) == set(scenarios)
 
 
-def test_each_scenario_has_text_and_three_choices():
+def test_each_scenario_has_text_and_six_choices():
+    # §4.1 — 선택지 풀이 3→6으로 확장(방어/관망/공격 버킷당 2개). 노출은 3개지만
+    # (test_scenario_pool.py) 저장된 풀 자체는 6개.
     scenarios = load_scenarios()
     for cat, sc in scenarios.items():
         assert sc["text"].strip(), f"{cat} 텍스트 비어있음"
-        assert len(sc["choices"]) == 3, f"{cat} 선택지 3개 아님"
+        assert len(sc["choices"]) == 6, f"{cat} 선택지 6개 아님"
 
 
 def test_every_choice_delta_uses_valid_axes():

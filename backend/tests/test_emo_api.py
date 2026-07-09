@@ -32,6 +32,15 @@ def test_start_returns_game_id_and_initial_state():
     assert set(body["emotion"]) == {"fear", "greed", "anxiety", "restlessness", "composure"}
 
 
+# --- v3 §A: days 기본값 20 → 10 ------------------------------------------- #
+def test_start_default_days_is_10_when_omitted():
+    c = _client()
+    r = c.post("/emo/start", json={"answers": ANSWERS, "seed": 42})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["total_days"] == 10
+
+
 def test_board_and_choose_advances():
     c = _client()
     gid = c.post("/emo/start", json={"answers": ANSWERS, "seed": 42, "days": 3}).json()["game_id"]

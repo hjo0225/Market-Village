@@ -3,6 +3,7 @@
 // T-47e — 엔딩 후 진단 리포트. 1층 '선언된 자아'(진단 유형) vs 2층 '실제 행동'
 // (편향) 괴리를 보여준다. 데이터는 GET /emo/{id}/report(disposition_report.py).
 import { DiagnosisReport as ReportData, CATEGORY_LABEL, Category } from "@/lib/emoApi";
+import { TermText } from "@/components/Term";
 
 const TYPE_DESC: Record<string, string> = {
   안정형: "한 푼도 잃지 않는 것이 목표. 원금 보전 최우선.",
@@ -30,7 +31,7 @@ export default function DiagnosisReport({ report }: { report: ReportData | null 
         <div className="text-[12px] text-pixel-muted">{TYPE_DESC[report.declared_type ?? ""] ?? ""}</div>
         {report.subdimension?.text && (
           <p className="mt-2 text-[12px] leading-relaxed border-l-2 border-black/10 pl-3">
-            {report.subdimension.text}
+            <TermText text={report.subdimension.text} />
           </p>
         )}
       </section>
@@ -100,21 +101,33 @@ export default function DiagnosisReport({ report }: { report: ReportData | null 
         return lines && lines.length > 0 ? (
           <section className="flex flex-col gap-2 bg-black/[0.03] rounded-lg p-3">
             {lines.map((s, i) => (
-              <p key={i} className="text-[12.5px] leading-relaxed">{s}</p>
+              <p key={i} className="text-[12.5px] leading-relaxed"><TermText text={s} /></p>
             ))}
           </section>
         ) : null;
       })()}
 
-      {/* T-49c — 블라인드 해제: 이 시장은 실제였다(엔딩 후 공개) */}
+      {/* v3 §B — 블라인드 해제: 종목명은 배분 화면에서 이미 공개됐으므로, 리빌의
+          핵심은 "시기"다. 헤드라인은 기간 공개("당신의 열흘은 사실 ____이었다"),
+          종목명은 부제로 내림(T-49c 갱신). */}
       {(report.blind_reveal?.length ?? 0) > 0 && (
         <section className="bg-black/[0.03] rounded-lg p-3">
-          <div className="text-[11px] text-pixel-muted mb-2">…그리고 이 시장은 실제였습니다</div>
+          <div className="text-[11px] text-pixel-muted mb-1">시기 공개</div>
+          <div className="text-base font-extrabold mb-2">
+            {report.blind_reveal_headline ? (
+              <span className="text-rose-600">{report.blind_reveal_headline}</span>
+            ) : (
+              <>당신의 열흘은 사실 <span className="text-rose-600">{report.blind_reveal![0].period ?? report.blind_reveal![0].date}</span>이었다</>
+            )}
+          </div>
+          <p className="text-[11.5px] text-pixel-muted mb-2">
+            코인마다 서로 다른 실제 시기의 열흘을 지나왔다. 시기를 모른 채 내린 판단 — 그게 당신의 민낯이다.
+          </p>
           <div className="flex flex-col gap-1 text-[12px]">
             {report.blind_reveal!.map((r) => (
-              <div key={r.category} className="flex justify-between">
-                <span className="text-pixel-muted">{CATEGORY_LABEL[r.category as Category] ?? r.category}</span>
-                <span className="font-bold">{r.name} · {r.date}</span>
+              <div key={r.category} className="flex justify-between text-pixel-muted">
+                <span>{CATEGORY_LABEL[r.category as Category] ?? r.category}</span>
+                <span>{r.name}({r.symbol}) · {r.period ?? r.date}</span>
               </div>
             ))}
           </div>

@@ -80,9 +80,11 @@ def test_actual_bias_ratio_and_min_sample():
     assert ab["loss"] == 0
     # over: 4 opp / 0 hit = 0
     assert ab["over"] == 0
-    # fomo/disp: opportunity 0(급락엔 없음) → 비노출
+    # fomo: 급락 이벤트엔 여전히 없음 → 비노출.
+    # disp: §4.1 확장(D "미리 정해둔 손절선만 확인" bias_tags=["disp"])으로 급락에도
+    # disp opportunity가 생겼다 — cut만 4번 골랐으니 disp opp 4 / hit 0 = 0(노출은 됨).
     assert "fomo" not in ab
-    assert "disp" not in ab
+    assert ab["disp"] == 0
 
 
 def test_actual_bias_hides_small_sample():

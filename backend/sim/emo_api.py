@@ -15,8 +15,11 @@ import uuid
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from . import coins as _coins
+from . import diagnosis_report as _diagnosis_report
 from . import disposition_report, emo_store
 from . import llm as _llm
+from . import tier as _tier
 from .emo_game import EmoGameRun
 from .fate_line import CATEGORIES, load_fate_line
 from .player_emotion.verdict import compute_verdict
@@ -83,6 +86,9 @@ def _state(run: EmoGameRun, game_id: str) -> dict:
         "has_cashout_dilemma": run.cashout_available(),   # T-30c
         "band_places": run.band_places(),   # T-50d — 밴드별 장소(장소 딜레마 발동 판정용)
         "last_market": run.last_market,   # T-35 — 마지막 정산일 카테고리별 수익률(%)
+        "settlement": run.last_settlement,   # §5.1 — 마지막 choose() 정산 캐스케이드(없으면 None)
+        "ticker": run.ticker(),   # §B — 카테고리별 실명 코인 시세 현황판(오늘까지, 미래 누출 없음)
+        "tier": _tier.compute_tier(run.emotion, run.special_event_count),   # §C2 — 통제 티어(파생, 저장 안 함)
 
         "ending": run.ending() if run.is_over else None,
     }
@@ -99,7 +105,10 @@ def _get(game_id: str) -> EmoGameRun:
 class StartBody(BaseModel):
     answers: dict = {}
     seed: int = 0
-    days: int = 20   # T-48f — 편향 표본 견고화(panic/loss n=3 턱걸이→6). 운명선 max 30.
+    days: int = 10   # T-48f — 편향 표본 견고화(panic/loss n=3 턱걸이→6) 시도 후,
+                      # v3 §A 제품 결정으로 10일 복귀. 표본 부족은 리포트의
+                      # low_sample 표시(disposition_report._LOW_SAMPLE)로 흡수.
+                      # 운명선 max 30.
     allocations: dict[str, float] | None = None   # {카테고리: 0~100 비중} — 합 정규화
     name: str | None = None   # T-28 — 클론 이름(미입력 시 백엔드 기본값)
 
@@ -117,6 +126,10 @@ class AvoidBody(BaseModel):
     day_b: int
 
 
+class PlanBody(BaseModel):
+    plan: dict[str, str]
+
+
 # --- 엔드포인트 ------------------------------------------------------- #
 @router.post("/start")
 def start(body: StartBody) -> dict:
@@ -127,7 +140,21 @@ def start(body: StartBody) -> dict:
     )
     game_id = uuid.uuid4().hex
     emo_store.save_run(game_id, run)
-    return _state(run, game_id)
+    return {
+        **_state(run, game_id),
+        # v3 §D1 — 설문 직후 진단 근거 화면(신설). diagnose()가 이미 계산한
+        # 값의 노출 + 문항별 기여 분해(점수 역추적)만 신규.
+        "diagnosis": _diagnosis_report.build_diagnosis(body.answers),
+    }
+
+
+@router.get("/catalog")
+def catalog(seed: int = 0) -> dict:
+    """§B — 실명 코인 카탈로그(배분 화면용, 신설·멱등). market_seed.json의
+    블라인드 자산 매핑에서 카테고리→{symbol,name,color}만 뽑는다(날짜 없음,
+    시기는 계속 블라인드). `seed`는 계약 대칭용 파라미터 — 카탈로그 자체는
+    운명선 고정 데이터라 seed에 따라 달라지지 않는다(I2 결정론 자명하게 성립)."""
+    return {"coins": _coins.catalog()}
 
 
 @router.get("/{game_id}/state")
@@ -141,6 +168,30 @@ def board(game_id: str) -> dict:
     if run.is_over:
         raise HTTPException(status_code=409, detail="game is over")
     return run.board()
+
+
+@router.get("/{game_id}/plan")
+def plan(game_id: str) -> dict:
+    """§2.2 — 오늘의 일과 편성 미리보기(순수 GET, 멱등, I4)."""
+    run = _get(game_id)
+    if run.is_over:
+        raise HTTPException(status_code=409, detail="game is over")
+    return run.plan_preview()
+
+
+@router.post("/{game_id}/plan")
+def plan_submit(game_id: str, body: PlanBody) -> dict:
+    """§2.2 — 오늘의 일과 편성 제출. 예산 초과/잘못된 장소=400, 이미 제출·게임
+    종료=409."""
+    run = _get(game_id)
+    try:
+        run.submit_plan(body.plan)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    emo_store.save_run(game_id, run)
+    return _state(run, game_id)
 
 
 @router.get("/{game_id}/chain")
@@ -196,6 +247,16 @@ def place_dilemma_choose(game_id: str, place: str, body: ChoiceBody) -> dict:
 @router.post("/{game_id}/choose")
 def choose(game_id: str, body: ChoiceBody) -> dict:
     run = _get(game_id)
+    if not run.is_over:
+        # §4.2 — 오늘 게시판에 노출된 3개 밖의 선택지 id는 거부(6개 풀 전체가
+        # 아니라 오늘의 추첨된 3개만 유효). board()는 순수·멱등이라 여기서 다시
+        # 불러도 상태를 바꾸지 않는다.
+        exposed_ids = {c["id"] for c in run.board()["scenario"]["choices"]}
+        if body.choice_id not in exposed_ids:
+            raise HTTPException(
+                status_code=400,
+                detail=f"choice {body.choice_id!r} not exposed today",
+            )
     try:
         run.choose(body.choice_id)
     except (ValueError, RuntimeError) as e:
@@ -243,8 +304,17 @@ def report(game_id: str) -> dict:
         run.bias_tally, run.choice_history,   # T-48c 표본수 · T-48d 타임라인
     )
     if rep.get("available"):
-        # T-49c — 엔딩 후 블라인드 해제(실제 종목·시기). 게임 종료라 관찰오염 없음.
-        rep["blind_reveal"] = load_fate_line().reveal()
+        # T-49c/v3 §B — 엔딩 후 블라인드 해제(실제 종목·시기). 게임 종료라
+        # 관찰오염 없음. v3 설계 전환: 종목명은 플레이 중 이미 공개돼 있었으므로
+        # (coins.py 카탈로그), 리빌의 센터피스는 "시기"다 — 게임의 드라마를
+        # 이끈 벨웨더 카테고리(meme)의 period로 정적 헤드라인 문구를 만든다.
+        reveal = load_fate_line().reveal()
+        rep["blind_reveal"] = reveal
+        bellwether = next((r for r in reveal if r["category"] == _BELLWETHER), None)
+        rep["blind_reveal_headline"] = (
+            f"당신의 열흘은 사실 {bellwether['period']}이었다."
+            if bellwether and bellwether.get("period") else None
+        )
         # T-47f — 서술은 게임당 1회만 생성(LLM 게이트·일일한도·캐시=llm.py, 실패 시
         # 결정론 폴백). 첫 응답을 박제해 재요청에 재생(4d 멱등·과금 상한).
         if run.report_narrative is None:

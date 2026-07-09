@@ -56,6 +56,19 @@ def test_compute_report_structure():
     assert all(c["axis"] in ("panic", "loss", "over") for c in rep["bias_comparison"])
 
 
+# --- v3 §A: 측정축 0개(10일 전환으로 표본 부족) 정적 안내 ------------------- #
+def test_compute_report_low_sample_notice_when_no_measured_axes():
+    rep = R.compute_report(DISP, {})   # actual_bias 빈 dict → measured_axes=[]
+    assert rep["measured_axes"] == []
+    assert rep["low_sample_notice"] == R.LOW_SAMPLE_NOTICE
+    assert rep["low_sample_notice"] == "열흘은 짧다. 더 놀러 오면 더 정확해진다."
+
+
+def test_compute_report_low_sample_notice_none_when_axes_measured():
+    rep = R.compute_report(DISP, {"panic": 100, "loss": 100, "over": 0})
+    assert rep["low_sample_notice"] is None
+
+
 def test_seed_insight_fomo_realized():
     ins = R._seed_insights(DISP, {"fomo": 70})
     assert any("FOMO" in s for s in ins)
@@ -171,8 +184,25 @@ def test_fate_reveal_blind_origin():
     assert meme["date"] == "2021-04-20"
 
 
+# --- v3 §B: blind_reveal 설계 전환 — 시기(period) 공개가 리빌의 센터피스 ----- #
+def test_fate_reveal_includes_period_alongside_symbol_and_date():
+    from sim.fate_line import load_fate_line
+    rev = load_fate_line().reveal()
+    meme = next(r for r in rev if r["category"] == "meme")
+    assert meme["period"] == "2021년 4월"
+    # 종목명도 계속 포함(프론트가 재구성할 수 있게) — v3 설계 전환은 '추가'다.
+    assert meme["symbol"] == "DOGE" and meme["name"] == "도지코인"
+    assert meme["date"] == "2021-04-20"
+
+
 def test_report_endpoint_includes_reveal_and_sample():
     gid = _played_game_id(days=4)
     rep = emo_api.report(gid)
     assert any(r["symbol"] == "DOGE" for r in rep.get("blind_reveal", []))   # T-49c
     assert all("sample" in c for c in rep["bias_comparison"])                # T-48c
+
+
+def test_report_endpoint_includes_period_centric_headline():
+    gid = _played_game_id(days=4)
+    rep = emo_api.report(gid)
+    assert rep["blind_reveal_headline"] == "당신의 열흘은 사실 2021년 4월이었다."
