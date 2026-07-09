@@ -106,15 +106,27 @@ export default function DiagnosisReport({ report }: { report: ReportData | null 
         ) : null;
       })()}
 
-      {/* T-49c — 블라인드 해제: 이 시장은 실제였다(엔딩 후 공개) */}
+      {/* v3 §B — 블라인드 해제: 종목명은 배분 화면에서 이미 공개됐으므로, 리빌의
+          핵심은 "시기"다. 헤드라인은 기간 공개("당신의 열흘은 사실 ____이었다"),
+          종목명은 부제로 내림(T-49c 갱신). */}
       {(report.blind_reveal?.length ?? 0) > 0 && (
         <section className="bg-black/[0.03] rounded-lg p-3">
-          <div className="text-[11px] text-pixel-muted mb-2">…그리고 이 시장은 실제였습니다</div>
+          <div className="text-[11px] text-pixel-muted mb-1">시기 공개</div>
+          <div className="text-base font-extrabold mb-2">
+            {report.blind_reveal_headline ? (
+              <span className="text-rose-600">{report.blind_reveal_headline}</span>
+            ) : (
+              <>당신의 열흘은 사실 <span className="text-rose-600">{report.blind_reveal![0].period ?? report.blind_reveal![0].date}</span>이었다</>
+            )}
+          </div>
+          <p className="text-[11.5px] text-pixel-muted mb-2">
+            코인마다 서로 다른 실제 시기의 열흘을 지나왔다. 시기를 모른 채 내린 판단 — 그게 당신의 민낯이다.
+          </p>
           <div className="flex flex-col gap-1 text-[12px]">
             {report.blind_reveal!.map((r) => (
-              <div key={r.category} className="flex justify-between">
-                <span className="text-pixel-muted">{CATEGORY_LABEL[r.category as Category] ?? r.category}</span>
-                <span className="font-bold">{r.name} · {r.date}</span>
+              <div key={r.category} className="flex justify-between text-pixel-muted">
+                <span>{CATEGORY_LABEL[r.category as Category] ?? r.category}</span>
+                <span>{r.name}({r.symbol}) · {r.period ?? r.date}</span>
               </div>
             ))}
           </div>
