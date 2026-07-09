@@ -21,11 +21,12 @@ export interface EmoState {
   special_event_count: number;
   has_pending_chain: boolean;
   has_cashout_dilemma: boolean;   // T-30c
+  band_places?: Record<string, string>;   // T-50d — 밴드별 장소(도서관/마켓 도착 시 장소 딜레마)
   last_market: Record<string, number>;   // T-35 — 정산일 카테고리별 수익률(%)
   ending: Ending | null;
 }
 
-export interface Dilemma { title: string; text: string; gain: boolean; choices: Choice[]; }
+export interface Dilemma { title: string; text: string; gain?: boolean; choices: Choice[]; place?: string; }
 
 // position: >0 매수(담기) · <0 매도(팔기) · 0 관망 — T-35 맵 매매 fx 방향에 사용.
 export interface Choice { id: string; label: string; deltas?: Record<string, number>; position?: number; }
@@ -46,7 +47,13 @@ export interface ChainEvent {
 export interface Ending { id: string; title: string; grade: string; epilogue: string[]; }
 
 // T-47d — 진단 리포트(1층 선언 vs 2층 실제 편향). 엔딩 후에만 노출.
-export interface BiasComparison { axis: string; label: string; expected: number | null; actual: number; gap: number; }
+export interface BiasComparison {
+  axis: string; label: string; expected: number | null; actual: number; gap: number;
+  sample?: number;   // T-48c — 측정 표본수(opportunities)
+  low_sample?: boolean;   // T-48c — 임계 근접(n<5) → 신뢰 주의
+}
+export interface TimelineEntry { day: number; kind: string; biases: string[]; }   // T-48d
+export interface BlindReveal { category: string; symbol: string; name: string; date: string; }   // T-49c
 export interface DiagnosisReport {
   available: boolean;
   declared_type?: string;
@@ -58,6 +65,8 @@ export interface DiagnosisReport {
   self_awareness?: number | null;
   insights?: string[];
   narrative?: string[];   // T-47f — LLM(또는 결정론 폴백) 리치 서술
+  timeline?: TimelineEntry[];   // T-48d — 인과 타임라인
+  blind_reveal?: BlindReveal[];   // T-49c — 엔딩 후 실제 종목·시기
 }
 
 async function fetchJson<T>(input: RequestInfo, init?: RequestInit, retries = 1): Promise<T | null> {
@@ -83,7 +92,7 @@ const postJson = <T>(path: string, body: Record<string, unknown>) =>
   }, 0); // 변이는 재시도 없음
 
 export const startEmo = (
-  answers: Record<string, number>, seed: number, days = 10,
+  answers: Record<string, number>, seed: number, days = 20,
   allocations?: Record<string, number>, name?: string,
 ) => postJson<EmoState>("/emo/start", { answers, seed, days, allocations, name });
 
@@ -97,6 +106,11 @@ export const choose = (id: string, choice_id: string) =>
 export const getDilemma = (id: string) => getJson<Dilemma>(`/emo/${id}/dilemma`);
 export const chooseDilemma = (id: string, choice_id: string) =>
   postJson<EmoState>(`/emo/${id}/dilemma/choose`, { choice_id });
+// T-50d — 장소 딜레마(도서관 익절복기·마켓 현실소비 = disp 결정점). 장소 도착 시.
+export const getPlaceDilemma = (id: string, place: string) =>
+  getJson<Dilemma>(`/emo/${id}/place_dilemma/${encodeURIComponent(place)}`);
+export const choosePlaceDilemma = (id: string, place: string, choice_id: string) =>
+  postJson<EmoState>(`/emo/${id}/place_dilemma/${encodeURIComponent(place)}/choose`, { choice_id });
 export const designate = (id: string, npc_id: string) =>
   postJson<EmoState>(`/emo/${id}/designate`, { npc_id });
 export const getEnding = (id: string) => getJson<Ending>(`/emo/${id}/ending`);

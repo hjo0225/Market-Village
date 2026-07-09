@@ -69,12 +69,35 @@ def _seed_insights(disposition: dict, actual: dict) -> list[str]:
     return out
 
 
-def compute_report(disposition: dict | None, actual_bias: dict) -> dict:
-    """리포트 전체(결정론). disposition 없으면(구 게임) available=False."""
+# T-48c — 표본이 이 미만이면 '참고'(임계 n=3 턱걸이는 해상도가 거칠어 신뢰 주의).
+_LOW_SAMPLE = 5
+
+
+def _timeline(choice_history: list | None) -> list[dict]:
+    """T-48d — 편향이 실제로 발현된 결정점의 인과 타임라인(날·종류·발현 편향 라벨).
+    절제한(hits 없는) 결정점은 생략해 신호를 선명하게. '통보' 대신 '그날 그 선택'."""
+    out: list[dict] = []
+    for h in choice_history or []:
+        biases = [BIAS_LABELS.get(a, a) for a in h.get("hits", [])]
+        if biases:
+            out.append({"day": h.get("day"), "kind": h.get("kind"), "biases": biases})
+    return out
+
+
+def compute_report(
+    disposition: dict | None,
+    actual_bias: dict,
+    bias_tally: dict | None = None,
+    choice_history: list | None = None,
+) -> dict:
+    """리포트 전체(결정론). disposition 없으면(구 게임) available=False.
+    T-48c — bias_tally로 축별 표본수(opportunities) 노출·저표본 플래그(정직성).
+    T-48d — choice_history로 인과 타임라인."""
     if not disposition:
         return {"available": False}
 
     expected = disposition.get("expected_bias", {})
+    tally = bias_tally or {}
     comparison = [
         {
             "axis": ax,
@@ -82,6 +105,8 @@ def compute_report(disposition: dict | None, actual_bias: dict) -> dict:
             "expected": expected.get(ax),
             "actual": actual_bias[ax],
             "gap": abs(expected.get(ax, 0) - actual_bias[ax]),
+            "sample": tally.get(ax, {}).get("opportunities", 0),   # T-48c
+            "low_sample": tally.get(ax, {}).get("opportunities", 0) < _LOW_SAMPLE,
         }
         for ax in BIAS_AXES
         if ax in actual_bias
@@ -100,6 +125,7 @@ def compute_report(disposition: dict | None, actual_bias: dict) -> dict:
         "measured_axes": [c["axis"] for c in comparison],
         "self_awareness": self_awareness(expected, actual_bias),
         "insights": _seed_insights(disposition, actual_bias),
+        "timeline": _timeline(choice_history),   # T-48d
     }
 
 

@@ -51,7 +51,8 @@ TRADER_PERSONAS: list[dict] = [
         "herd": 0.2, "rumor": 0.2,
         "stim_trap": None,
         "sprite": "Adam_Smith", "portrait": "Adam_Smith",
-        "sched": {2: "일터", 5: "카페"},
+        # T-50b — 도서관 배치(가치투자자=차분히 복기하는 자리). 마켓·도서관 동선 편입 대응.
+        "sched": {2: "일터", 5: "카페", 8: "도서관"},
     },
     {
         "id": "quant_trader", "name": "유리", "role": "퀀트 트레이더",
@@ -79,8 +80,8 @@ TRADER_PERSONAS: list[dict] = [
         "herd": 0.05, "rumor": 0.3,
         "stim_trap": None,
         "sprite": "Carmen_Ortiz", "portrait": "Carmen_Ortiz",
-        # 위와 같은 이유(운동=광장=공원)로 일터 포함.
-        "sched": {2: "일터", 5: "광장"},
+        # 위와 같은 이유(운동=광장=공원)로 일터 포함. T-50b — 마켓 배치(역발상=현실 소비 자리).
+        "sched": {2: "일터", 5: "광장", 8: "마켓"},
     },
     {
         "id": "jackpot_gambler", "name": "도철", "role": "한탕 도박꾼",

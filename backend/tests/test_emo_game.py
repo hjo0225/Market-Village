@@ -136,7 +136,7 @@ def test_choice_rebalances_risk_to_cash_affects_wealth():
 
 def test_day_schedule_expands_place_to_8_slots():
     # T-22 맵 브릿지: 그날 장소 1개를 8슬롯(아침 집→장소→저녁 귀가)으로.
-    r = _run()   # day0 clone_route = "카페"
+    r = _run()   # T-50a 셔플로 day0 장소는 seed 의존(단언은 clone_route 상대참조)
     sched = r.day_schedule()
     assert set(sched.keys()) == {1, 2, 3, 4, 5, 6, 7, 8}
     assert sched[1] == "집_차트" and sched[8] == "집_차트"   # 아침 집·저녁 귀가
@@ -145,7 +145,7 @@ def test_day_schedule_expands_place_to_8_slots():
 
 def test_day_schedule_visits_multiple_daytime_places():
     # 하루가 한 장소로 접히지 않고(단조·긴 이동=순간이동 원인 방지) 낮에 여러 곳을 돈다.
-    r = _run()   # day0 clone_route = "카페"
+    r = _run()   # T-50a 셔플로 day0 장소는 seed 의존(단언은 clone_route 상대참조)
     sched = r.day_schedule()
     assert sched[1] == "집_차트" and sched[8] == "집_차트"     # 아침 집·저녁 귀가
     daytime = {sched[s] for s in (2, 3, 4, 5, 6, 7)}
@@ -153,6 +153,43 @@ def test_day_schedule_visits_multiple_daytime_places():
     assert len(daytime) >= 2                                  # 서로 다른 장소 ≥2 (단조 아님)
     # 오후(슬롯5·6)는 오늘의 장소 = 동행이 만나는 곳(_emo_meetings 오후 밴드)
     assert sched[5] == r.clone_route[0] and sched[6] == r.clone_route[0]
+
+
+# ── T-50 일과 가짓수 (A 랜덤화 · B 5→7곳 · C 방문수 가변) ────────────────
+def test_route_shuffle_varies_by_seed_deterministically():
+    # T-50a — 회차(seed)마다 동선 순서가 다르되, 같은 seed는 결정론 재생.
+    from sim.emo_game import _default_route
+    assert _default_route(7, seed=1) == _default_route(7, seed=1)   # 결정론 재생
+    assert _default_route(7, seed=1) != _default_route(7, seed=2)   # 회차 변화
+
+
+def test_route_cycle_includes_market_and_library():
+    # T-50b — 마켓·도서관 편입(5→7곳).
+    from sim.emo_game import _ROUTE_CYCLE
+    assert "마켓" in _ROUTE_CYCLE and "도서관" in _ROUTE_CYCLE
+    assert len(_ROUTE_CYCLE) == 7
+
+
+def test_library_market_have_npc_candidates():
+    # T-50b — 새 장소에 NPC 배치(정호=도서관, 미나=마켓) → companion 후보 존재.
+    from sim.companion import daily_candidates
+    from sim.personas import npc_scheds
+    sch = npc_scheds()
+    assert "value_investor" in daily_candidates("도서관", sch)
+    assert "contrarian" in daily_candidates("마켓", sch)
+
+
+def test_daytime_visits_vary_3_to_4():
+    # T-50c — 낮 방문 장소 수가 날마다 3~4로 가변(오후 5·6=P 불변).
+    r = EmoGameRun.new(ANSWERS, ["market_volatile"] * 6, _cat([0.0] * 6), seed=42)
+    counts = set()
+    for d in range(6):
+        r.day = d
+        sched = r.day_schedule()
+        assert sched[5] == sched[6] == r.clone_route[d]   # 오후=P 불변
+        daytime = {sched[s] for s in (2, 3, 4, 5, 6, 7)}
+        counts.add(len(daytime))
+    assert 3 in counts and 4 in counts   # 3곳 날·4곳 날 둘 다 등장
 
 
 def test_holdings_serialized_roundtrip():

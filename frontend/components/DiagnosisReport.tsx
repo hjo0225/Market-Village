@@ -2,7 +2,7 @@
 
 // T-47e — 엔딩 후 진단 리포트. 1층 '선언된 자아'(진단 유형) vs 2층 '실제 행동'
 // (편향) 괴리를 보여준다. 데이터는 GET /emo/{id}/report(disposition_report.py).
-import { DiagnosisReport as ReportData } from "@/lib/emoApi";
+import { DiagnosisReport as ReportData, CATEGORY_LABEL, Category } from "@/lib/emoApi";
 
 const TYPE_DESC: Record<string, string> = {
   안정형: "한 푼도 잃지 않는 것이 목표. 원금 보전 최우선.",
@@ -11,6 +11,9 @@ const TYPE_DESC: Record<string, string> = {
   적극투자형: "높은 수익 위해 상당한 위험을 감수.",
   공격투자형: "인생 역전을 노리며 전액 리스크도 불사.",
 };
+
+// T-48d — 타임라인 결정점 종류 라벨.
+const KIND_LABEL: Record<string, string> = { scenario: "시장", place: "장소", chain: "만남" };
 
 export default function DiagnosisReport({ report }: { report: ReportData | null }) {
   if (!report || !report.available) return null;
@@ -54,7 +57,14 @@ export default function DiagnosisReport({ report }: { report: ReportData | null 
             {comparison.map((b) => (
               <div key={b.axis}>
                 <div className="flex justify-between text-[12px] font-bold">
-                  <span>{b.label}</span>
+                  <span>
+                    {b.label}
+                    {b.sample != null && (
+                      <span className={`ml-1.5 text-[10px] font-normal ${b.low_sample ? "text-amber-600" : "text-pixel-muted"}`}>
+                        n={b.sample}{b.low_sample ? "·참고" : ""}
+                      </span>
+                    )}
+                  </span>
                   <span className="tabular-nums text-pixel-muted">예상 {b.expected ?? "-"} · 실제 {b.actual}</span>
                 </div>
                 <div className="mt-1 relative h-2 rounded-full bg-black/10 overflow-hidden">
@@ -65,6 +75,22 @@ export default function DiagnosisReport({ report }: { report: ReportData | null 
             ))}
           </div>
           <div className="mt-2 text-[10px] text-pixel-muted">회색=선언한 예상 · 빨강=실제 행동. 벌어질수록 자기 인식과 다르게 행동한 것.</div>
+        </section>
+      )}
+
+      {/* T-48d — 인과 타임라인: 언제 무엇이 터졌나(편향 발현일만) */}
+      {(report.timeline?.length ?? 0) > 0 && (
+        <section>
+          <div className="text-[11px] text-pixel-muted mb-2">언제 무엇이 터졌나</div>
+          <div className="flex flex-col gap-1">
+            {report.timeline!.map((t, i) => (
+              <div key={i} className="flex items-center gap-2 text-[12px]">
+                <span className="w-12 shrink-0 font-bold tabular-nums">Day {t.day + 1}</span>
+                <span className="text-pixel-muted">{KIND_LABEL[t.kind] ?? t.kind}</span>
+                <span className="ml-auto font-bold text-rose-600">{t.biases.join(" · ")}</span>
+              </div>
+            ))}
+          </div>
         </section>
       )}
 
@@ -79,6 +105,21 @@ export default function DiagnosisReport({ report }: { report: ReportData | null 
           </section>
         ) : null;
       })()}
+
+      {/* T-49c — 블라인드 해제: 이 시장은 실제였다(엔딩 후 공개) */}
+      {(report.blind_reveal?.length ?? 0) > 0 && (
+        <section className="bg-black/[0.03] rounded-lg p-3">
+          <div className="text-[11px] text-pixel-muted mb-2">…그리고 이 시장은 실제였습니다</div>
+          <div className="flex flex-col gap-1 text-[12px]">
+            {report.blind_reveal!.map((r) => (
+              <div key={r.category} className="flex justify-between">
+                <span className="text-pixel-muted">{CATEGORY_LABEL[r.category as Category] ?? r.category}</span>
+                <span className="font-bold">{r.name} · {r.date}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

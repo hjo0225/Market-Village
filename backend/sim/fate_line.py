@@ -66,6 +66,21 @@ class FateLine:
         closes = [row[3] for row in s.get("ohlc", [])]
         return (max(closes) - min(closes)) if closes else 0.0
 
+    def reveal(self) -> list[dict]:
+        """T-49c — 엔딩 후 블라인드 해제: 각 카테고리의 실제 종목·시기(`_meta_origin`).
+        플레이 중엔 절대 노출 금지(관찰 오염) — 게임 종료 리포트에서만 호출한다.
+        `_meta_origin` = "upbit:KRW-DOGE:2021-04-20 00:00:00"."""
+        _coin = {"BTC": "비트코인", "XRP": "리플", "DOGE": "도지코인",
+                 "USDT": "테더", "ETH": "이더리움"}
+        out: list[dict] = []
+        for cat, info in self._data.get("categories", {}).items():
+            parts = str(info.get("_meta_origin", "")).split(":")
+            symbol = parts[1].replace("KRW-", "") if len(parts) > 1 else ""
+            date = parts[2][:10] if len(parts) > 2 else ""
+            out.append({"category": cat, "symbol": symbol,
+                        "name": _coin.get(symbol, symbol), "date": date})
+        return out
+
     def public_view(self) -> dict[str, dict]:
         """플레이어에게 보이는 뷰 — `_meta_*` 제거(블라인드 §6.1)."""
         return {

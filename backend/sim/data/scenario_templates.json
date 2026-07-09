@@ -4,8 +4,8 @@
     "title": "급락",
     "text": "간밤에 시장이 무너졌다. 보유 종목이 두 자릿수로 빠졌고, 커뮤니티는 패닉이다. 당신의 손은 어디로 향하는가?",
     "choices": [
-      {"id": "cut", "label": "지금 바로 손절한다", "deltas": {"fear": 8, "anxiety": 4, "composure": -4}, "position": -0.6, "bias_tags": ["panic", "loss"]},
-      {"id": "hold", "label": "버틴다 — 원래 계획대로", "deltas": {"fear": -6, "anxiety": -2, "composure": 6}, "position": 0.0},
+      {"id": "cut", "label": "지금 바로 손절한다", "deltas": {"fear": 8, "anxiety": 4, "composure": -4}, "position": -0.6, "bias_tags": ["panic"]},
+      {"id": "hold", "label": "버틴다 — 원래 계획대로", "deltas": {"fear": -6, "anxiety": -2, "composure": 6}, "position": 0.0, "bias_tags": ["loss"]},
       {"id": "buy_dip", "label": "저가 매수 기회다, 더 담는다", "deltas": {"greed": 6, "anxiety": 5, "fear": 2, "composure": -4}, "position": 0.3, "bias_tags": ["over"]}
     ]
   },
@@ -24,9 +24,9 @@
     "title": "루머",
     "text": "출처 불명의 상장폐지설이 돈다. 확인된 건 없지만 가격은 이미 흔들리기 시작했다.",
     "choices": [
-      {"id": "panic_sell", "label": "일단 팔고 본다", "deltas": {"fear": 6, "anxiety": 8, "composure": -5}, "position": -0.6, "bias_tags": ["panic", "loss"]},
+      {"id": "panic_sell", "label": "일단 팔고 본다", "deltas": {"fear": 6, "anxiety": 8, "composure": -5}, "position": -0.6, "bias_tags": ["panic"]},
       {"id": "verify", "label": "공식 발표부터 확인한다", "deltas": {"anxiety": -8, "fear": -2, "composure": 6}, "position": 0.0},
-      {"id": "ignore", "label": "무시한다", "deltas": {"anxiety": 2, "restlessness": 2, "composure": 2}, "position": 0.0}
+      {"id": "ignore", "label": "무시한다", "deltas": {"anxiety": 2, "restlessness": 2, "composure": 2}, "position": 0.0, "bias_tags": ["loss"]}
     ]
   },
   "market_volatile": {

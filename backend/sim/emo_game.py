@@ -63,6 +63,33 @@ CASHOUT_EMOTION_PEAK = 72     # 탐욕 or 공포가 이 이상(감정 정점)일
 CASHOUT_RISK_SHARE = 0.35     # 위험자산 비중(뺄 게 있어야 함)
 _CASHOUT_FRAC = 0.7           # 현금화 선택 시 위험자산의 이 비율을 현금으로
 
+# T-50d — 장소 딜레마(disp 처분효과 결정점): 도서관=익절 복기, 마켓=현실소비 유혹.
+# '이익을 너무 일찍 실현'(익절/소비) 선택 = disp 태깅 → 리포트에서 처분효과 측정
+# (T-48e 흡수 — 반복 결정점이 생겨 disp가 리포트에서 살아난다). 그 장소에 도착하면
+# 발동(연출 문맥). 감정 델타는 소폭(성찰), 날짜는 안 넘어간다.
+_PLACE_DILEMMAS: dict[str, dict] = {
+    "도서관": {
+        "place": "도서관", "title": "복기",
+        "text": "지난 수익 종목의 차트를 다시 연다. 그때 팔았으면… 지금이라도 익절할까, 원래 계획대로 더 지켜볼까?",
+        "choices": [
+            {"id": "take_profit", "label": "지금 익절한다", "bias_tags": ["disp"],
+             "deltas": {"greed": -3, "anxiety": -3, "composure": 3}},
+            {"id": "hold_plan", "label": "계획대로 더 본다",
+             "deltas": {"composure": 4, "restlessness": -2}},
+        ],
+    },
+    "마켓": {
+        "place": "마켓", "title": "장보기",
+        "text": "수익이 조금 났다. 진열대의 갖고 싶던 물건이 눈에 밟힌다. 수익 일부를 빼서 지금 살까, 계좌에 그대로 둘까?",
+        "choices": [
+            {"id": "spend", "label": "수익 빼서 산다", "bias_tags": ["disp"],
+             "deltas": {"greed": -2, "restlessness": -3, "composure": 2}},
+            {"id": "keep", "label": "그대로 둔다",
+             "deltas": {"composure": 3, "greed": 1}},
+        ],
+    },
+}
+
 
 def _holdings_from_allocation(allocation: dict[str, float] | None) -> dict[str, float]:
     """배분 분수(합≈1)를 카테고리별 초기 보유액으로. None/빈 값·합0이면 균등 분배."""
@@ -76,7 +103,8 @@ def _holdings_from_allocation(allocation: dict[str, float] | None) -> dict[str, 
     return {c: round(START_VALUE * w[c], 2) for c in PORTFOLIO_CATEGORIES}
 
 # 클론이 하루에 머무는 장소 순환(동행 후보 = 그 장소에 일과가 있는 NPC).
-_ROUTE_CYCLE = ("카페", "광장", "펍", "일터", "운동")
+# T-50b — 마켓·도서관 편입(맵 주소 有, 정호=도서관·미나=마켓 배치). 5→7곳.
+_ROUTE_CYCLE = ("카페", "광장", "펍", "일터", "운동", "마켓", "도서관")
 
 
 def _day_rng(seed: int, day: int) -> random.Random:
@@ -84,9 +112,12 @@ def _day_rng(seed: int, day: int) -> random.Random:
     return random.Random(seed * 1000 + day)
 
 
-def _default_route(n: int) -> list[str]:
-    """일수만큼 기본 동선(장소 순환). 플레이어가 avoid로 재배치할 수 있다."""
-    return [_ROUTE_CYCLE[i % len(_ROUTE_CYCLE)] for i in range(n)]
+def _default_route(n: int, seed: int = 0) -> list[str]:
+    """일수만큼 기본 동선(장소 순환). T-50a — 회차(seed)마다 순서를 셔플해 재플레이
+    변화·순서효과 통제(같은 seed는 결정론 재생). 플레이어가 avoid로 재배치할 수 있다."""
+    cycle = list(_ROUTE_CYCLE)
+    random.Random(seed).shuffle(cycle)
+    return [cycle[i % len(cycle)] for i in range(n)]
 
 
 @dataclass
@@ -112,6 +143,7 @@ class EmoGameRun:
     pending_chain: dict | None = None
     chains: dict = field(default_factory=chain.load_chains)
     cashout_offered: bool = False   # T-30c — 캐시아웃 딜레마는 게임당 1회만
+    place_dilemmas_done: list[str] = field(default_factory=list)   # T-50d — 처리한 "{day}:{place}"(멱등)
     last_market: dict[str, float] = field(default_factory=dict)   # T-35 — 마지막 정산일 카테고리별 수익률(%)
     # T-47c — 1층 정적 성향 진단(시작 시 diagnose, 플레이 중 불변) + 2층 실제 행동
     # 편향 원장/집계. bias_tally[axis] = {"hits","opportunities"} → actual_bias 비율식.
@@ -139,7 +171,7 @@ class EmoGameRun:
             seed=seed,
             clone_name=_clean_name(name),
             holdings=_holdings_from_allocation(allocation),
-            clone_route=_default_route(len(events)),
+            clone_route=_default_route(len(events), seed),   # T-50a — 회차별 셔플
             disposition=diagnose(answers),   # T-47c — 1층 선언(시작 시 확정, 불변)
             bias_tally={axis: {"hits": 0, "opportunities": 0} for axis in BIAS_AXES},
         )
@@ -233,7 +265,9 @@ class EmoGameRun:
         others = [p for p in _ROUTE_CYCLE if p != place] or [place]
         a = others[self.day % len(others)]
         c = others[(self.day + 2) % len(others)]
-        return {1: "집_차트", 2: a, 3: a, 4: place,
+        # T-50c — 낮 방문 3~4곳 가변(짝수날=4: 오전에 b 한 곳 더, 홀수날=3). 오후(5·6)=P 불변.
+        b = others[(self.day + 4) % len(others)] if self.day % 2 == 0 else a
+        return {1: "집_차트", 2: a, 3: b, 4: place,
                 5: place, 6: place, 7: c, 8: "집_차트"}
 
     # --- 동행 체인 (T-19) ------------------------------------------------- #
@@ -411,6 +445,41 @@ class EmoGameRun:
             self._rebalance(-_CASHOUT_FRAC)   # 위험자산 → 현금
         self.cashout_offered = True
 
+    # --- 장소 딜레마 (T-50d) — disp 결정점 ------------------------------- #
+    def band_places(self) -> dict[str, str]:
+        """오늘 시간대(밴드)별 대표 장소 — 프론트가 '그 장소 도착' 시 장소 딜레마를
+        띄우게. 밴드=day_schedule 8슬롯 묶음(오전1·2/점심3·4/오후5·6/저녁7·8).
+        대표=각 밴드의 낮 장소(오전2·점심4·오후5·저녁7). 점심(게시판)·오후(동행)와
+        겹치지 않게 장소 딜레마는 오전·저녁만 소비한다(프론트 규칙)."""
+        s = self.day_schedule()
+        return {"오전": s[2], "점심": s[4], "오후": s[5], "저녁": s[7]}
+
+    def place_dilemma(self, place: str) -> dict | None:
+        """그날 그 장소에서 발동하는 disp 딜레마(도서관/마켓). 오늘 동선에 그 장소가
+        없거나 미정의 장소면 None. 순수 GET(멱등, 상태 불변) — 표시용."""
+        if self.is_over:
+            return None
+        d = _PLACE_DILEMMAS.get(place)
+        if d is None or place not in self.day_schedule().values():
+            return None
+        return d
+
+    def resolve_place_dilemma(self, place: str, choice_id: str) -> None:
+        """장소 딜레마 선택 적용(감정 델타 + disp 원장 적립). 날짜는 안 넘어간다.
+        같은 (day, place)는 멱등 — 이미 처리했으면 무시(리로드 재요청 이중적용 방지, 4c)."""
+        d = _PLACE_DILEMMAS.get(place)
+        if d is None or place not in self.day_schedule().values():
+            raise RuntimeError(f"no place dilemma at {place!r} today")
+        chosen = next((c for c in d["choices"] if c["id"] == choice_id), None)
+        if chosen is None:
+            raise ValueError(f"unknown place dilemma choice {choice_id!r}")
+        key = f"{self.day}:{place}"
+        if key in self.place_dilemmas_done:
+            return   # 멱등 — 이미 처리
+        self._record_bias(d["choices"], chosen, "place")   # disp 적립
+        self.emotion = apply_delta(self.emotion, chosen.get("deltas", {}))
+        self.place_dilemmas_done.append(key)
+
     # --- 종료 ------------------------------------------------------------- #
     def ending_inputs(self) -> dict:
         """엔딩 분기 입력(T-13): 감정 압축판정 + 재산 수준 + 특수이벤트 누적."""
@@ -452,6 +521,7 @@ class EmoGameRun:
             "rapport": self.rapport,
             "pending_chain": self.pending_chain,
             "cashout_offered": self.cashout_offered,
+            "place_dilemmas_done": list(self.place_dilemmas_done),   # T-50d
             "last_market": self.last_market,
             "disposition": self.disposition,       # T-47c — str키 dict(BSON 안전)
             "choice_history": self.choice_history,
@@ -496,7 +566,7 @@ class EmoGameRun:
             clone_name=_clean_name(doc.get("clone_name")),   # 구 doc은 기본값
             holdings={c: float(holdings.get(c, 0.0)) for c in PORTFOLIO_CATEGORIES},
             log=EmotionLog(snapshots=snaps),
-            clone_route=list(doc.get("clone_route") or _default_route(n)),
+            clone_route=list(doc.get("clone_route") or _default_route(n, doc.get("seed", 0))),
             designations={int(k): v for k, v in (doc.get("designations") or {}).items()},
             companion_id=doc.get("companion_id"),
             special_event_count=doc.get("special_event_count", 0),
@@ -504,6 +574,7 @@ class EmoGameRun:
             rapport={k: float(v) for k, v in (doc.get("rapport") or {}).items()},
             pending_chain=doc.get("pending_chain"),
             cashout_offered=bool(doc.get("cashout_offered", False)),
+            place_dilemmas_done=list(doc.get("place_dilemmas_done") or []),   # T-50d
             last_market={k: float(v) for k, v in (doc.get("last_market") or {}).items()},
             disposition=doc.get("disposition"),   # T-47c — 구 doc엔 없음(None)
             choice_history=list(doc.get("choice_history") or []),
