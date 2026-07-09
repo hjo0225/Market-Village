@@ -20,7 +20,13 @@ export interface DayReportData {
   nextHoldings: Record<string, number>;   // T-38 — 정산 후 카테고리별 보유액
   choiceLabel: string;
   market: Record<string, number>;   // T-35 — 오늘 카테고리별 수익률(%)
+  log?: { label: string; tag: "buy" | "sell" | "hold" }[];   // 하루 동작 로그(감정·자산 변화와 함께 정산에서 확인)
 }
+
+const TAG_LABEL: Record<"buy" | "sell" | "hold", string> = { buy: "매수", sell: "매도", hold: "관망" };
+const TAG_CLASS: Record<"buy" | "sell" | "hold", string> = {
+  buy: "bg-rose-100 text-rose-700", sell: "bg-sky-100 text-sky-700", hold: "bg-black/5 text-pixel-muted",
+};
 
 // 클론의 하루 끝 한마디 — 우세 감정 기반(표현 계층, 결정론).
 function sleepLine(e: Emotion): string {
@@ -134,7 +140,20 @@ export default function DayReport({ data, onNext }: { data: DayReportData; onNex
             </div>
           </div>
 
-          {data.choiceLabel && (
+          {/* 하루 동작 로그 — 감정·자산 변화와 함께 오늘 무엇을 했는지 훑어보기 */}
+          {data.log && data.log.length > 0 ? (
+            <div className="mb-5">
+              <div className="text-[12px] font-bold mb-2">오늘의 동작</div>
+              <div className="flex flex-col gap-1.5">
+                {data.log.map((entry, i) => (
+                  <div key={i} className="flex items-center gap-2 text-[12px]">
+                    <span className={`shrink-0 font-bold rounded px-1.5 py-0.5 ${TAG_CLASS[entry.tag]}`}>{TAG_LABEL[entry.tag]}</span>
+                    <span className="text-pixel-muted">{entry.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : data.choiceLabel && (
             <div className="mb-5 text-[12px]">
               <span className="text-pixel-muted">오늘의 선택 · </span>
               <span className="font-bold">{data.choiceLabel}</span>

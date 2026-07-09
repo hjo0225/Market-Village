@@ -60,10 +60,11 @@ export default function EmoPage() {
   const [mapActivity, setMapActivity] = useState<string | null>(null);
   const [showPortfolio, setShowPortfolio] = useState(false);   // T-31 포트폴리오 드로어
   const [flashAxis, setFlashAxis] = useState<Axis | null>(null);   // T-35 감정 변화 플래시
-  const [tradeFlash, setTradeFlash] = useState<"buy" | "sell" | null>(null);   // T-35 매매 배지
+  const [tradeFlash, setTradeFlash] = useState<{ action: "buy" | "sell"; detail?: string } | null>(null);   // T-35 매매 배지(카드)
   const tradeFlashTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevEmoRef = useRef<Emotion | null>(null);
   const [dayReport, setDayReport] = useState<DayReportData | null>(null);   // T-33/T-34 취침+정산
+  const dayLogRef = useRef<{ label: string; tag: "buy" | "sell" | "hold" }[]>([]);   // 하루 동작 로그(정산에 표시)
   const [report, setReport] = useState<api.DiagnosisReport | null>(null);   // T-47e 진단 리포트(엔딩 후)
   const pendingNextRef = useRef<EmoState | null>(null);
   const mapRef = useRef<MapBackgroundHandle>(null);
@@ -84,6 +85,7 @@ export default function EmoPage() {
     let cancelled = false;
     (async () => {
       setBoard(null); setChain(null); setDilemma(null);
+      dayLogRef.current = [];   // 새 하루 시작 — 동작 로그 초기화
       // T-30c — 하루 시작에 캐시아웃 딜레마(발동 조건 충족 시 1회). 날짜는 안 넘어감.
       if (s.has_cashout_dilemma) {
         const dil = await api.getDilemma(s.game_id);
@@ -92,6 +94,8 @@ export default function EmoPage() {
           const cid = await new Promise<string>((resolve) => { dilemmaPickRef.current = resolve; });
           dilemmaPickRef.current = null;
           setDilemma(null);
+          const dLabel = dil.choices.find((c) => c.id === cid)?.label ?? "";
+          if (dLabel) dayLogRef.current.push({ label: dLabel, tag: cid === "cash_out" ? "sell" : "hold" });
           if (!cancelled) {
             const ns = await api.chooseDilemma(s.game_id, cid);
             if (ns && !cancelled) setRun(ns);   // day 불변 → 일과 시퀀스 재실행 안 됨
@@ -119,7 +123,12 @@ export default function EmoPage() {
           setBoard(b);
           picked = await new Promise<string>((resolve) => { boardPickRef.current = resolve; });
           boardPickRef.current = null;
-          pickedLabel = b.scenario.choices.find((c) => c.id === picked)?.label ?? "";
+          const pickedChoice = b.scenario.choices.find((c) => c.id === picked);
+          pickedLabel = pickedChoice?.label ?? "";
+          if (pickedLabel) {
+            const pos = pickedChoice?.position ?? 0;
+            dayLogRef.current.push({ label: pickedLabel, tag: pos >= TRADE_FX_MIN ? "buy" : pos <= -TRADE_FX_MIN ? "sell" : "hold" });
+          }
           if (cancelled) return;
           setBoard(null);   // 반응 후 닫고 남은 하루를 마저 걷는다
         }
@@ -134,6 +143,10 @@ export default function EmoPage() {
             const cid = await new Promise<string>((resolve) => { dilemmaPickRef.current = resolve; });
             dilemmaPickRef.current = null;
             setDilemma(null);
+            const pLabel = pdil.choices.find((c) => c.id === cid)?.label ?? "";
+            if (pLabel) {
+              dayLogRef.current.push({ label: pLabel, tag: cid === "take_profit" || cid === "spend" ? "sell" : "hold" });
+            }
             if (!cancelled) {
               const ns = await api.choosePlaceDilemma(s.game_id, bandPlace, cid);
               if (ns && !cancelled) setRun(ns);
@@ -159,6 +172,7 @@ export default function EmoPage() {
           prevHoldings: prev.holdings, nextHoldings: ns.holdings,   // T-38 — 카테고리별 변화
           choiceLabel: pickedLabel,
           market: ns.last_market,
+          log: dayLogRef.current,
         });
       }
     })();
@@ -223,6 +237,8 @@ export default function EmoPage() {
   // 만남(체인) 응답 — 걷기 도중. day 불변이라 일과 시퀀스 재실행 안 함.
   const resolveChain = async (id: string) => {
     const s = stateRef.current; if (!s) return;
+    const cLabel = chain?.choices.find((c) => c.id === id)?.label ?? "";
+    if (cLabel) dayLogRef.current.push({ label: cLabel, tag: "hold" });
     setBusy(true); setError(null);
     const ns = await api.chooseChain(s.game_id, id);
     setChain(null);
@@ -234,10 +250,10 @@ export default function EmoPage() {
 
   // T-35 — 매매 순간 체감: 결정적 매매를 골랐을 때 맵 위에 매매 배지를 잠깐 띄운다.
   // (맵 말풍선 trade_fx는 직후 재개되는 걷기 🚶에 즉시 덮여 안 보임 → React 레이어로.)
-  const showTradeFlash = (action: "buy" | "sell") => {
-    setTradeFlash(action);
+  const showTradeFlash = (action: "buy" | "sell", detail?: string) => {
+    setTradeFlash({ action, detail });
     if (tradeFlashTimer.current) clearTimeout(tradeFlashTimer.current);
-    tradeFlashTimer.current = setTimeout(() => setTradeFlash(null), 1400);
+    tradeFlashTimer.current = setTimeout(() => setTradeFlash(null), 1800);
   };
 
   // 게시판 반응 — 낮에 고름. 정산은 아니고(저녁에 함) 일과 시퀀스의 대기를 푼다.
@@ -248,15 +264,18 @@ export default function EmoPage() {
   // 마지막 글 다음에 이벤트 요약+선택지가 뜬다(아래 advEvent board 분기).
   const advanceBoard = () => setBoardStep((s) => s + 1);
   const reactBoard = (id: string) => {
-    const pos = board?.scenario.choices.find((c) => c.id === id)?.position ?? 0;
-    if (pos >= TRADE_FX_MIN) showTradeFlash("buy");
-    else if (pos <= -TRADE_FX_MIN) showTradeFlash("sell");
+    const choice = board?.scenario.choices.find((c) => c.id === id);
+    const pos = choice?.position ?? 0;
+    if (pos >= TRADE_FX_MIN) showTradeFlash("buy", choice?.label);
+    else if (pos <= -TRADE_FX_MIN) showTradeFlash("sell", choice?.label);
     boardPickRef.current?.(id);
   };
   // T-30c — 캐시아웃 딜레마 응답. 현금화(cash_out)=위험자산 매도 → 매매 배지.
   const resolveDilemma = (id: string) => {
     // 현금화·익절·소비 = 이익 실현(매도) → 매도 배지. (T-50d: take_profit·spend)
-    if (id === "cash_out" || id === "take_profit" || id === "spend") showTradeFlash("sell");
+    if (id === "cash_out" || id === "take_profit" || id === "spend") {
+      showTradeFlash("sell", dilemma?.choices.find((c) => c.id === id)?.label);
+    }
     dilemmaPickRef.current?.(id);
   };
 
@@ -275,7 +294,7 @@ export default function EmoPage() {
     const STEP_TITLE = ["이사 온 날", "투자 성향 진단", "초기 자산 배분"];
     return (
       <main className="min-h-screen bg-pixel-path flex items-center justify-center p-4">
-        <PixelPanel tone="wall" className="w-full max-w-lg p-6">
+        <PixelPanel tone="wall" className="w-full max-w-xl p-6">
           {/* 진행 표시 */}
           <div className="flex items-center gap-1.5 mb-4">
             {[0, 1, 2].map((i) => (
@@ -313,6 +332,7 @@ export default function EmoPage() {
                       <PixelButton
                         key={label} size="sm"
                         variant={answers[q.key] === val ? "primary" : "ghost"}
+                        className="whitespace-nowrap"
                         onClick={() => setAnswers((a) => ({ ...a, [q.key]: val }))}
                       >
                         {label}
@@ -455,13 +475,18 @@ export default function EmoPage() {
       <div className="relative flex-1 min-h-0 min-w-0 rounded-xl overflow-hidden border-2 border-black/25">
         <MapBackground ref={mapRef} gameId={state.game_id} game="emo" contained onActivity={setMapActivity} />
 
-        {/* T-35 — 매매 체감 배지: 결정적 반응 직후 맵 위에 잠깐(1.4s). */}
+        {/* T-35 — 매매 체감 카드: 결정적 반응 직후 맵 위에 잠깐(1.8s). 선택 내용(라벨)까지 전달. */}
         {tradeFlash && (
-          <div className="absolute inset-x-0 top-[16%] z-30 flex justify-center pointer-events-none">
-            <span className={`inline-flex items-center gap-1.5 text-[14px] font-extrabold text-white rounded-full px-4 py-1.5 shadow-lg animate-pulse ${tradeFlash === "buy" ? "bg-rose-600/90" : "bg-sky-600/90"}`}>
-              {tradeFlash === "buy" ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-              {tradeFlash === "buy" ? "클론 매수" : "클론 매도"}
-            </span>
+          <div className="absolute inset-x-0 top-[16%] z-30 flex justify-center px-3 pointer-events-none">
+            <div className={`rounded-xl shadow-lg px-4 py-2.5 max-w-[85vw] border-2 border-black/20 animate-pulse ${tradeFlash.action === "buy" ? "bg-rose-600/90" : "bg-sky-600/90"}`}>
+              <div className="flex items-center gap-1.5 text-[14px] font-extrabold text-white">
+                {tradeFlash.action === "buy" ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+                {tradeFlash.action === "buy" ? "클론 매수" : "클론 매도"}
+              </div>
+              {tradeFlash.detail && (
+                <div className="text-[12px] text-white/85 mt-0.5">{tradeFlash.detail}</div>
+              )}
+            </div>
           </div>
         )}
 
@@ -520,10 +545,10 @@ export default function EmoPage() {
         <div className="shrink-0 text-[12px] font-bold text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2" role="alert">{error}</div>
       )}
 
-      {/* 포트폴리오·감정 드로어(탭) */}
+      {/* 포트폴리오·감정 다이얼로그 — 빈칸 많은 사이드 드로어 대신 내용에 맞춰 뜨는 중앙 창 */}
       {showPortfolio && (
-        <div className="absolute inset-0 z-20 bg-black/40 flex justify-end" onClick={() => setShowPortfolio(false)}>
-          <div className="w-80 max-w-[85%] h-full bg-pixel-path p-3 overflow-y-auto flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
+        <div className="absolute inset-0 z-20 bg-black/40 flex items-center justify-center p-4" onClick={() => setShowPortfolio(false)}>
+          <div className="w-full max-w-sm max-h-[85vh] bg-pixel-path rounded-xl border-2 border-black/25 shadow-lg p-3 overflow-y-auto flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-extrabold">상태</h2>
               <button onClick={() => setShowPortfolio(false)} aria-label="닫기"><X className="w-5 h-5" /></button>

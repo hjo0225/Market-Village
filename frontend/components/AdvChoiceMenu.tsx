@@ -25,12 +25,12 @@ export default function AdvChoiceMenu({
   const accent =
     tone === "dilemma" ? "border-amber-400" : tone === "board" ? "border-sky-400" : "border-white/40";
   return (
-    <div className={`bg-black/70 border-2 ${accent} rounded-xl backdrop-blur-sm p-2 shadow-lg flex flex-col gap-1.5 min-w-[220px] max-w-[80vw]`}>
+    <div className={`bg-black/85 border-2 ${accent} rounded-xl backdrop-blur-sm p-2.5 shadow-lg flex flex-col gap-2 min-w-[240px] max-w-[80vw]`}>
       {choices.map((c) => (
         <PixelButton
           key={c.id}
           variant={tone === "dilemma" ? "secondary" : "primary"}
-          className="w-full justify-center"
+          className="w-full justify-center text-[14px] py-2.5"
           disabled={busy}
           onClick={() => onChoose(c.id)}
         >

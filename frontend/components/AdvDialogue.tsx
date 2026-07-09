@@ -37,9 +37,14 @@ export default function AdvDialogue({
   const [imgOk, setImgOk] = useState(true);
   const accent =
     tone === "dilemma" ? "border-amber-400" : tone === "board" ? "border-sky-400" : "border-white/30";
+  // T-41 후속 — 게시판(board) 톤은 종이 카드처럼(포럼 글) 보이게, 나머지는 기존 ADV 대사창.
+  const isBoard = tone === "board";
+  const boxCls = isBoard
+    ? "bg-white text-slate-900 rounded-xl border-2 border-sky-400 shadow-lg p-4 sm:p-5"
+    : `bg-black/80 text-white rounded-xl border-2 ${accent} backdrop-blur-sm p-4 sm:p-5 shadow-lg`;
 
   return (
-    <div className={`bg-black/80 text-white rounded-xl border-2 ${accent} backdrop-blur-sm p-3 sm:p-4 shadow-lg`}>
+    <div className={boxCls}>
       <div className="flex gap-3">
         {/* 초상 — T-42: 캐릭터 얼굴 이미지, 실패 시 색배경+이니셜 폴백 */}
         <div className="shrink-0">
@@ -48,11 +53,11 @@ export default function AdvDialogue({
               src={portraitSrc}
               alt={name}
               onError={() => setImgOk(false)}
-              className="w-14 h-14 sm:w-16 sm:h-16 rounded-lg border-2 border-white/40 object-cover bg-slate-700 [image-rendering:pixelated]"
+              className={`w-16 h-16 sm:w-[4.5rem] sm:h-[4.5rem] rounded-full border-2 ${isBoard ? "border-sky-300" : "border-white/40"} object-cover bg-slate-700 [image-rendering:pixelated]`}
             />
           ) : (
             <div
-              className={`w-14 h-14 sm:w-16 sm:h-16 rounded-lg ${avatarBg} border-2 border-white/40 flex items-center justify-center text-2xl font-extrabold text-white`}
+              className={`w-16 h-16 sm:w-[4.5rem] sm:h-[4.5rem] rounded-full ${avatarBg} border-2 ${isBoard ? "border-sky-300" : "border-white/40"} flex items-center justify-center text-2xl font-extrabold text-white`}
               aria-hidden
             >
               {initial}
@@ -62,11 +67,11 @@ export default function AdvDialogue({
         {/* 이름 + 대사 */}
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2 mb-1">
-            <span className="text-[13px] font-extrabold">{name}</span>
+            <span className={`text-[14px] font-extrabold ${isBoard ? "text-sky-600" : ""}`}>{isBoard ? `@${name}` : name}</span>
             {role && <span className="text-[11px] text-white/50">{role}</span>}
           </div>
-          {title && <div className="text-[12px] font-bold text-white/80 mb-0.5">{title}</div>}
-          <p className="text-[13px] leading-relaxed whitespace-pre-line">{text}</p>
+          {title && <div className={`text-[12px] font-bold mb-1 ${isBoard ? "text-slate-500" : "text-white/80"}`}>{title}</div>}
+          <p className="text-[14px] leading-relaxed whitespace-pre-line">{text}</p>
         </div>
       </div>
     </div>
