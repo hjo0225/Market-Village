@@ -73,6 +73,8 @@ export interface PlanBandOption {
   npcs: PlanNpcPreview[];
   badges: PlanBadge[];
   flavor: string;
+  activity_id?: string;     // §1.2 — (밴드,장소)별 활동 변형 id. 없으면(구버전 폴백) place만 표시(I6)
+  activity_name?: string;   // §1.2 — 활동명(카드 헤드라인). 없으면 place가 헤드라인(I6)
 }
 export interface PlanBand { band: string; options: PlanBandOption[]; }
 export interface PlanFixedSlot { kind: string; label: string; }

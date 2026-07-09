@@ -40,12 +40,18 @@ def test_get_plan_returns_budget_bands_and_lock_state():
     assert set(body["fixed"]) == {"점심"}
     bands = {b["band"]: b for b in body["bands"]}
     assert set(bands) == {"오전", "오후", "저녁"}
-    for band in bands.values():
+    for band_name, band in bands.items():
         assert len(band["options"]) == len(PE.PLAN_PLACES)
         for opt in band["options"]:
             assert opt["place"] in PE.PLAN_PLACES
-            assert opt["cost"] == PE.place_cost(opt["place"])
-            assert opt["forecast"] == PE.place_forecast(opt["place"])
+            # v4 §1.2 — cost/forecast는 오늘의 활동(activity_for)에서 나온다
+            # (I3: 밤 정산과 동일 소스). 하위 호환 정적표(place_cost/forecast)
+            # 와는 더 이상 같지 않을 수 있다 — 활동표가 유일한 소스.
+            activity = PE.activity_for(42, 0, band_name, opt["place"])
+            assert opt["activity_id"] == activity["id"]
+            assert opt["activity_name"] == activity["name"]
+            assert opt["cost"] == activity["cost"]
+            assert opt["forecast"] == activity["deltas"]
             assert isinstance(opt["npcs"], list)
             assert opt["badges"]
             assert isinstance(opt["flavor"], str)
@@ -83,10 +89,16 @@ def test_submit_plan_locks_and_updates_band_places():
 # --- POST /plan: 예산 초과 400 ------------------------------------------- #
 def test_submit_plan_over_budget_returns_400():
     c = _client()
-    gid = _start(c)
-    over_budget_place = max(PE.PLAN_PLACES, key=PE.place_cost)
-    plan = {b: over_budget_place for b in PE.PLAN_BANDS}
-    assert sum(PE.place_cost(plan[b]) for b in PE.PLAN_BANDS) > PE.PLAN_BUDGET
+    seed = 42
+    gid = _start(c, seed=seed)
+    # v4 §1.2 — cost는 이제 오늘의 활동(activity_for)에서 나온다(I3). 밴드별로
+    # 가장 비용이 큰 장소를 골라 총비용이 예산을 넘게 구성한다(day=0 고정).
+    plan = {
+        band: max(PE.PLAN_PLACES, key=lambda p: PE.activity_cost(seed, 0, band, p))
+        for band in PE.PLAN_BANDS
+    }
+    total = sum(PE.activity_cost(seed, 0, band, plan[band]) for band in PE.PLAN_BANDS)
+    assert total > PE.PLAN_BUDGET
     r = c.post(f"/emo/{gid}/plan", json={"plan": plan})
     assert r.status_code == 400
 

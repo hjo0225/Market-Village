@@ -553,8 +553,16 @@ class EmoGameRun:
                 place = self.day_plan.get(band)
                 if place is None:
                     continue
-                next_state = apply_delta(state, _place_effects.place_forecast(place))
-                _push_step("place", f"{place}에 다녀와서", state, next_state, {"place": place})
+                # v4 §1.2 — I3: GET /plan이 보여준 것과 같은 함수(activity_for)로
+                # 그날의 활동을 재도출해 적용한다(activity_id/activity_name도
+                # step에 실어 프론트가 라벨을 그대로 재사용할 수 있게 한다).
+                activity = _place_effects.activity_for(self.seed, day_for_settlement, band, place)
+                next_state = apply_delta(state, activity["deltas"])
+                _push_step(
+                    "place", f"「{activity['name']}」 후", state, next_state,
+                    {"place": place, "activity_id": activity["id"],
+                     "activity_name": activity["name"]},
+                )
                 state = next_state
 
         self.emotion = state
@@ -740,10 +748,15 @@ class EmoGameRun:
             for place in _place_effects.PLAN_PLACES:
                 npcs = self._plan_band_npcs(band, place)
                 npc_ids = [n["npc_id"] for n in npcs]
+                # v4 §1.2 — 오늘의 활동(activity_for)이 cost/forecast의 유일한
+                # 소스(I3): 밤 정산(choose)이 같은 함수로 같은 활동을 재도출한다.
+                activity = _place_effects.activity_for(self.seed, self.day, band, place)
                 options.append({
                     "place": place,
-                    "cost": _place_effects.place_cost(place),
-                    "forecast": _place_effects.place_forecast(place),
+                    "activity_id": activity["id"],
+                    "activity_name": activity["name"],
+                    "cost": activity["cost"],
+                    "forecast": dict(activity["deltas"]),
                     "npcs": npcs,
                     "badges": _place_effects.place_badges(place, npcs),
                     # §2(v2) — NPC-aware 플레이버: 밴드에 NPC가 있으면
@@ -774,7 +787,9 @@ class EmoGameRun:
             raise RuntimeError("game is over")
         if self.plan_locked():
             raise RuntimeError("plan already submitted for today")
-        _place_effects.validate_plan(plan)   # ValueError → 400(호출자)
+        # v4 §1.2 — I3: 오늘의 활동 비용(같은 seed/day로 GET /plan이 보여준 것과
+        # 동일 소스)으로 예산을 검증한다.
+        _place_effects.validate_plan(plan, seed=self.seed, day=self.day)   # ValueError → 400(호출자)
         self.day_plan = {b: plan[b] for b in _place_effects.PLAN_BANDS}
         self.plan_locked_day = self.day
         self._resolve_companion()   # a/c 변경은 companion에 영향 없음(오후=P 불변)이지만 명시적으로 재확정
