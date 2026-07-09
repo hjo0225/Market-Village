@@ -2,15 +2,19 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Moon, TrendingUp, TrendingDown, Minus, ArrowRight } from "lucide-react";
-import { AXES, AXIS_LABEL, Axis, Emotion, CATEGORIES, CATEGORY_LABEL, Category, Settlement, Attribution } from "@/lib/emoApi";
+import { AXES, AXIS_LABEL, Axis, Emotion, NEGATIVE_AXES, CATEGORIES, CATEGORY_LABEL, Category, Settlement, Attribution, Tier } from "@/lib/emoApi";
 import PixelPanel from "@/components/pixel/PixelPanel";
 import PixelButton from "@/components/pixel/PixelButton";
+import Term from "@/components/Term";
 
 // T-33/T-34 — 하루 경계 연출(취침 암전 + 클론 감정 한마디) → 하루 정산 리포트.
 // 하루가 시작하고 끝난다는 리듬을 준다(사용자 #8·#12).
 // §5.2 — settlement이 있으면 cascade(선택→시장→포트폴리오→리밸런싱→감정 단계별
 // 애니메이션) 단계를 sleep 앞에 추가. 없으면(구버전/폴백) 기존 sleep→report 그대로
 // 동작(I6 하위호환) — settlement는 옵셔널.
+// §3 — 정산 중복 제거: settlement가 있으면(캐스케이드가 이미 수치 상세를 보여줬으므로)
+// 리포트는 축소판(요약 한 줄 + 감정 현재값 + 티어 게이지)만 보여준다. settlement가
+// 없으면(구버전 폴백) 기존 풀 리포트(시세 표 + 감정 델타 표)를 그대로 유지(I6).
 
 export interface DayReportData {
   day: number;            // 마친 날(0-index)
@@ -23,7 +27,33 @@ export interface DayReportData {
   nextHoldings: Record<string, number>;   // T-38 — 정산 후 카테고리별 보유액
   choiceLabel: string;
   market: Record<string, number>;   // T-35 — 오늘 카테고리별 수익률(%)
-  settlement?: Settlement;   // §5.1 — 있으면 cascade 단계 추가
+  settlement?: Settlement;   // §5.1 — 있으면 cascade 단계 추가 + §3 축소 리포트
+  prevTier?: Tier | null;    // §3③ — 티어 게이지 "오늘의 변화" 비교용(없으면 게이지 생략, I6)
+  nextTier?: Tier | null;
+}
+
+// §3 — 하루 요약 한 줄. 결정론 규칙(스펙 §3의 4조합 표):
+//  ① 손익 부호: settlement.portfolio.pnl_pct가 있으면 그 부호, 없으면(폴백)
+//     nextAsset - prevAsset 부호.
+//  ② 감정 방향: "부정 축(공포·탐욕·불안·조급) 평균"이 전일 대비 늘었으면 "흔들림",
+//     줄었거나 그대로면 "안정". prevEmotion이 있으면(항상 있음) 그 값과 비교 —
+//     스펙의 "이전 날 있으면 부정축 평균 비교, 없으면 평정 델타 부호"에서 이 리포트는
+//     항상 prevEmotion을 갖고 있으므로 부정축 평균 비교를 기본 규칙으로 채택.
+function negAxisAvg(e: Emotion): number {
+  const sum = NEGATIVE_AXES.reduce((s, a) => s + (e[a] ?? 0), 0);
+  return sum / NEGATIVE_AXES.length;
+}
+
+function daySummaryLine(data: DayReportData): string {
+  const pnlPct = data.settlement ? data.settlement.portfolio.pnl_pct : data.nextAsset - data.prevAsset;
+  const profit = pnlPct >= 0;
+  // 부정 축 평균 델타(이전 날과 비교) — 늘었으면 감정이 흔들린 하루.
+  const negDelta = negAxisAvg(data.nextEmotion) - negAxisAvg(data.prevEmotion);
+  const shaken = negDelta > 0;
+  if (profit && !shaken) return "번 것보다 지킨 게 많은 하루.";
+  if (profit && shaken) return "지갑은 웃고 마음은 뛰었다.";
+  if (!profit && !shaken) return "잃었지만 무너지진 않았다.";
+  return "긴 하루였다. 내일은 내일의 장이 선다.";
 }
 
 // 클론의 하루 끝 한마디 — 우세 감정 기반(표현 계층, 결정론).
@@ -160,10 +190,10 @@ function SettlementCascade({ settlement, onDone }: { settlement: Settlement; onD
             </div>
           )}
 
-          {/* ③ 포트폴리오 before→after 롤링 */}
+          {/* ③ 포트폴리오 before→after 롤링. §2.1 — 아직 확정 전인 오늘의 변화는 평가손익. */}
           {step >= 2 && (
             <div className="animate-fade-in flex items-center justify-between text-[13px]">
-              <span className="font-bold">포트폴리오</span>
+              <span className="font-bold"><Term term="평가손익">포트폴리오</Term></span>
               <span className="flex items-center gap-2 tabular-nums">
                 <span className="text-pixel-muted line-through">{Math.round(settlement.portfolio.before).toLocaleString()}</span>
                 <ArrowRight className="w-3 h-3 text-pixel-muted" />
@@ -182,11 +212,11 @@ function SettlementCascade({ settlement, onDone }: { settlement: Settlement; onD
             <AttributionCard attribution={settlement.attribution!} />
           )}
 
-          {/* ④ 리스크 비중 화살표 */}
+          {/* ④ 리스크 비중 화살표. §2.1 — 리밸런스·노출 용어 설명 적용. */}
           {step >= rebalanceStep && (
             <div className="animate-fade-in">
               <div className="flex items-center justify-between text-[13px]">
-                <span className="font-bold">리스크 노출</span>
+                <span className="font-bold"><Term term="리밸런스">리밸런스</Term> · <Term term="노출">노출</Term></span>
                 <span className="flex items-center gap-2 tabular-nums">
                   <span className="text-pixel-muted">{Math.round(settlement.rebalance.risk_share_before * 100)}%</span>
                   <ArrowRight className="w-3 h-3 text-pixel-muted" />
@@ -283,7 +313,59 @@ export default function DayReport({ data, onNext }: { data: DayReportData; onNex
           </p>
           <span className="text-[11px] text-white/40 mt-2">화면을 눌러 하루 정산 보기</span>
         </button>
+      ) : data.settlement ? (
+        // §3 — 축소 리포트: 캐스케이드가 이미 시세·감정 상세를 보여줬으므로 리포트는
+        // ①요약 한 줄 ②감정 현재값(델타 아님) ③티어 게이지 ④다음 날 버튼만.
+        <PixelPanel tone="cloud" className="w-full max-w-md p-6">
+          <div className="text-[11px] text-pixel-muted mb-1">Day {data.day + 1} 정산</div>
+          <h2 className="text-lg font-extrabold mb-4">{daySummaryLine(data)}</h2>
+
+          {/* ② 최종 감정 상태 바(현재값 스냅샷, 델타 아님) */}
+          <div className="mb-5">
+            <div className="text-[12px] font-bold mb-2">지금 마음</div>
+            <div className="grid grid-cols-2 gap-2">
+              {AXES.map((a: Axis) => {
+                const v = Math.round(data.nextEmotion[a] ?? 0);
+                return (
+                  <div key={a} className="flex items-center gap-2 text-[12px] bg-black/[0.03] rounded px-2 py-1.5">
+                    <span className="w-8 shrink-0 text-pixel-muted">{AXIS_LABEL[a]}</span>
+                    <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden border border-black/10">
+                      <div className="h-full bg-black/60 transition-all duration-500" style={{ width: `${v}%` }} />
+                    </div>
+                    <span className="w-6 text-right font-bold tabular-nums">{v}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ③ 티어 게이지(오늘의 변화 반영). tier가 없으면(구버전 폴백) 생략(I6). */}
+          {data.nextTier && (
+            <div className="mb-6 border-t border-black/10 pt-3">
+              <div className="flex items-center justify-between text-[12px] font-bold mb-1.5">
+                <span>{data.nextTier.icon} {data.nextTier.name}</span>
+                {data.prevTier && data.prevTier.name !== data.nextTier.name && (
+                  <span className="text-[11px] font-bold text-amber-600">티어 상승!</span>
+                )}
+              </div>
+              <div className="h-2 rounded-full bg-black/10 overflow-hidden">
+                <div
+                  className="h-full bg-amber-500 transition-all duration-500"
+                  style={{
+                    width: `${data.nextTier.next_at != null && data.nextTier.next_at > 0
+                      ? Math.max(0, Math.min(100, (data.nextTier.score / data.nextTier.next_at) * 100))
+                      : 100}%`,
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* ④ Day N+1 시작 버튼 */}
+          <PixelButton size="lg" className="w-full" onClick={onNext}>Day {data.day + 2} 시작</PixelButton>
+        </PixelPanel>
       ) : (
+        // I6 — settlement 없으면(구버전 폴백) 기존 풀 리포트(시세 표 + 감정 델타 표) 유지.
         <PixelPanel tone="cloud" className="w-full max-w-md p-6">
           <div className="text-[11px] text-pixel-muted mb-1">Day {data.day + 1} 정산</div>
           <h2 className="text-lg font-extrabold mb-4">오늘 하루</h2>
