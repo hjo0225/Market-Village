@@ -21,7 +21,7 @@ export default function TitleScreen({
       {/* 맵 배경(어둡게) — the_ville 전체 맵(bg+fg 합성)을 다 보이게 깔고 어둡게 오버레이. */}
       <div
         className="pointer-events-none absolute inset-0 select-none bg-center bg-no-repeat"
-        style={{ backgroundImage: "url(/assets/ui/title_bg.png)", backgroundSize: "200%", imageRendering: "pixelated" }}
+        style={{ backgroundImage: "url(/assets/ui/title_bg.png)", backgroundSize: "150%", imageRendering: "pixelated" }}
       />
       <div className="absolute inset-0 bg-black/60" />
       <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-black/70" />
