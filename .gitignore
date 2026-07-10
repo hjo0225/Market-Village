@@ -130,3 +130,13 @@ HANDOFF.md
 Market_Village_PRD_FINAL.md
 SEED_GUIDE.md
 
+
+# design-sync (generated/machine state — durable files in .design-sync/ stay tracked)
+.ds-sync/
+ds-bundle/
+.design-sync/.cache/
+.design-sync/learnings/
+.design-sync/node_modules
+frontend/.ds-entry.ts
+frontend/.ds-types/
+frontend/.ds-tailwind.css

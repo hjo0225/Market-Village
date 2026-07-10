@@ -1,0 +1,20 @@
+{
+  "projectId": "bd2daee2-114b-44a9-ae8e-d8b73c09d6cd",
+  "shape": "package",
+  "pkg": "market-village-frontend",
+  "globalName": "MarketVillage",
+  "buildCmd": "node .design-sync/build-ds.mjs",
+  "entry": "./frontend/.ds-entry.ts",
+  "srcDir": "components",
+  "tsconfig": "tsconfig.json",
+  "cssEntry": ".ds-tailwind.css",
+  "extraFonts": ["../.design-sync/fonts/pretendard/pretendard.css"],
+  "readmeHeader": ".design-sync/conventions.md",
+  "overrides": {
+    "EmotionStrip": { "cardMode": "column" },
+    "InfoHint": { "cardMode": "column" },
+    "InvestmentTypeCard": { "cardMode": "column" },
+    "PortfolioPanel": { "cardMode": "column" },
+    "Term": { "cardMode": "column" }
+  }
+}

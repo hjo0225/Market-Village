@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "include": [".ds-entry.ts"],
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    "outDir": ".ds-types",
+    "rootDir": ".",
+    "incremental": false
+  }
+}

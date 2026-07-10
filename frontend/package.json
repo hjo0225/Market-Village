@@ -2,6 +2,7 @@
   "name": "market-village-frontend",
   "version": "0.1.0",
   "private": true,
+  "types": ".ds-types/.ds-entry.d.ts",
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
