@@ -3,6 +3,11 @@
     "id": "market_crash",
     "title": "급락",
     "text": "간밤에 시장이 무너졌다. {coin} 시세가 두 자릿수로 빠졌고, 커뮤니티는 패닉이다. 당신의 손은 어디로 향하는가?",
+    "text_variants": [
+      "간밤에 시장이 무너졌다. {coin} 시세가 두 자릿수로 빠졌고, 커뮤니티는 패닉이다. 당신의 손은 어디로 향하는가?",
+      "{coin}이(가) 순식간에 -20%. 단톡방은 '어디까지 빠지냐' '나 물렸다'로 아수라장이다. 네 손가락은 어디로 가는가?",
+      "장 열자마자 {coin} 폭락. '이럴 줄 알았다'는 뒷북과 '지금이 바닥'이라는 낙관이 뒤섞여 채팅창이 시끄럽다."
+    ],
     "choices": [
       {"id": "buy", "action": "buy", "label": "탐욕의 20%를 소모해 코인 하나를 매수", "consume_axis": "greed", "consume_fraction": 0.2, "position": 0.4, "bias_tags": ["over"]},
       {"id": "sell", "action": "sell", "label": "공포의 50%를 소모해 코인 하나를 매도", "consume_axis": "fear", "consume_fraction": 0.5, "position": -0.5, "bias_tags": ["panic"]},
@@ -13,6 +18,11 @@
     "id": "market_surge",
     "title": "급등",
     "text": "보유한 {coin} 시세가 하루에 40% 뛰었다. 채팅방은 '지금이라도 더 타라'로 도배됐다. 막차인가, 함정인가?",
+    "text_variants": [
+      "보유한 {coin} 시세가 하루에 40% 뛰었다. 채팅방은 '지금이라도 더 타라'로 도배됐다. 막차인가, 함정인가?",
+      "네 {coin} 잔고가 자고 일어나니 불어 있다. 단톡방은 '가즈아' '아직 안 늦었다'로 축제 분위기다.",
+      "{coin} 초록불이 멈추질 않는다. '더 간다'는 부추김과 '슬슬 익절하자'는 신중론이 채팅창에서 팽팽하다."
+    ],
     "choices": [
       {"id": "buy", "action": "buy", "label": "탐욕의 20%를 소모해 코인 하나를 매수", "consume_axis": "greed", "consume_fraction": 0.2, "position": 0.4, "bias_tags": ["fomo"]},
       {"id": "sell", "action": "sell", "label": "공포의 50%를 소모해 코인 하나를 매도", "consume_axis": "fear", "consume_fraction": 0.5, "position": -0.5, "bias_tags": ["disp"]},
@@ -23,6 +33,11 @@
     "id": "rumor_spread",
     "title": "루머",
     "text": "출처 불명의 상장폐지설이 돈다. 확인된 건 없지만 가격은 이미 흔들리기 시작했다.",
+    "text_variants": [
+      "출처 불명의 상장폐지설이 돈다. 확인된 건 없지만 가격은 이미 흔들리기 시작했다.",
+      "'{coin} 악재 뜬다더라' 캡처 한 장이 단톡방을 휩쓴다. 사실 여부는 아무도 모른다. 넌 뭘 믿을래?",
+      "근거 없는 흉흉한 소문이 채팅창을 채운다. '일단 튀어' vs '루머에 휘둘리지 마'. 진위는 오리무중이다."
+    ],
     "choices": [
       {"id": "buy", "action": "buy", "label": "탐욕의 20%를 소모해 코인 하나를 매수", "consume_axis": "greed", "consume_fraction": 0.2, "position": 0.4, "bias_tags": ["over"]},
       {"id": "sell", "action": "sell", "label": "공포의 50%를 소모해 코인 하나를 매도", "consume_axis": "fear", "consume_fraction": 0.5, "position": -0.5, "bias_tags": ["panic"]},
@@ -33,6 +48,11 @@
     "id": "market_volatile",
     "title": "변동성 폭발",
     "text": "{coin} 시세가 위아래로 10%씩 출렁인다. 잔고가 분 단위로 널을 뛴다. 시세창에서 눈을 뗄 수가 없다.",
+    "text_variants": [
+      "{coin} 시세가 위아래로 10%씩 출렁인다. 잔고가 분 단위로 널을 뛴다. 시세창에서 눈을 뗄 수가 없다.",
+      "{coin} 차트가 톱니처럼 요동친다. 단톡방도 '단타 각이다' '멀미난다'로 제각각이다. 넌 눈을 뗄 수 있어?",
+      "급등과 급락이 한 시간에 다 나온다. 채팅창은 '지금 사' '지금 팔아'가 1분마다 뒤집힌다."
+    ],
     "choices": [
       {"id": "buy", "action": "buy", "label": "탐욕의 20%를 소모해 코인 하나를 매수", "consume_axis": "greed", "consume_fraction": 0.2, "position": 0.4, "bias_tags": ["over"]},
       {"id": "sell", "action": "sell", "label": "공포의 50%를 소모해 코인 하나를 매도", "consume_axis": "fear", "consume_fraction": 0.5, "position": -0.5, "bias_tags": ["panic"]},

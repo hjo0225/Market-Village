@@ -60,8 +60,15 @@ def validate_scenarios(scenarios: dict) -> dict:
     for cat, sc in scenarios.items():
         if cat not in EVENT_CATEGORIES:
             raise ScenarioError(f"unknown event category: {cat!r}")
-        if not str(sc.get("text", "")).strip():
-            raise ScenarioError(f"{cat}: empty text")
+        # T-56: 시나리오 텍스트는 단일 text 또는 text_variants[](열릴 때마다 변주) 중 하나.
+        variants = sc.get("text_variants")
+        if variants is not None:
+            if not isinstance(variants, list) or not variants or any(
+                not str(v).strip() for v in variants
+            ):
+                raise ScenarioError(f"{cat}: text_variants must be non-empty strings")
+        elif not str(sc.get("text", "")).strip():
+            raise ScenarioError(f"{cat}: empty text (or provide text_variants)")
         choices = sc.get("choices") or []
         if len(choices) != CHOICES_PER_SCENARIO:
             raise ScenarioError(
@@ -132,6 +139,14 @@ def pick_exposed_choices(all_choices: list[dict], seed: int, day: int, event_id:
     return exposed
 
 
+def pick_text_variant(variants: list[str], seed: int, day: int, event_id: str) -> str:
+    """T-56: TYPE별 시나리오 텍스트 여러 개 중 하나를 (seed, day, event_id)로 결정론
+    선택. 같은 날=같은 텍스트(4d 리로드 안전), 다른 날 같은 이벤트=다른 서사(급락도
+    매번 다르게). choices 추첨과 독립된 rng 스트림(:text)이라 텍스트·선택지가 따로 변주."""
+    rng = _pool_rng(seed, day, event_id + ":text")
+    return rng.choice(variants)
+
+
 def get_scenario(event_id: str, seed: int | None = None, day: int | None = None) -> dict:
     """이벤트 카테고리의 시나리오를 조회. 미지의 event_id면 ScenarioError.
 
@@ -145,7 +160,11 @@ def get_scenario(event_id: str, seed: int | None = None, day: int | None = None)
     if seed is None or day is None:
         return scenario
     exposed = pick_exposed_choices(scenario["choices"], seed, day, event_id)
-    return {**scenario, "choices": exposed}
+    result = {**scenario, "choices": exposed}
+    variants = scenario.get("text_variants")
+    if variants:   # T-56 — 열릴 때마다 다른 서사(결정론)
+        result["text"] = pick_text_variant(variants, seed, day, event_id)
+    return result
 
 
 def get_choice(event_id: str, choice_id: str) -> dict:
