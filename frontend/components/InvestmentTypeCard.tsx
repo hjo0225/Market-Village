@@ -112,7 +112,7 @@ export default function InvestmentTypeCard({ diagnosis, onCopy, onReset }: Props
             🪙 코인이라면?
             <InfoHint
               title="코인 추천"
-              text="코인은 공식 분류엔 없는 고위험 자산이에요. 내 성향에서 감당할 수 있는 수준을 참고용으로 알려드려요."
+              text="코인은 공식 분류엔 없는 고위험 자산이에요. 아래 종목들은 참고용으로 알려드려요."
             />
           </div>
           <ul className="flex flex-col gap-1">

@@ -651,15 +651,6 @@ export default function EmoPage() {
     );
   }
 
-  // v2 §3.2/§3.3 — 첫 게시판 진입 컷 / 반환점 컷(게임당 1회, 걷기 시퀀스가 게이트로
-  // 대기 중일 때 표시). 씬이 끝나면(건너뛰기 포함) storySceneGateRef를 풀어 재개.
-  if (storyScene === "firstBoard") {
-    return <StoryScene cuts={FIRST_BOARD_CUT} dim={false} cloneName={state.clone_name} onDone={() => storySceneGateRef.current?.()} />;
-  }
-  if (storyScene === "halfway") {
-    return <StoryScene cuts={HALFWAY_CUTS(state.clone_name)} dim={false} cloneName={state.clone_name} onDone={() => storySceneGateRef.current?.()} />;
-  }
-
   // ---------- 플레이 (하이브리드 ADV: 상단 감정스트립 / 큰 맵 / 하단 JRPG 대사창) ----------
   // T-41 — 게시판 여론 넘겨보기 중(글 3개를 한 명씩)에는 선택지 대신 여론 대사창만 뜬다.
   // 마지막 글 다음(boardStep >= threads.length)에 비로소 이벤트 요약+선택지(advEvent board 분기).
@@ -764,7 +755,7 @@ export default function EmoPage() {
             type="button"
             onClick={advanceBoard}
             aria-label="다음 여론 보기"
-            className="absolute inset-x-0 bottom-0 z-10 p-2 sm:p-3 text-left cursor-pointer"
+            className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 z-10 w-[min(24rem,85vw)] text-left cursor-pointer"
           >
             <AdvDialogue
               speakerId={board!.threads[boardStep].author_id}
@@ -776,9 +767,9 @@ export default function EmoPage() {
           </button>
         )}
 
-        {/* choice 스크린 — say와 분리, 맵 중앙에 창형 메뉴 */}
+        {/* choice 스크린 — 대사창 오른쪽 위에 우측 정렬로 뜬다(에이전트 가림 방지) */}
         {advEvent && !coinPick && (
-          <div className="absolute inset-x-0 top-[34%] z-20 flex flex-col items-center gap-2 px-3">
+          <div className="absolute right-2 sm:right-3 bottom-40 sm:bottom-44 z-20 flex flex-col items-end gap-2">
             <AdvChoiceMenu choices={advEvent.choices} onChoose={advEvent.run} busy={busy} tone={advEvent.tone} />
             {/* v3 §D2 — 코치마크: 첫 게시판 선택지 */}
             {advEvent.tone === "board" && (
@@ -792,7 +783,7 @@ export default function EmoPage() {
 
         {/* T-54 — 매수/매도 코인 피커: 포트폴리오 코인 하나를 골라 coin_target으로 실행. */}
         {advEvent && coinPick && (
-          <div className="absolute inset-x-0 top-[30%] z-30 flex flex-col items-center gap-2 px-3">
+          <div className="absolute right-2 sm:right-3 bottom-40 sm:bottom-44 z-30 flex flex-col items-end gap-2">
             <div className="text-[13px] font-extrabold bg-black/70 text-white rounded px-3 py-1">
               {coinPick.action === "buy" ? "어떤 코인을 매수할까?" : "어떤 코인을 매도할까?"}
             </div>
@@ -828,12 +819,9 @@ export default function EmoPage() {
           </div>
         )}
 
-        {/* 걷기 상태(이벤트·여론 없을 때) — 맵 하단 얇은 라벨 */}
+        {/* 걷기 상태 라벨은 맵 안 클론 머리 위 플레이트로 이동(map.html setActivityPlate). */}
         {!advEvent && !boardOnOpinion && (
           <div className="absolute inset-x-0 bottom-2 z-10 flex flex-col items-center gap-2">
-            <span className="text-[12px] font-bold bg-black/55 text-white rounded px-3 py-1">
-              {mapActivity ?? "클론이 하루를 보내는 중…"}
-            </span>
             {/* v3 §D2 — 코치마크: 걷기 장면 첫 표시 */}
             <CoachMark
               id="walking"
@@ -848,10 +836,13 @@ export default function EmoPage() {
         <div className="shrink-0 text-[12px] font-bold text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2" role="alert">{error}</div>
       )}
 
-      {/* 포트폴리오·감정 다이얼로그 — 빈칸 많은 사이드 드로어 대신 내용에 맞춰 뜨는 중앙 창 */}
+      {/* 포트폴리오·감정 — 우측 상단에 붙는 Popover(배경 어둡기 없음, 바깥 클릭으로 닫힘) */}
       {showPortfolio && (
-        <div className="absolute inset-0 z-20 bg-black/40 flex items-center justify-center p-4" onClick={() => setShowPortfolio(false)}>
-          <div className="w-full max-w-sm max-h-[85vh] bg-pixel-path rounded-xl border-2 border-black/25 shadow-lg p-3 overflow-y-auto flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
+        <div className="absolute inset-0 z-20" onClick={() => setShowPortfolio(false)}>
+          <div
+            className="absolute right-2 top-12 sm:right-3 sm:top-14 w-80 max-w-[85vw] max-h-[78vh] bg-pixel-path rounded-xl border-2 border-black/25 shadow-lg p-3 overflow-y-auto flex flex-col gap-2"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between">
               <h2 className="text-sm font-extrabold">상태</h2>
               <button onClick={() => setShowPortfolio(false)} aria-label="닫기"><X className="w-5 h-5" /></button>
@@ -875,6 +866,15 @@ export default function EmoPage() {
           onSkip={skipPlan}
           busy={planBusy}
         />
+      )}
+
+      {/* v2 §3.2/§3.3 — 인게임 컷(첫 게시판·반환점): 게임 맵을 그대로 둔 채(리부트·
+          줌 변화 없음) 그 위에 컷씬 UI만 오버레이. 끝나면 게이트를 풀어 재개. */}
+      {storyScene === "firstBoard" && (
+        <StoryScene overlay cuts={FIRST_BOARD_CUT} onDone={() => storySceneGateRef.current?.()} />
+      )}
+      {storyScene === "halfway" && (
+        <StoryScene overlay cuts={HALFWAY_CUTS(state.clone_name)} onDone={() => storySceneGateRef.current?.()} />
       )}
     </main>
   );

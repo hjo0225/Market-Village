@@ -67,19 +67,7 @@ app.add_middleware(
 if os.path.isdir(ASSETS_DIR):
     app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
 
-# T-FE2: the_ville 배경 지도(순수 캔버스, Next.js MapBackground가 iframe으로 embed).
-_MAP_PATH = join(_HERE, "static_demo", "map.html")
-
-
-@app.get("/map")
-def map_client():
-    from fastapi.responses import HTMLResponse
-    try:
-        with open(_MAP_PATH, encoding="utf-8") as f:
-            return HTMLResponse(f.read())
-    except FileNotFoundError:
-        return HTMLResponse("<h1>map not found</h1>", status_code=404)
-
+# 맵 뷰어(map.html)는 프론트 소유로 이관됨(frontend/public/map.html) — /map 라우트 은퇴.
 
 _MAZE: Maze | None = None
 _BLOCKED_MAZE: list | None = None
@@ -193,10 +181,10 @@ def _ensure_game_walker(game_id: str, npc_scheds: dict | None = None) -> dict:
     walker = _GAME_WALKERS.setdefault(game_id, {"pos": None, "day": -1, "npcs": {}})
     walker.setdefault("npcs", {})  # T-221 이전에 만들어진 워커 하위호환
     if walker["pos"] is None:
-        rng = random.Random(_walker_seed("walker", game_id))
-        home_tile = _gamerun_rand_tile_for(_GAME_LOCATION_ADDR["집_차트"], rng)
-        walker["pos"] = list(home_tile) if home_tile else [70, 40]
-    # T-239 — 집 타일은 게임당 1회 뽑아 박제(시작은 랜덤, 게임 내내 같은 집으로 귀가).
+        # 집은 고정(사용자 요청) — 프론트 컷씬의 CUT_HOME(map.html)과 같은 타일.
+        # sp-A 스폰 영역 대표 타일. 바꿀 땐 map.html CUT_HOME도 함께.
+        walker["pos"] = [53, 14]
+    # T-239 — 집 타일은 게임 내내 같은 집으로 귀가.
     walker.setdefault("home", list(walker["pos"]))
     # NPC 시작 위치 = 마을 공용 장소 중 게임별 랜덤(사용자 요청 — 매 게임 다른 배치).
     # 집(스폰 영역)은 제외해 고정 유지. 시드가 game_id 기반이라 리로드엔 결정론.

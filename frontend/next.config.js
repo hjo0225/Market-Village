@@ -8,7 +8,6 @@ const nextConfig = {
     return [
       { source: "/control/:path*", destination: `${BACKEND}/control/:path*` },
       { source: "/emo/:path*", destination: `${BACKEND}/emo/:path*` },
-      { source: "/map", destination: `${BACKEND}/map` },
       { source: "/assets/:path*", destination: `${BACKEND}/assets/:path*` },
     ];
   },

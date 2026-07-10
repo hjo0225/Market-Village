@@ -74,13 +74,12 @@ function InsufficientBadge() {
 }
 
 function PlaceCard({
-  option, selected, affordable, onSelect, onPreview,
+  option, selected, affordable, onSelect,
 }: {
   option: PlanBandOption;
   selected: boolean;
   affordable: boolean;
   onSelect: () => void;
-  onPreview: () => void;
 }) {
   const shownNpcs = option.npcs.slice(0, 3);
   // §1.2 — activity_name이 있으면 헤드라인(활동명) + 장소명 부제. 없으면(구버전
@@ -92,8 +91,6 @@ function PlaceCard({
       type="button"
       disabled={!affordable && !selected}
       onClick={onSelect}
-      onMouseEnter={onPreview}
-      onFocus={onPreview}
       className={`text-left rounded-lg border-2 p-2.5 flex flex-col gap-1.5 transition-colors
         ${selected ? "border-black bg-pixel-grass/30" : "border-black/15 bg-white hover:border-black/40"}
         disabled:opacity-40 disabled:cursor-not-allowed`}
@@ -140,26 +137,6 @@ function PlaceCard({
   );
 }
 
-// §1.3 — 상단 고정 바: 밴드 진행 표시 점(오전●–오후○–저녁○) + 남은 행동력 n/5 +
-// 지금까지 고른 요약 칩(탭하면 해당 스텝으로 이동).
-function ProgressDots({ stepIndex }: { stepIndex: number }) {
-  return (
-    <div className="flex items-center gap-1.5">
-      {BAND_ORDER.map((band, i) => (
-        <span key={band} className="flex items-center gap-1">
-          <span
-            className={`inline-block w-2.5 h-2.5 rounded-full border-2 border-black
-              ${i < stepIndex ? "bg-black" : i === stepIndex ? "bg-pixel-grass" : "bg-white"}`}
-            aria-hidden
-          />
-          <span className={`text-[11px] font-bold ${i === stepIndex ? "text-black" : "text-pixel-muted"}`}>{band}</span>
-          {i < BAND_ORDER.length - 1 && <span className="text-pixel-muted mx-0.5">–</span>}
-        </span>
-      ))}
-    </div>
-  );
-}
-
 export default function DailyPlan({
   plan,
   cloneName,
@@ -174,7 +151,6 @@ export default function DailyPlan({
   busy?: boolean;
 }) {
   const [assignment, setAssignment] = useState<Record<string, string>>({});
-  const [previewKey, setPreviewKey] = useState<{ band: string; place: string } | null>(null);
   const [helpDismissed, setHelpDismissed] = useState(false);
   const [stepIndex, setStepIndex] = useState(0);   // §1.3 — 위저드 스텝(0=오전, 1=오후, 2=저녁)
   const showFirstPlanHelp = plan.day === 0 && !helpDismissed;
@@ -195,7 +171,6 @@ export default function DailyPlan({
   );
   const remaining = plan.budget - used;   // §1.1 — 잔여 행동력(0-깎는 방향으로 표기)
 
-  const previewOption = previewKey ? bandsByName[previewKey.band]?.find((o) => o.place === previewKey.place) : null;
 
   const allAssigned = BAND_ORDER.every((b) => !!assignment[b]);
   const canConfirm = allAssigned && used <= plan.budget;
@@ -266,25 +241,8 @@ export default function DailyPlan({
           </div>
         )}
 
-        {/* §1.3 — 상단 고정 바: 밴드 진행 점 + 남은 행동력 + 점심 고정 칩 + 요약 칩 */}
-        <div className="shrink-0 rounded-lg border-2 border-black/15 bg-black/[0.03] p-2.5 mb-3 flex flex-col gap-2">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <ProgressDots stepIndex={stepIndex} />
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-bold text-pixel-muted">남은 행동력</span>
-              <div className="w-24 h-3 bg-slate-200 rounded-full overflow-hidden border border-black/15">
-                <div
-                  className={`h-full transition-all duration-300 ${remaining < 0 ? "bg-red-500" : "bg-pixel-grass"}`}
-                  style={{ width: `${Math.min(100, Math.max(0, (remaining / Math.max(1, plan.budget)) * 100))}%` }}
-                />
-              </div>
-              <span className={`text-[12px] font-extrabold tabular-nums ${remaining < 0 ? "text-red-600" : ""}`}>
-                {Math.max(0, remaining)}/{plan.budget}
-              </span>
-            </div>
-          </div>
-
-          {/* 요약 칩: 탭하면 해당 스텝으로 이동. 점심(게시판)은 오전→오후 사이 고정 칩. */}
+        {/* 상단 한 줄: 밴드 칩(탭=스텝 이동) + 점심 고정 칩 + 남은 행동력 */}
+        <div className="shrink-0 mb-3 flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-1.5 flex-wrap">
             {BAND_ORDER.map((band, i) => {
               const place = assignment[band];
@@ -302,22 +260,23 @@ export default function DailyPlan({
                     <span className="text-pixel-muted">{band}</span>
                     <span>{label ?? "미배정"}</span>
                   </button>
-                  {/* 점심(게시판) 고정 칩 — 오전과 오후 스텝 사이에만 표시 */}
                   {band === "오전" && (
                     <span className="inline-flex items-center gap-1 text-[11px] font-bold rounded-full px-2 py-1 border-2 border-dashed border-black/20 bg-black/[0.02] text-pixel-muted">
                       <MessageSquare className="w-3 h-3" />
-                      점심(고정) · {plan.fixed["점심"]?.label ?? "단톡방 확인"}
+                      점심 · 단톡방
                     </span>
                   )}
                 </div>
               );
             })}
           </div>
+          <span className={`text-[12px] font-extrabold tabular-nums ${remaining < 0 ? "text-red-600" : ""}`}>
+            행동력 {Math.max(0, remaining)}/{plan.budget}
+          </span>
         </div>
 
         {/* 본문: 현재 스텝(밴드)의 옵션 카드만 표시 */}
         <div className="flex-1 min-h-0 overflow-y-auto pr-1">
-          <div className="text-[13px] font-extrabold mb-1.5">{currentBand}</div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
             {(bandsByName[currentBand] ?? []).map((option) => (
               <PlaceCard
@@ -326,27 +285,9 @@ export default function DailyPlan({
                 selected={assignment[currentBand] === option.place}
                 affordable={wouldAfford(currentBand, option)}
                 onSelect={() => pickPlace(currentBand, option)}
-                onPreview={() => setPreviewKey({ band: currentBand, place: option.place })}
               />
             ))}
           </div>
-        </div>
-
-        {/* 하단 프리뷰 바 */}
-        <div className="shrink-0 mt-3 rounded-lg border-2 border-black/15 bg-black/[0.03] p-2.5 min-h-[3.25rem]">
-          {previewOption ? (
-            <div className="flex flex-col gap-1">
-              <div className="flex items-center gap-2">
-                <span className="text-[12px] font-extrabold">
-                  {previewKey?.band} · {previewOption.activity_name ?? previewOption.place}
-                </span>
-                <ForecastArrows forecast={previewOption.forecast} />
-              </div>
-              <p className="text-[12px] text-pixel-muted leading-relaxed">{previewOption.flavor}</p>
-            </div>
-          ) : (
-            <p className="text-[12px] text-pixel-muted">카드를 살펴보면 여기에 상세 예보가 표시돼요.</p>
-          )}
         </div>
 
         {/* 하단 액션: 자동 편성(항상 가능) + 스텝 이동/확정 */}

@@ -169,6 +169,12 @@ function bootPhaser(walkers){
         o.bubble.x = Math.round(o.s.x);
         o.bubble.y = Math.round(o.label.y - 10 - (o.bubbleH || 34) / 2);
       }
+      if (o.act){
+        // 활동 플레이트 — 네임플레이트(또는 말풍선) 위에 겹치지 않게 얹는다.
+        const topY = o.bubble ? o.bubble.y - (o.bubbleH || 34) / 2 : o.label.y - 10;
+        o.act.x = Math.round(o.s.x);
+        o.act.y = Math.round(topY - (o.actH || 24) / 2 - 4);
+      }
     });
   }
   game = new Phaser.Game(config);
@@ -294,6 +300,27 @@ const PLACE_SHORT = { "집_차트": "집" };
 const firstEmoji = (s) => (s || "").split(" ")[0];
 function reportActivity(text){
   window.parent.postMessage({ type: "activity", text: text || null }, "*");
+  setActivityPlate(text);   // 하단 태그 대신 클론 머리 위 플레이트(사용자 요청)
+}
+
+// 클론 머리 위 활동 플레이트("🚶 마켓 가는 중" 등) — 네임플레이트 위에 얹는 작은 칩.
+function setActivityPlate(text){
+  const o = sprites[CLONE_ORIG];
+  if (!o || !scene) return;
+  if (o.act){ o.act.destroy(); o.act = null; }
+  if (!text) return;
+  const t = scene.add.text(0, 0, text, {
+    fontSize: "15px",
+    fontFamily: "Pretendard, 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif",
+    fontStyle: "bold", color: "#fffbe8",
+    padding: { x: 2, y: 3 },
+  }).setOrigin(0.5).setResolution(3);
+  const bw = t.width + 12, bh = t.height + 6;
+  const g = scene.add.graphics();
+  g.fillStyle(0x000000, 0.6);
+  g.fillRoundedRect(-bw / 2, -bh / 2, bw, bh, 5);
+  o.act = scene.add.container(o.s.x, o.s.y, [g, t]).setDepth(22);
+  o.actH = bh;
 }
 
 // T-270 — 만남 연출 전 인접 접근(사용자 피드백 ⑤ "가까이 있어야 대화").
@@ -417,7 +444,6 @@ async function playMeeting(m, band, gen, bg, speedup, doingAfter){
   if (gen === walkGen && bubbleGen === bg){
     setBubble(m.id, null);
     if (doingAfter){
-      setBubble(CLONE_ORIG, firstEmoji(doingAfter));
       reportActivity(doingAfter);
     }
     // T-45(사용자 "대화 끝난 에이전트가 사라져") — 대화 뒤 그 자리에 얼어붙어 있다가
@@ -482,13 +508,11 @@ async function _walkBandInner(gameId, band, speedup){
       const chunk = cloneSeg.slice(done, st.i);
       done = st.i;
       if (chunk.length){
-        setBubble(CLONE_ORIG, "🚶");
         reportActivity("🚶 " + (PLACE_SHORT[st.place] || st.place) + " 가는 중");
         await playSteps(CLONE_ORIG, chunk, true, stepMs, HARD_CAP, gen);
       }
       if (gen !== walkGen) break;
       const doing = PLACE_DOING[st.place] || "";
-      setBubble(CLONE_ORIG, firstEmoji(doing));
       reportActivity(doing);
       await new Promise((r) => setTimeout(r, 1300 / Math.max(1, speedup || 1)));
       if (gen !== walkGen) break;
@@ -504,13 +528,11 @@ async function _walkBandInner(gameId, band, speedup){
   } else {
     // 구 캐시(stops 없음) 폴백 — 기존 동작: 통走 후 마지막 장소 행동만.
     if (plan.length && cloneSeg.length){
-      setBubble(CLONE_ORIG, "🚶");
       reportActivity("🚶 " + planLabel + " 가는 중");
     }
     await playSteps(CLONE_ORIG, cloneSeg, true, stepMs, HARD_CAP, gen);
     if (gen === walkGen && plan.length){
       const doing = PLACE_DOING[plan[plan.length - 1]] || "";
-      setBubble(CLONE_ORIG, firstEmoji(doing));
       reportActivity(doing);
     }
   }

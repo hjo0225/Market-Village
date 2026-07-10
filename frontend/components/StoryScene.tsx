@@ -17,11 +17,13 @@ export default function StoryScene({
   onDone,
   cloneName,
   dim = true,
+  overlay = false,
 }: {
   cuts: StoryCut[];
   onDone: () => void;
   cloneName?: string;   // 있으면 컷씬 배경의 클론 이름표로 표시
   dim?: boolean;        // false면 배경 어둡기(backdrop) 없이 마을이 그대로 보임
+  overlay?: boolean;    // true면 자체 배경(iframe·검정) 없이 현재 게임 화면 위에 UI만 얹는다
 }) {
   const [i, setI] = useState(0);
   const cut = cuts[i];
@@ -45,24 +47,24 @@ export default function StoryScene({
   const dark = cut.bg === "dark";   // 암전 컷(무드 라인)은 배경 없이 검정 유지
 
   return (
-    <div className="fixed inset-0 z-50 bg-black overflow-hidden">
-      {/* 게임 컷씬 배경 — Phaser(map.html?mode=cutscene)가 마을을 천천히 팬.
-          씬 전체에서 1회만 마운트(컷 넘겨도 카메라 팬 연속), 암전 컷에선 opacity로 숨김. */}
-      <iframe
-        src={`/map.html?mode=cutscene${cloneName ? `&name=${encodeURIComponent(cloneName)}` : ""}`}
-        title="컷씬 배경"
-        aria-hidden
-        className={`absolute inset-0 h-full w-full border-0 pointer-events-none transition-opacity duration-700 ${dark ? "opacity-0" : "opacity-100"}`}
-      />
-      {/* 텍스트 가독용 어둡기 + 시네마 레터박스 */}
-      {!dark && dim && <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/25 to-black/75 pointer-events-none" />}
-      <div className="absolute top-0 inset-x-0 h-10 sm:h-14 bg-black pointer-events-none" />
-      <div className="absolute bottom-0 inset-x-0 h-10 sm:h-14 bg-black pointer-events-none" />
+    <div className={`fixed inset-0 z-50 overflow-hidden ${overlay ? "" : "bg-black"}`}>
+      {/* 게임 컷씬 배경 — Phaser(map.html?mode=cutscene). overlay 모드(인게임 컷)에선
+          현재 게임 맵이 그대로 뒤에 있으므로 자체 배경을 만들지 않는다. */}
+      {!overlay && (
+        <iframe
+          src={`/map.html?mode=cutscene${cloneName ? `&name=${encodeURIComponent(cloneName)}` : ""}`}
+          title="컷씬 배경"
+          aria-hidden
+          className={`absolute inset-0 h-full w-full border-0 pointer-events-none transition-opacity duration-700 ${dark ? "opacity-0" : "opacity-100"}`}
+        />
+      )}
+      {/* 텍스트 가독용 어둡기(프롤로그 등 dim 씬에서만) */}
+      {!overlay && !dark && dim && <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/25 to-black/75 pointer-events-none" />}
 
       <button
         type="button"
         onClick={(e) => { e.stopPropagation(); onDone(); }}
-        className="absolute top-14 sm:top-[4.5rem] right-4 z-10 text-[12px] font-bold text-white/60 hover:text-white/90 bg-black/40 rounded px-3 py-1.5 border border-white/20"
+        className="absolute top-4 right-4 z-10 text-[12px] font-bold text-white/60 hover:text-white/90 bg-black/40 rounded px-3 py-1.5 border border-white/20"
       >
         건너뛰기
       </button>
