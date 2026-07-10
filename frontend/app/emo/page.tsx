@@ -24,6 +24,7 @@ import DailyPlan from "@/components/DailyPlan";
 import TickerBar from "@/components/TickerBar";
 import TierBadge from "@/components/TierBadge";
 import CoachMark from "@/components/CoachMark";
+import TitleScreen from "@/components/TitleScreen";
 import { PlanView, CatalogCoin } from "@/lib/emoApi";
 import { LevelMap } from "@/types/emo";
 import {
@@ -47,8 +48,7 @@ export default function EmoPage() {
   const [name, setName] = useState("");   // T-28 — 클론 이름
   const [levels, setLevels] = useState<LevelMap>({ ...DEFAULT_LEVELS });   // T-30
   const [step, setStep] = useState(0);   // 온보딩 스텝(0 이름 · 1 진단 · 2 결과 · 3 배분)
-  const [started, setStarted] = useState(false);   // 인트로 스플래시 → 시작 여부
-  const [canStart, setCanStart] = useState(false);   // 몇 초 뒤 "click to start" 노출
+  const [screen, setScreen] = useState<"title" | "game">("title");   // T-57 — 타이틀/시작 메뉴 게이트(CLICK TO START 인트로 대체)
   // v3 §B — 배분 화면(step 3) 진입 시 seed를 먼저 뽑아 GET /emo/catalog?seed=로 실명
   // 코인을 가져온다. 이후 start()는 이 seed 그대로 사용(카탈로그·실제 시장 일치).
   const [seed, setSeed] = useState<number | null>(null);
@@ -73,13 +73,6 @@ export default function EmoPage() {
   const boardPickRef = useRef<((v: { id: string; coin_target: string | null }) => void) | null>(null);
   const [coinPick, setCoinPick] = useState<{ action: string; choiceId: string } | null>(null);   // T-54 코인 피커
   const day = state?.day ?? -1;
-
-  // 인트로: 시작 전 몇 초 뒤에 "click to start" 노출.
-  useEffect(() => {
-    if (started) return;
-    const t = setTimeout(() => setCanStart(true), 2500);
-    return () => clearTimeout(t);
-  }, [started]);
 
   // §3 — 스토리 씬 게이트. "prologue"=이름→진단 사이, "bridge"=배분 완료→Day0 시작
   // 사이, "endingPre"=엔딩 텍스트 앞 1컷, "firstBoard"=첫 게시판 진입 전 1컷(v2 §3.2),
@@ -450,6 +443,11 @@ export default function EmoPage() {
     api.getCatalog(s).then((c) => { if (c) setCatalog(c.coins); });
   };
 
+  // T-57 — 타이틀/시작 메뉴(스플래시). 새 게임 → 온보딩. 이어하기/업적은 T-58/59(미구현).
+  if (screen === "title") {
+    return <TitleScreen onNewGame={() => setScreen("game")} />;
+  }
+
   // ---------- 온보딩 위저드(T-29: 한 화면 한 목적 — 이름 → 진단 → 배분) ----------
   if (!state) {
     if (storyScene === "prologue") return <StoryScene cuts={PROLOGUE_CUTS} cloneName={name.trim() || "클론"} onDone={prologueDone} />;
@@ -478,52 +476,20 @@ export default function EmoPage() {
           className="fixed inset-0 h-full w-full border-0 pointer-events-none"
         />
         <div className="fixed inset-0 bg-black/55 pointer-events-none" />
-        {/* 타이틀 — 처음엔 화면 가운데 크게, 시작하면 좌상단으로 부드럽게 이동 */}
-        <motion.img
-          src="/img/title_image.png"
+        {/* 로고 — 타이틀 화면(TitleScreen)에서 넘어온 뒤라 좌상단 고정(T-57) */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/assets/ui/market_village_logo.png"
           alt="Market Village"
-          className="fixed z-20 drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]"
-          initial={false}
-          animate={
-            started
-              ? { left: 16, top: 16, x: 0, y: 0, width: 150 }
-              : { left: "50%", top: "45%", x: "-50%", y: "-50%", width: 500 }
-          }
-          transition={{ type: "tween", duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
+          className="fixed left-4 top-4 z-20 w-32 sm:w-40 drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]"
         />
 
-        <AnimatePresence>
-          {!started && (
-            <motion.button
-              type="button"
-              aria-label="시작하기"
-              disabled={!canStart}
-              onClick={() => setStarted(true)}
-              className="fixed inset-0 z-10 flex items-end justify-center translate-y-[-20%]"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: canStart ? 1 : 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.4 }}
-              style={{ pointerEvents: canStart ? "auto" : "none" }}
-            >
-              <motion.span
-                className="text-lg font-medium tracking-[0.3em] text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]"
-                animate={{ opacity: [0.4, 1, 0.4] }}
-                transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
-              >
-                CLICK TO START
-              </motion.span>
-            </motion.button>
-          )}
-        </AnimatePresence>
-
-        {started && (
-          <motion.div
-            className="relative z-10 w-full max-w-xl pt-16"
-            initial={{ opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 1.2, duration: 0.55, ease: "easeOut" }}
-          >
+        <motion.div
+          className="relative z-10 w-full max-w-xl pt-16"
+          initial={{ opacity: 0, y: 24 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.55, ease: "easeOut" }}
+        >
             <PixelPanel tone="wall" className="w-full max-w-xl p-6">
               {/* 진행 표시 */}
               <div className="flex items-center gap-1.5 mb-4">
@@ -604,7 +570,6 @@ export default function EmoPage() {
               </div>
             </PixelPanel>
           </motion.div>
-        )}
       </main>
     );
   }

@@ -83,6 +83,15 @@ def validate_scenarios(scenarios: dict) -> dict:
             seen_ids.add(cid)
             if not str(ch.get("label", "")).strip():
                 raise ScenarioError(f"{cat}/{cid}: empty label")
+            # T-56: 선택지 라벨 변주(있으면 텍스트 변주와 같은 길이 — 인덱스 짝).
+            lv = ch.get("label_variants")
+            if lv is not None:
+                if not isinstance(lv, list) or any(not str(x).strip() for x in lv):
+                    raise ScenarioError(f"{cat}/{cid}: label_variants must be non-empty strings")
+                if variants is not None and len(lv) != len(variants):
+                    raise ScenarioError(
+                        f"{cat}/{cid}: label_variants({len(lv)}) must match text_variants({len(variants)})"
+                    )
             # T-53: 3액션 필수 필드 — action·consume_axis·consume_fraction.
             action = ch.get("action")
             if action not in ACTIONS:
@@ -139,12 +148,20 @@ def pick_exposed_choices(all_choices: list[dict], seed: int, day: int, event_id:
     return exposed
 
 
-def pick_text_variant(variants: list[str], seed: int, day: int, event_id: str) -> str:
-    """T-56: TYPE별 시나리오 텍스트 여러 개 중 하나를 (seed, day, event_id)로 결정론
-    선택. 같은 날=같은 텍스트(4d 리로드 안전), 다른 날 같은 이벤트=다른 서사(급락도
-    매번 다르게). choices 추첨과 독립된 rng 스트림(:text)이라 텍스트·선택지가 따로 변주."""
-    rng = _pool_rng(seed, day, event_id + ":text")
-    return rng.choice(variants)
+_AXIS_KR = {"greed": "탐욕", "fear": "공포", "composure": "평정"}
+
+
+def _compose_label(flavor: str, axis: str, fraction: float) -> str:
+    """T-56: 선택지 라벨 = 상황별 flavor + 감정-소모 스펙(#3). 예: '더 태운다 · 탐욕 20% 소모'.
+    flavor는 상황·변주마다 다르고(다양화), 소모 스펙은 합성으로 일관 유지."""
+    return f"{flavor} · {_AXIS_KR.get(axis, axis)} {round(fraction * 100)}% 소모"
+
+
+def pick_variant_index(n: int, seed: int, day: int, event_id: str) -> int:
+    """T-56: (seed, day, event_id) 결정론 변주 인덱스. **텍스트와 선택지 라벨이 같은
+    인덱스를 공유**해 한 서사에 맞는 문구가 함께 뽑힌다(급락도 열릴 때마다 서사+버튼
+    문구 함께 변주). 같은 날=동일(4d 리로드 안전)."""
+    return _pool_rng(seed, day, event_id + ":variant").randrange(max(1, n))
 
 
 def get_scenario(event_id: str, seed: int | None = None, day: int | None = None) -> dict:
@@ -157,14 +174,34 @@ def get_scenario(event_id: str, seed: int | None = None, day: int | None = None)
     if event_id not in scenarios:
         raise ScenarioError(f"unknown event_id: {event_id!r}")
     scenario = scenarios[event_id]
-    if seed is None or day is None:
-        return scenario
-    exposed = pick_exposed_choices(scenario["choices"], seed, day, event_id)
-    result = {**scenario, "choices": exposed}
     variants = scenario.get("text_variants")
-    if variants:   # T-56 — 열릴 때마다 다른 서사(결정론)
-        result["text"] = pick_text_variant(variants, seed, day, event_id)
+    idx = 0
+    if variants and seed is not None and day is not None:
+        idx = pick_variant_index(len(variants), seed, day, event_id)
+    # T-56 — 텍스트·선택지 라벨을 **같은 변주 인덱스**로 함께 뽑는다(서사에 맞는 버튼 문구).
+    choices = []
+    for ch in scenario["choices"]:
+        lv = ch.get("label_variants")
+        if lv:
+            flavor = lv[idx % len(lv)]
+            choices.append({**ch, "label": _compose_label(flavor, ch["consume_axis"], ch["consume_fraction"])})
+        else:
+            choices.append(ch)
+    result = {**scenario, "choices": choices}
+    if variants:
+        result["text"] = variants[idx]
+    if seed is not None and day is not None:
+        result["choices"] = pick_exposed_choices(result["choices"], seed, day, event_id)
     return result
+
+
+def resolve_label(event_id: str, choice_id: str, seed: int, day: int) -> str:
+    """T-56: 게시판에서 실제로 보인 선택지 라벨(변주 반영) — 정산 기록용(get_choice는
+    변주 인덱스를 모르므로 이쪽으로 그날 라벨을 복원)."""
+    for ch in get_scenario(event_id, seed, day)["choices"]:
+        if ch["id"] == choice_id:
+            return ch["label"]
+    return choice_id
 
 
 def get_choice(event_id: str, choice_id: str) -> dict:

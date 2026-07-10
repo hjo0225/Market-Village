@@ -9,9 +9,9 @@
       "장 열자마자 {coin} 폭락. '이럴 줄 알았다'는 뒷북과 '지금이 바닥'이라는 낙관이 뒤섞여 채팅창이 시끄럽다."
     ],
     "choices": [
-      {"id": "buy", "action": "buy", "label": "탐욕의 20%를 소모해 코인 하나를 매수", "consume_axis": "greed", "consume_fraction": 0.2, "position": 0.4, "bias_tags": ["over"]},
-      {"id": "sell", "action": "sell", "label": "공포의 50%를 소모해 코인 하나를 매도", "consume_axis": "fear", "consume_fraction": 0.5, "position": -0.5, "bias_tags": ["panic"]},
-      {"id": "hold", "action": "hold", "label": "평정의 10%를 소모해 포트폴리오 유지", "consume_axis": "composure", "consume_fraction": 0.1, "position": 0.0, "bias_tags": ["loss"]}
+      {"id": "buy", "action": "buy", "label": "지금 담는다 · 탐욕 20% 소모", "label_variants": ["지금 담는다", "평단 낮춘다", "바닥이라 줍는다"], "consume_axis": "greed", "consume_fraction": 0.2, "position": 0.4, "bias_tags": ["over"]},
+      {"id": "sell", "action": "sell", "label": "손절한다 · 공포 50% 소모", "label_variants": ["손절한다", "일단 던진다", "미련없이 자른다"], "consume_axis": "fear", "consume_fraction": 0.5, "position": -0.5, "bias_tags": ["panic"]},
+      {"id": "hold", "action": "hold", "label": "버틴다 · 평정 10% 소모", "label_variants": ["버틴다", "존버한다", "계획선만 본다"], "consume_axis": "composure", "consume_fraction": 0.1, "position": 0.0, "bias_tags": ["loss"]}
     ]
   },
   "market_surge": {
@@ -24,9 +24,9 @@
       "{coin} 초록불이 멈추질 않는다. '더 간다'는 부추김과 '슬슬 익절하자'는 신중론이 채팅창에서 팽팽하다."
     ],
     "choices": [
-      {"id": "buy", "action": "buy", "label": "탐욕의 20%를 소모해 코인 하나를 매수", "consume_axis": "greed", "consume_fraction": 0.2, "position": 0.4, "bias_tags": ["fomo"]},
-      {"id": "sell", "action": "sell", "label": "공포의 50%를 소모해 코인 하나를 매도", "consume_axis": "fear", "consume_fraction": 0.5, "position": -0.5, "bias_tags": ["disp"]},
-      {"id": "hold", "action": "hold", "label": "평정의 10%를 소모해 포트폴리오 유지", "consume_axis": "composure", "consume_fraction": 0.1, "position": 0.0}
+      {"id": "buy", "action": "buy", "label": "더 태운다 · 탐욕 20% 소모", "label_variants": ["더 태운다", "불장 올라탄다", "막차 탄다"], "consume_axis": "greed", "consume_fraction": 0.2, "position": 0.4, "bias_tags": ["fomo"]},
+      {"id": "sell", "action": "sell", "label": "익절한다 · 공포 50% 소모", "label_variants": ["익절한다", "차익 챙긴다", "슬슬 던진다"], "consume_axis": "fear", "consume_fraction": 0.5, "position": -0.5, "bias_tags": ["disp"]},
+      {"id": "hold", "action": "hold", "label": "그대로 간다 · 평정 10% 소모", "label_variants": ["그대로 간다", "안 흔들린다", "목표까지 버틴다"], "consume_axis": "composure", "consume_fraction": 0.1, "position": 0.0}
     ]
   },
   "rumor_spread": {
@@ -39,9 +39,9 @@
       "근거 없는 흉흉한 소문이 채팅창을 채운다. '일단 튀어' vs '루머에 휘둘리지 마'. 진위는 오리무중이다."
     ],
     "choices": [
-      {"id": "buy", "action": "buy", "label": "탐욕의 20%를 소모해 코인 하나를 매수", "consume_axis": "greed", "consume_fraction": 0.2, "position": 0.4, "bias_tags": ["over"]},
-      {"id": "sell", "action": "sell", "label": "공포의 50%를 소모해 코인 하나를 매도", "consume_axis": "fear", "consume_fraction": 0.5, "position": -0.5, "bias_tags": ["panic"]},
-      {"id": "hold", "action": "hold", "label": "평정의 10%를 소모해 포트폴리오 유지", "consume_axis": "composure", "consume_fraction": 0.1, "position": 0.0, "bias_tags": ["loss"]}
+      {"id": "buy", "action": "buy", "label": "루머에 베팅 · 탐욕 20% 소모", "label_variants": ["루머에 베팅", "빠진 김에 줍기", "노이즈에 담기"], "consume_axis": "greed", "consume_fraction": 0.2, "position": 0.4, "bias_tags": ["over"]},
+      {"id": "sell", "action": "sell", "label": "선제 정리 · 공포 50% 소모", "label_variants": ["선제 정리", "일단 튄다", "안전제일 손절"], "consume_axis": "fear", "consume_fraction": 0.5, "position": -0.5, "bias_tags": ["panic"]},
+      {"id": "hold", "action": "hold", "label": "확인 먼저 · 평정 10% 소모", "label_variants": ["확인 먼저", "사실부터 확인", "소문 무시"], "consume_axis": "composure", "consume_fraction": 0.1, "position": 0.0, "bias_tags": ["loss"]}
     ]
   },
   "market_volatile": {
@@ -54,9 +54,9 @@
       "급등과 급락이 한 시간에 다 나온다. 채팅창은 '지금 사' '지금 팔아'가 1분마다 뒤집힌다."
     ],
     "choices": [
-      {"id": "buy", "action": "buy", "label": "탐욕의 20%를 소모해 코인 하나를 매수", "consume_axis": "greed", "consume_fraction": 0.2, "position": 0.4, "bias_tags": ["over"]},
-      {"id": "sell", "action": "sell", "label": "공포의 50%를 소모해 코인 하나를 매도", "consume_axis": "fear", "consume_fraction": 0.5, "position": -0.5, "bias_tags": ["panic"]},
-      {"id": "hold", "action": "hold", "label": "평정의 10%를 소모해 포트폴리오 유지", "consume_axis": "composure", "consume_fraction": 0.1, "position": 0.0}
+      {"id": "buy", "action": "buy", "label": "출렁일 때 담기 · 탐욕 20% 소모", "label_variants": ["출렁일 때 담기", "파도 탄다", "지금 산다"], "consume_axis": "greed", "consume_fraction": 0.2, "position": 0.4, "bias_tags": ["over"]},
+      {"id": "sell", "action": "sell", "label": "못 견뎌 정리 · 공포 50% 소모", "label_variants": ["못 견뎌 정리", "멀미나 이탈", "지금 판다"], "consume_axis": "fear", "consume_fraction": 0.5, "position": -0.5, "bias_tags": ["panic"]},
+      {"id": "hold", "action": "hold", "label": "정해둔 대로 · 평정 10% 소모", "label_variants": ["정해둔 대로", "고정", "심장 붙잡고 버틴다"], "consume_axis": "composure", "consume_fraction": 0.1, "position": 0.0}
     ]
   }
 }
