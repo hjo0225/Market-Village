@@ -10,10 +10,10 @@ from __future__ import annotations
 from sim.emo_game import EmoGameRun
 from sim.fate_line import CATEGORIES
 
-# 공격형 12문항(전부 최고 위험) — 공격투자형
-AGGRESSIVE = {f"Q{i}": 4 for i in range(1, 13)}
-# 안정형 12문항
-CONSERVATIVE = {f"Q{i}": 1 for i in range(1, 13)}
+# 공격형 7문항(전부 최고 위험) — 공격투자형
+AGGRESSIVE = {"Q1": 10, "Q2": 5, "Q3": 10, "Q4": 6, "Q5": 6, "Q6": 6, "Q7": 10}
+# 안정형 7문항(전부 최저 위험) — 안정형
+CONSERVATIVE = {"Q1": 2, "Q2": 1, "Q3": 2, "Q4": 1, "Q5": 2, "Q6": 3, "Q7": 2}
 
 
 def _cat(returns):
@@ -26,7 +26,7 @@ def _crash_game(answers, days=4):
 
 
 # ── 진단 확정 ───────────────────────────────────────────────────────────
-def test_new_sets_disposition_from_12q():
+def test_new_sets_disposition_from_7q():
     r = EmoGameRun.new(AGGRESSIVE, ["market_crash"], _cat([-0.1]), seed=1)
     assert r.disposition is not None
     assert r.disposition["declared_type"] == "공격투자형"

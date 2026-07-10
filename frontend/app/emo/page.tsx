@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Users, CalendarDays, Wallet, PieChart, X, TrendingUp, TrendingDown } from "lucide-react";
 import * as api from "@/lib/emoApi";
 import { Board, ChainEvent, Dilemma, EmoState, NPC_NAME, CATEGORIES, CATEGORY_LABEL, Category, AXES, Axis, Emotion } from "@/lib/emoApi";
@@ -26,56 +27,36 @@ const DEFAULT_LEVELS: Record<Category, Level> = {
   large_stable: "med", mid_alt: "med", meme: "low", stable: "low", cash: "med",
 };
 
-// 성향분석.md — 정적 성향 진단 12문항. 값=점수(1~4, 높을수록 위험지향).
-// 백엔드 disposition.diagnose가 점수로 선택지를 역참조한다.
+// 성향분석.md — 전국투자자교육협의회 '투자 성향 진단표' 7문항을 코인 맥락으로 재구성.
+// 값=문항별 가중 점수(문항 내 유일). 백엔드 disposition.diagnose가 점수로 선택지를 역참조.
 const QUESTIONS: { key: string; text: string; options: [string, number][] }[] = [
   {
-    key: "Q1", text: "룸메이트가 눈을 반짝이며 말한다. \"지금 아니면 못 사. 다들 타는 중이야.\" 너라면?",
-    options: [["바로 산다. 기회는 안 기다려준다", 4], ["일단 판을 보고 소액만 담근다", 2], ["다들 탈 때가 제일 위험하다. 무시", 1]]
+    key: "Q1", text: "여유자금 1,000만 원이 생겼다. 예금과 코인에 나눈다면?",
+    options: [["예금 1,000만 원", 2], ["예금 700 · 코인 300", 4], ["예금 500 · 코인 500", 6], ["예금 300 · 코인 700", 8], ["코인 1,000만 원", 10]]
   },
   {
-    key: "Q2", text: "투자한 돈이 하루 만에 −30%. 지금 네 심정은?",
-    options: [["기회다. 오히려 더 산다", 4], ["오를 때까지 버틴다", 3], ["정해둔 선에서 손절한다", 2], ["밤새 잠을 못 잔다", 1]]
+    key: "Q2", text: "이 자금을 얼마 동안 굴릴 생각이야?",
+    options: [["1개월 미만", 1], ["1개월 이상 ~ 6개월 미만", 2], ["6개월 이상 ~ 1년 미만", 3], ["1년 이상 ~ 3년 미만", 4], ["3년 이상", 5]]
   },
   {
-    key: "Q3", text: "얼마까지 잃어도 네 일상이 흔들리지 않아?",
-    options: [["전액 각오돼 있다", 4], ["절반 정도까지", 3], ["10% 정도까지", 2], ["한 푼도 잃기 싫다", 1]]
+    key: "Q3", text: "매달 남는 100만 원을 적금과 코인 적립에 나눈다면?",
+    options: [["적금 100만 원", 2], ["적금 70 · 코인 30", 4], ["적금 50 · 코인 50", 6], ["적금 30 · 코인 70", 8], ["코인 100만 원", 10]]
   },
   {
-    key: "Q4", text: "투자 가능 기간을 고르라면 가장 가까운 쪽은?",
-    options: [["3년 이상 묻어둘 수 있다", 4], ["1년쯤은 기다릴 수 있다", 3], ["몇 달 안에 결과를 보고 싶다", 2], ["6개월도 길다", 1]]
+    key: "Q4", text: "자산관리에서 내가 우선하는 순서는?",
+    options: [["안전성 > 유동성 > 수익성", 1], ["안전성 > 수익성 > 유동성", 2], ["유동성 > 안전성 > 수익성", 3], ["유동성 > 수익성 > 안전성", 4], ["수익성 > 안전성 > 유동성", 5], ["수익성 > 유동성 > 안전성", 6]]
   },
   {
-    key: "Q5", text: "수익이 났다. 넌 언제 팔아?",
-    options: [["목표가까지 안 판다", 4], ["분할로 조금씩 줄인다", 3], ["조금 오르면 바로 익절", 2], ["원금 회복하는 순간 판다", 1]]
+    key: "Q5", text: "가장 선호하는 자산은?",
+    options: [["예금 · 스테이블코인", 2], ["비트코인 · 이더 같은 우량 코인", 4], ["신규 · 알트코인", 6]]
   },
   {
-    key: "Q6", text: "예상 못 한 100만원이 생겼다. 어디에 넣어?",
-    options: [["분산해서 천천히 옮긴다", 3], ["장기 보유할 메이저에 넣는다", 2], ["오늘 뜨는 신규/알트코인에 전부", 4], ["일단 현금으로 두고 기회를 본다", 1]]
+    key: "Q6", text: "더 선호하는 투자 전략은?",
+    options: [["분산된 포트폴리오로 시장 평균 정도의 성과", 3], ["원금 손실 위험이 있어도 시장 평균보다 높은 수익", 6]]
   },
   {
-    key: "Q7", text: "코인 결정을 내릴 때 넌 주로 뭘 믿어?",
-    options: [["내가 직접 조사한 자료", 3], ["재무·온체인·차트를 같이 본다", 4], ["커뮤니티/인플루언서 분위기", 2], ["지인이 좋다 하면 일단 본다", 1]]
-  },
-  {
-    key: "Q8", text: "새 상품 설명서를 받았다. 이해도는 어느 쪽에 가까워?",
-    options: [["구조와 수수료까지 대체로 읽힌다", 4], ["핵심 위험 정도는 파악한다", 3], ["수익 예시만 눈에 들어온다", 2], ["설명보다 분위기가 더 중요하다", 1]]
-  },
-  {
-    key: "Q9", text: "매수 버튼을 누르기 직전 마지막으로 확인하는 것은?",
-    options: [["내 기준표와 손절/익절 규칙", 4], ["가격·거래량·뉴스의 일관성", 3], ["실시간 채팅방의 온도", 2], ["놓치면 후회할 것 같은 느낌", 1]]
-  },
-  {
-    key: "Q10", text: "금융자산 중 투자에 넣어도 된다고 느끼는 비중은?",
-    options: [["40% 초과도 감당 가능하다", 4], ["20~40% 정도", 3], ["10~20% 정도", 2], ["10% 이내만", 1]]
-  },
-  {
-    key: "Q11", text: "수입원이 흔들릴 때 투자 계획은?",
-    options: [["그래도 승부금은 유지한다", 4], ["기회가 확실하면 더 넣는다", 3], ["생활비와 비상금을 먼저 잠근다", 2], ["투자를 멈추고 현금을 확보한다", 1]]
-  },
-  {
-    key: "Q12", text: "너에게 '투자'란 한마디로?",
-    options: [["인생 역전의 기회", 4], ["빠르게 판을 키우는 도구", 3], ["자산을 불리는 수단", 2], ["생활을 지키는 장기 준비", 1]]
+    key: "Q7", text: "투자 손실을 어디까지 견딜 수 있어?",
+    options: [["무슨 일이 있어도 원금은 지켜야 한다", 2], ["10% 미만까지는 감수", 4], ["20% 미만까지는 감수", 6], ["40% 미만까지는 감수", 8], ["기대수익이 높다면 위험은 상관없다", 10]]
   },
 ];
 
@@ -93,6 +74,8 @@ export default function EmoPage() {
   const [name, setName] = useState("");   // T-28 — 클론 이름
   const [levels, setLevels] = useState<Record<Category, Level>>({ ...DEFAULT_LEVELS });   // T-30
   const [step, setStep] = useState(0);   // 온보딩 스텝(0 이름 · 1 진단 · 2 결과 · 3 배분)
+  const [started, setStarted] = useState(false);   // 인트로 스플래시 → 시작 여부
+  const [canStart, setCanStart] = useState(false);   // 몇 초 뒤 "click to start" 노출
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mapActivity, setMapActivity] = useState<string | null>(null);
@@ -109,6 +92,13 @@ export default function EmoPage() {
   const stateRef = useRef<EmoState | null>(null);
   const boardPickRef = useRef<((id: string) => void) | null>(null);
   const day = state?.day ?? -1;
+
+  // 인트로: 시작 전 몇 초 뒤에 "click to start" 노출.
+  useEffect(() => {
+    if (started) return;
+    const t = setTimeout(() => setCanStart(true), 2500);
+    return () => clearTimeout(t);
+  }, [started]);
 
   const setRun = useCallback((s: EmoState) => { stateRef.current = s; setState(s); }, []);
   const selectQuestionOption = useCallback((optionIndex: number) => {
@@ -398,158 +388,196 @@ export default function EmoPage() {
             "linear-gradient(rgba(0,0,0,0.72),rgba(0,0,0,0.72)), url('/img/cover.png')",
         }}
       >
-        <div className="w-full max-w-xl">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src="/img/title_image.png"
-            alt="Market Village"
-            className="mx-auto mb-4 w-full max-w-sm drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]"
-          />
-        <PixelPanel tone="wall" className="w-full max-w-xl p-6">
-          {/* 진행 표시 */}
-          <div className="flex items-center gap-1.5 mb-4">
-            {[0, 1, 2, 3].map((i) => (
-              <div key={i} className={`h-1.5 flex-1 rounded-full ${i <= step ? "bg-black/70" : "bg-black/15"}`} />
-            ))}
-          </div>
-          <div className="text-[11px] text-pixel-muted mb-1">{step + 1} / 4</div>
-          <h1 className="text-lg font-extrabold mb-5">{STEP_TITLE[step]}</h1>
+        {/* 타이틀 — 처음엔 화면 가운데 크게, 시작하면 좌상단으로 부드럽게 이동 */}
+        <motion.img
+          src="/img/title_image.png"
+          alt="Market Village"
+          className="fixed z-20 drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]"
+          initial={false}
+          animate={
+            started
+              ? { left: 16, top: 16, x: 0, y: 0, width: 150 }
+              : { left: "50%", top: "45%", x: "-50%", y: "-50%", width: 500 }
+          }
+          transition={{ type: "tween", duration: 1.2, ease: [0.22, 1, 0.36, 1] }}
+        />
 
-          {/* STEP 0 — 이름만 */}
-          {step === 0 && (
-            <div>
-              <p className="text-[12px] text-pixel-muted mb-4">이 마을에서 30일을 살아갈 내 클론의 이름을 지어주세요.</p>
-              <label htmlFor="clone-name" className="text-[13px] font-bold block mb-2">클론 이름</label>
-              <input
-                id="clone-name" type="text" value={name} maxLength={12}
-                placeholder="내 클론"
-                autoFocus
-                className="w-full px-3 py-2.5 text-[14px] rounded-lg border-2 border-black/15 bg-white focus:border-black/40 outline-none"
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") setStep(1); }}
-              />
-            </div>
-          )}
-
-          {/* STEP 1 — 진단(한 문항 한 화면) */}
-          {step === 1 && (
-            <div>
-              <div className="mb-4">
-                <div className="mb-1 flex items-center justify-between text-[11px] font-bold text-pixel-muted">
-                  <span>{questionIndex + 1} / {QUESTIONS.length}</span>
-                  <span>{progressPct}%</span>
-                </div>
-                <div className="h-2 rounded-full border-2 border-black bg-white overflow-hidden">
-                  <div className="h-full bg-[#76d672]" style={{ width: `${progressPct}%` }} />
-                </div>
-              </div>
-              <div className="rounded-xl border-2 border-black bg-white p-4 shadow-pixel-sm">
-                <div className="text-[11px] font-black text-black/45">{currentQuestion.key}</div>
-                <div className="mt-1 text-[17px] font-black leading-snug">{currentQuestion.text}</div>
-                <div className="mt-4 grid gap-2">
-                  {currentQuestion.options.map(([label, val], optionIndex) => (
-                    <button
-                      type="button"
-                      key={label}
-                      aria-label={`선택지 ${optionIndex + 1}: ${label}`}
-                      className={`grid min-h-12 grid-cols-[1fr_auto] items-center gap-3 rounded-xl border-2 px-3 py-2 text-left text-[13px] font-extrabold shadow-pixel-sm ${answers[currentQuestion.key] === val
-                        ? "border-black bg-yellow-300"
-                        : "border-black/35 bg-pixel-wall hover:bg-white"
-                        }`}
-                      onClick={() => selectQuestionOption(optionIndex)}
-                    >
-                      <span>{label}</span>
-                      <span className={`inline-flex h-5 min-w-5 items-center justify-center rounded-md px-1 text-[8px] leading-none border border-gray-400 text-gray-400`}>
-                        {optionIndex + 1}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* STEP 2 — 결과 카드 */}
-          {step === 2 && (
-            diagnosis ? (
-              <InvestmentTypeCard
-                diagnosis={diagnosis}
-                onCopy={() => setShareCopied(true)}
-                onReset={() => {
-                  setAnswers({});
-                  setDiagnosis(null);
-                  setQuestionIndex(0);
-                  setShareCopied(false);
-                  setStep(1);
-                }}
-              />
-            ) : (
-              <div className="rounded-xl border-2 border-black bg-white p-4 text-[13px] font-bold shadow-pixel-sm">
-                결과를 계산하는 중…
-              </div>
-            )
-          )}
-
-          {/* STEP 3 — 배분 */}
-          {step === 3 && (
-            <div>
-              <p className="text-[12px] text-pixel-muted -mt-2 mb-3">각 자산에 얼마나 담을지 고르세요. 현금(KRW)은 시장 밖 마른 장작이에요.</p>
-              <div className="flex flex-col gap-2.5">
-                {CATEGORIES.map((c: Category) => {
-                  const pct = totalW > 0 ? Math.round((LEVEL_WEIGHT[levels[c]] / totalW) * 100) : 0;
-                  return (
-                    <div key={c} className="flex items-center gap-3 text-[12px]">
-                      <span className="w-24 shrink-0 text-pixel-muted">{CATEGORY_LABEL[c]}</span>
-                      <div className="flex gap-1 flex-1">
-                        {LEVELS.map((lv) => (
-                          <PixelButton
-                            key={lv} size="sm"
-                            variant={levels[c] === lv ? "primary" : "ghost"}
-                            className="flex-1"
-                            onClick={() => setLevels((m) => ({ ...m, [c]: lv }))}
-                          >
-                            {LEVEL_LABEL[lv]}
-                          </PixelButton>
-                        ))}
-                      </div>
-                      <span className="w-9 text-right font-bold tabular-nums">{pct}%</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {error && (
-            <p className="mt-4 text-[12px] font-bold text-red-600" role="alert">{error}</p>
-          )}
-          {shareCopied && (
-            <p className="mt-4 text-[12px] font-bold text-[#27642a]" role="status">공유 문구를 클립보드에 담았어요.</p>
-          )}
-
-          {/* 네비게이션 */}
-          <div className="flex gap-2 mt-6">
-            {step > 0 && (
-              <PixelButton size="lg" variant="ghost" className="shrink-0" onClick={goBack}>
-                ← 뒤로
-              </PixelButton>
-            )}
-            {step < 3 ? (
-              <PixelButton
-                size="lg" className="flex-1"
-                disabled={(step === 1 && !currentAnswered) || (step === 2 && (!diagnosisReady || !diagnosis))}
-                onClick={goNext}
+        <AnimatePresence>
+          {!started && (
+            <motion.button
+              type="button"
+              aria-label="시작하기"
+              disabled={!canStart}
+              onClick={() => setStarted(true)}
+              className="fixed inset-0 z-10 flex items-end justify-center translate-y-[-20%]"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: canStart ? 1 : 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.4 }}
+              style={{ pointerEvents: canStart ? "auto" : "none" }}
+            >
+              <motion.span
+                className="text-lg font-medium tracking-[0.3em] text-white drop-shadow-[0_2px_8px_rgba(0,0,0,0.9)]"
+                animate={{ opacity: [0.4, 1, 0.4] }}
+                transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
               >
-                {step === 1 && questionIndex < QUESTIONS.length - 1 ? "다음 문항 →" : "다음 →"}
-              </PixelButton>
-            ) : (
-              <PixelButton size="lg" className="flex-1" disabled={busy} onClick={start}>
-                {busy ? "시작하는 중…" : "이사 온 날 →"}
-              </PixelButton>
-            )}
-          </div>
-        </PixelPanel>
-        </div>
+                CLICK TO START
+              </motion.span>
+            </motion.button>
+          )}
+        </AnimatePresence>
+
+        {started && (
+          <motion.div
+            className="w-full max-w-xl pt-16"
+            initial={{ opacity: 0, y: 24 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 1.2, duration: 0.55, ease: "easeOut" }}
+          >
+            <PixelPanel tone="wall" className="w-full max-w-xl p-6">
+              {/* 진행 표시 */}
+              <div className="flex items-center gap-1.5 mb-4">
+                {[0, 1, 2, 3].map((i) => (
+                  <div key={i} className={`h-1.5 flex-1 rounded-full ${i <= step ? "bg-black/70" : "bg-black/15"}`} />
+                ))}
+              </div>
+              <div className="text-[11px] text-pixel-muted mb-1">{step + 1} / 4</div>
+              <h1 className="text-lg font-extrabold mb-5">{STEP_TITLE[step]}</h1>
+
+              {/* STEP 0 — 이름만 */}
+              {step === 0 && (
+                <div>
+                  <p className="text-[12px] text-pixel-muted mb-4">이 마을에서 30일을 살아갈 내 클론의 이름을 지어주세요.</p>
+                  <label htmlFor="clone-name" className="text-[13px] font-bold block mb-2">클론 이름</label>
+                  <input
+                    id="clone-name" type="text" value={name} maxLength={12}
+                    placeholder="내 클론"
+                    autoFocus
+                    className="w-full px-3 py-2.5 text-[14px] rounded-lg border-2 border-black/15 bg-white focus:border-black/40 outline-none"
+                    onChange={(e) => setName(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") setStep(1); }}
+                  />
+                </div>
+              )}
+
+              {/* STEP 1 — 진단(한 문항 한 화면) */}
+              {step === 1 && (
+                <div>
+                  <div className="mb-4">
+                    <div className="mb-1 flex items-center justify-between text-[11px] font-bold text-pixel-muted">
+                      <span>{questionIndex + 1} / {QUESTIONS.length}</span>
+                      <span>{progressPct}%</span>
+                    </div>
+                    <div className="h-2 rounded-full border-2 border-black bg-white overflow-hidden">
+                      <div className="h-full bg-[#76d672]" style={{ width: `${progressPct}%` }} />
+                    </div>
+                  </div>
+                  <div className="rounded-xl border-2 border-black bg-white p-4 shadow-pixel-sm">
+                    <div className="text-[11px] font-black text-black/45">{currentQuestion.key}</div>
+                    <div className="mt-1 text-[17px] font-black leading-snug">{currentQuestion.text}</div>
+                    <div className="mt-4 grid gap-2">
+                      {currentQuestion.options.map(([label, val], optionIndex) => (
+                        <button
+                          type="button"
+                          key={label}
+                          aria-label={`선택지 ${optionIndex + 1}: ${label}`}
+                          className={`grid min-h-12 grid-cols-[1fr_auto] items-center gap-3 rounded-xl border-2 px-3 py-2 text-left text-[13px] font-extrabold shadow-pixel-sm ${answers[currentQuestion.key] === val
+                            ? "border-black bg-yellow-300"
+                            : "border-black/35 bg-pixel-wall hover:bg-white"
+                            }`}
+                          onClick={() => selectQuestionOption(optionIndex)}
+                        >
+                          <span>{label}</span>
+                          <span className={`inline-flex h-5 min-w-5 items-center justify-center rounded-md px-1 text-[8px] leading-none border border-gray-400 text-gray-400`}>
+                            {optionIndex + 1}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 2 — 결과 카드 */}
+              {step === 2 && (
+                diagnosis ? (
+                  <InvestmentTypeCard
+                    diagnosis={diagnosis}
+                    onCopy={() => setShareCopied(true)}
+                    onReset={() => {
+                      setAnswers({});
+                      setDiagnosis(null);
+                      setQuestionIndex(0);
+                      setShareCopied(false);
+                      setStep(1);
+                    }}
+                  />
+                ) : (
+                  <div className="rounded-xl border-2 border-black bg-white p-4 text-[13px] font-bold shadow-pixel-sm">
+                    결과를 계산하는 중…
+                  </div>
+                )
+              )}
+
+              {/* STEP 3 — 배분 */}
+              {step === 3 && (
+                <div>
+                  <p className="text-[12px] text-pixel-muted -mt-2 mb-3">각 자산에 얼마나 담을지 고르세요. 현금(KRW)은 시장 밖 마른 장작이에요.</p>
+                  <div className="flex flex-col gap-2.5">
+                    {CATEGORIES.map((c: Category) => {
+                      const pct = totalW > 0 ? Math.round((LEVEL_WEIGHT[levels[c]] / totalW) * 100) : 0;
+                      return (
+                        <div key={c} className="flex items-center gap-3 text-[12px]">
+                          <span className="w-24 shrink-0 text-pixel-muted">{CATEGORY_LABEL[c]}</span>
+                          <div className="flex gap-1 flex-1">
+                            {LEVELS.map((lv) => (
+                              <PixelButton
+                                key={lv} size="sm"
+                                variant={levels[c] === lv ? "primary" : "ghost"}
+                                className="flex-1"
+                                onClick={() => setLevels((m) => ({ ...m, [c]: lv }))}
+                              >
+                                {LEVEL_LABEL[lv]}
+                              </PixelButton>
+                            ))}
+                          </div>
+                          <span className="w-9 text-right font-bold tabular-nums">{pct}%</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {error && (
+                <p className="mt-4 text-[12px] font-bold text-red-600" role="alert">{error}</p>
+              )}
+
+
+              {/* 네비게이션 */}
+              <div className="flex gap-2 mt-6">
+                {step > 0 && (
+                  <PixelButton size="lg" variant="ghost" className="shrink-0" onClick={goBack}>
+                    ← 뒤로
+                  </PixelButton>
+                )}
+                {step < 3 ? (
+                  <PixelButton
+                    size="lg" className="flex-1"
+                    disabled={(step === 1 && !currentAnswered) || (step === 2 && (!diagnosisReady || !diagnosis))}
+                    onClick={goNext}
+                  >
+                    {step === 1 && questionIndex < QUESTIONS.length - 1 ? "다음 문항 →" : "다음 →"}
+                  </PixelButton>
+                ) : (
+                  <PixelButton size="lg" className="flex-1" disabled={busy} onClick={start}>
+                    {busy ? "시작하는 중…" : "이사 온 날 →"}
+                  </PixelButton>
+                )}
+              </div>
+            </PixelPanel>
+          </motion.div>
+        )}
       </main>
     );
   }

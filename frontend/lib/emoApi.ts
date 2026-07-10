@@ -69,31 +69,18 @@ export interface DiagnosisReport {
   blind_reveal?: BlindReveal[];   // T-49c — 엔딩 후 실제 종목·시기
 }
 
-export interface MbtiAxis {
-  label: string;
-  left: string;
-  right: string;
-  left_pct: number;
-  right_pct: number;
-  selected: string;
-}
-
 export interface DispositionDiagnosis {
   answers: Record<string, number>;
   raw_score: number;
   declared_type: string;
+  type_desc: string;
   risk_grade: string;
   capacity_score: number;
   attitude_score: number;
-  mbti_type: string;
-  mbti_name: string;
-  mbti_summary: string;
-  mbti_axes: Record<string, MbtiAxis>;
-  mbti_good_match: string;
-  mbti_bad_match: string;
   seeds: string[];
   seed_conflicts: string[];
   expected_bias: Record<string, number>;
+  source: string;
 }
 
 async function fetchJson<T>(input: RequestInfo, init?: RequestInit, retries = 1): Promise<T | null> {
