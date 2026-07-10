@@ -14,6 +14,7 @@ from __future__ import annotations
 import random
 
 from .board_v2 import offline_conversation
+from .disposition import instinct_action
 from .npc_tone import board_tone_delta
 from .player_emotion.deltas import apply_delta, apply_event
 from .player_emotion.state import PlayerEmotionState
@@ -36,6 +37,7 @@ def render_board(
     seed: int | None = None,
     day: int | None = None,
     coin_symbol: str | None = None,
+    declared_type: str | None = None,
 ) -> dict:
     """순수 표시용 게시판(글+댓글+시나리오). 감정 상태를 변이하지 않는다.
 
@@ -57,12 +59,19 @@ def render_board(
     text = scenario["text"]
     if coin_symbol:
         text = text.replace("{coin}", coin_symbol)
+    choices = scenario["choices"]
+    if declared_type is not None:
+        # T-63 (2안) — 성향 본능 배지. ⚠️ lru_cache된 템플릿 오염 방지 위해 사본({**ch})에만
+        # instinct 부여. 미지 유형이면 본능 없음 → 전부 False. 레거시 호출(declared_type
+        # 생략)은 필드 자체를 안 붙여 하위호환.
+        instinct = instinct_action(declared_type)
+        choices = [{**ch, "instinct": ch.get("action") == instinct} for ch in choices]
     return {
         "event_id": event_id,
         "context": context,
         "verdict": conv["verdict"],
         "threads": conv["threads"],
-        "scenario": {"text": text, "choices": scenario["choices"]},
+        "scenario": {"text": text, "choices": choices},
     }
 
 

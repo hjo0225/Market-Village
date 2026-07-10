@@ -236,6 +236,21 @@ def sensitivity_scale(declared_type: str, delta: dict[str, float]) -> dict[str, 
     return {axis: value * mults.get(axis, 1.0) for axis, value in delta.items()}
 
 
+# T-63 (2안) — 클론 본능 액션(2-1-2). 성향이 게시판에서 "무의식적으로 끌리는" 3액션.
+# 안정형/안정추구형=매도(방어 본능), 위험중립형=유지(관망), 적극/공격투자형=매수(공격 본능).
+# 이걸 거스르면 감정 비용(emo_game INSTINCT_DEFY_DELTA) — 선언 자아 vs 실제 행동의 주제.
+_INSTINCT_ACTION: dict[str, str] = {
+    "안정형": "sell", "안정추구형": "sell",
+    "위험중립형": "hold",
+    "적극투자형": "buy", "공격투자형": "buy",
+}
+
+
+def instinct_action(declared_type: str) -> str | None:
+    """T-63: declared_type → 게시판 본능 액션(buy/sell/hold). 미지 유형은 None(본능 없음)."""
+    return _INSTINCT_ACTION.get(declared_type)
+
+
 def collect_seeds(answers: dict) -> tuple[list[str], list[str]]:
     """선택지 seed 수집(중복 제거·순서 보존). seed_conflicts는 현재 없음([])."""
     seeds: list[str] = []
