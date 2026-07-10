@@ -16,6 +16,7 @@ const STEP_TITLE = ["이사 온 날", "투자 성향 진단", "성향 결과", "
 
 export default function OnboardingWizard({
   step, name, questionIndex, answers, diagnosis, levels, catalog, busy, error,
+  allocPresetType,
   onNameChange, onNameSubmit, onSelectOption, onLevelChange,
   onBack, onNext, onStart, onResetDiagnosis, onCopyShare,
 }: {
@@ -28,6 +29,7 @@ export default function OnboardingWizard({
   catalog: CatalogCoin[] | null;
   busy: boolean;
   error: string | null;
+  allocPresetType?: string | null;   // T-65 — 배분 프리셋 안내(유저 수정 전까지)
   onNameChange: (v: string) => void;
   onNameSubmit: () => void;
   onSelectOption: (optionIndex: number) => void;
@@ -83,7 +85,7 @@ export default function OnboardingWizard({
             )
           )}
 
-          {step === 3 && <AllocationStep levels={levels} catalog={catalog} onChange={onLevelChange} />}
+          {step === 3 && <AllocationStep levels={levels} catalog={catalog} onChange={onLevelChange} presetType={allocPresetType} />}
 
           {error && <p className="mt-4 text-[12px] font-bold text-red-600" role="alert">{error}</p>}
 

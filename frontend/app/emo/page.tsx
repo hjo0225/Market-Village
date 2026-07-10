@@ -23,7 +23,7 @@ import { PlanView, CatalogCoin } from "@/lib/emoApi";
 import { Level, LevelMap } from "@/types/emo";
 import {
   PROLOGUE_CUTS, BRIDGE_CUTS, ENDING_PRE_CUT, FIRST_BOARD_CUT, HALFWAY_CUTS,
-  DEFAULT_LEVELS, QUESTIONS,
+  DEFAULT_LEVELS, ALLOCATION_PRESET, QUESTIONS,
 } from "@/constants/emo";
 import { positionTag, levelWeights } from "@/utils/emo";
 
@@ -59,6 +59,8 @@ export default function EmoPage() {
   const [shareCopied, setShareCopied] = useState(false);
   const [name, setName] = useState("");
   const [levels, setLevels] = useState<LevelMap>({ ...DEFAULT_LEVELS });
+  // T-65 (5안) — 배분이 성향 프리셋 상태인지 유저가 직접 손댔는지. "user"면 프리셋 재적용 안 함.
+  const [allocSource, setAllocSource] = useState<"preset" | "user">("preset");
   const [step, setStep] = useState(0);
   const [screen, setScreen] = useState<"title" | "game">("title");
   const [seed, setSeed] = useState<number | null>(null);
@@ -396,6 +398,11 @@ export default function EmoPage() {
   const toAllocation = () => {
     const s = Math.floor(Math.random() * 100000);
     setSeed(s);
+    // T-65 (5안) — 진단 성향으로 배분 프리셋 미리 담기(유저가 아직 안 건드렸을 때만).
+    const dt = diagnosis?.declared_type;
+    if (dt && allocSource !== "user" && ALLOCATION_PRESET[dt]) {
+      setLevels({ ...ALLOCATION_PRESET[dt] });
+    }
     setStep(3);
     api.getCatalog(s).then((c) => { if (c) setCatalog(c.coins); });
   };
@@ -413,6 +420,8 @@ export default function EmoPage() {
     setState(null); setAnswers({}); setQuestionIndex(0); setShareCopied(false);
     setReport(null); setStep(0); setEndingCutDone(false); setStoryScene(null);
     setSeed(null); setCatalog(null); setDiagnosis(null); prevTierNameRef.current = null;
+    // T-65 — 2회차 회귀 방지: 배분·프리셋 상태 리셋(새 진단이 새 프리셋을 담게).
+    setLevels({ ...DEFAULT_LEVELS }); setAllocSource("preset");
     setScreen("title");
   };
 
@@ -429,13 +438,15 @@ export default function EmoPage() {
       <OnboardingWizard
         step={step} name={name} questionIndex={questionIndex} answers={answers}
         diagnosis={diagnosis} levels={levels} catalog={catalog} busy={busy} error={error}
+        allocPresetType={allocSource === "preset" ? diagnosis?.declared_type : null}
         onNameChange={setName} onNameSubmit={toDiagnosis}
         onSelectOption={selectQuestionOption}
-        onLevelChange={(c, lv: Level) => setLevels((m) => ({ ...m, [c]: lv }))}
+        onLevelChange={(c, lv: Level) => { setLevels((m) => ({ ...m, [c]: lv })); setAllocSource("user"); }}
         onBack={goBack} onNext={goNext} onStart={start}
         onCopyShare={() => setShareCopied(true)}
         onResetDiagnosis={() => {
           setAnswers({}); setDiagnosis(null); setQuestionIndex(0); setShareCopied(false); setStep(1);
+          setAllocSource("preset");   // T-65 — 재진단 시 새 성향 프리셋을 다시 담게
         }}
       />
     );

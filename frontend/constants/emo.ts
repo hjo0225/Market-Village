@@ -34,6 +34,17 @@ export const LEVEL_LABEL: Record<Level, string> = { low: "낮음", med: "중간"
 export const DEFAULT_LEVELS: LevelMap = {
   large_stable: "med", mid_alt: "med", meme: "low", stable: "low", cash: "med",
 };
+// T-65 (5안) — 성향별 초기 배분 프리셋. 진단 직후 declared_type으로 배분 기본값을 미리
+// 담아 "성향이 즉시 반영됐다"는 첫 체감을 준다(자유 수정 가능). 안전자산(stable/cash)은
+// 안정형→공격형으로 단조 감소, 위험자산(meme/mid_alt)은 단조 증가. 공격형은 대장주 대신
+// 알트/밈에 무게(large_stable=med, 🙋 council). 위험중립형 = DEFAULT_LEVELS.
+export const ALLOCATION_PRESET: Record<string, LevelMap> = {
+  안정형:     { large_stable: "low",  mid_alt: "low",  meme: "low",  stable: "high", cash: "high" },
+  안정추구형: { large_stable: "med",  mid_alt: "low",  meme: "low",  stable: "high", cash: "med"  },
+  위험중립형: { ...DEFAULT_LEVELS },
+  적극투자형: { large_stable: "high", mid_alt: "med",  meme: "med",  stable: "low",  cash: "low"  },
+  공격투자형: { large_stable: "med",  mid_alt: "high", meme: "high", stable: "low",  cash: "low"  },
+};
 // v3 §B — 배분 화면 실명 코인 카드의 성격 한 줄("대장주"/"급등급락" 식).
 export const CATEGORY_FLAVOR: Record<Category, string> = {
   large_stable: "대장주", mid_alt: "중견 알트", meme: "급등급락", stable: "안정적 페그", cash: "시장 밖 현금",
