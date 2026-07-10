@@ -93,10 +93,12 @@ def compute_report(
     actual_bias: dict,
     bias_tally: dict | None = None,
     choice_history: list | None = None,
+    discipline_tally: dict | None = None,
 ) -> dict:
     """리포트 전체(결정론). disposition 없으면(구 게임) available=False.
     T-48c — bias_tally로 축별 표본수(opportunities) 노출·저표본 플래그(정직성).
-    T-48d — choice_history로 인과 타임라인."""
+    T-48d — choice_history로 인과 타임라인.
+    T-63 — discipline_tally로 본능 거스름 요약(규율). 중립 수치만, 프레이밍은 프론트."""
     if not disposition:
         return {"available": False}
 
@@ -131,9 +133,21 @@ def compute_report(
         "self_awareness": self_awareness(expected, actual_bias),
         "insights": _seed_insights(disposition, actual_bias),
         "timeline": _timeline(choice_history),   # T-48d
+        "discipline": _discipline(discipline_tally),   # T-63 — 본능 거스름 요약(없으면 None)
         # v3 §A — 측정축 0개(짧은 10일 등)일 때만 정적 안내. 있으면 None.
         "low_sample_notice": LOW_SAMPLE_NOTICE if not measured_axes else None,
     }
+
+
+def _discipline(discipline_tally: dict | None) -> dict | None:
+    """T-63: 본능 거스름 집계 → 엔딩 규율 요약. 표본(total) 없으면 None(리포트 무노출).
+    defy_rate = 성향 본능과 다른 액션을 고른 비율(%). 좋고나쁨 프레이밍은 프론트."""
+    dt = discipline_tally or {}
+    total = dt.get("total", 0)
+    if not total:
+        return None
+    defied = dt.get("defied", 0)
+    return {"defied": defied, "total": total, "defy_rate": round(defied / total * 100)}
 
 
 # ── 서술 계층 (T-47f) — 결정론 리치 폴백 + 선택적 LLM 재작성 ────────────

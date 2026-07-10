@@ -1,6 +1,7 @@
 "use client";
 
 import { AXIS_LABEL, Axis } from "@/lib/emoApi";
+import { Zap } from "lucide-react";
 
 // T-31/T-32 — ADV choice 스크린(선택 메뉴). say 박스와 분리되어 맵 위에 오버레이되는
 // 창형 메뉴(정통 ADV). tone으로 색조 구분(만남/게시판/딜레마).
@@ -10,6 +11,7 @@ export interface AdvChoice {
   id: string;
   label: string;
   deltas?: Record<string, number>;
+  instinct?: boolean;   // T-64 — 클론 성향의 본능 액션이면 배지 표시(게시판 한정)
 }
 
 function EffectChips({ deltas }: { deltas: Record<string, number> }) {
@@ -59,8 +61,14 @@ export default function AdvChoiceMenu({
             px-3 py-2.5 text-[14px] font-extrabold text-white text-center transition-colors
             disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          <span className="flex w-full flex-col items-center">
-            <span>{c.label}</span>
+          <span className="flex w-full flex-col items-center gap-0.5">
+            <span className="flex items-center gap-1">
+              {c.instinct && <Zap size={11} className="shrink-0 text-amber-300" />}
+              <span>{c.label}</span>
+            </span>
+            {c.instinct && (
+              <span className="text-[9px] font-bold tracking-wide text-amber-300/90">클론의 본능</span>
+            )}
             {c.deltas && <EffectChips deltas={c.deltas} />}
           </span>
         </button>

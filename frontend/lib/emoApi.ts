@@ -45,7 +45,7 @@ export interface Tier { name: string; icon: string; score: number; next_at: numb
 export interface Dilemma { title: string; text: string; gain?: boolean; choices: Choice[]; place?: string; }
 
 // position: >0 매수(담기) · <0 매도(팔기) · 0 관망 — T-35 맵 매매 fx 방향에 사용.
-export interface Choice { id: string; label: string; deltas?: Record<string, number>; position?: number; action?: "buy" | "sell" | "hold"; }
+export interface Choice { id: string; label: string; deltas?: Record<string, number>; position?: number; action?: "buy" | "sell" | "hold"; instinct?: boolean; }
 
 export interface Board {
   event_id: string;
@@ -140,6 +140,7 @@ export interface DiagnosisReport {
   timeline?: TimelineEntry[];   // T-48d — 인과 타임라인
   blind_reveal?: BlindReveal[];   // T-49c — 엔딩 후 실제 종목·시기
   blind_reveal_headline?: string | null;   // v3 §B — 기준 장세(meme)의 시기 공개 한 줄
+  discipline?: { defied: number; total: number; defy_rate: number } | null;   // T-63/64 — 본능 거스름 규율
 }
 
 // v3 §D1 — POST /emo/start 응답에 실리는 진단 결과(설문 직후 카드). disposition.diagnose()가

@@ -213,6 +213,44 @@ def expected_bias(dtype: str) -> dict[str, int]:
     return dict(_EXPECTED_BIAS[dtype])
 
 
+# T-61 (1안) — 성향별 감정 민감도 배율.
+# 🔒 expected_bias(편향 5축)를 재사용하지 않고 **게임플레이 감정축 전용 별도 테이블**로 둔다.
+# 편향축과 섞으면 리포트 actual_bias와 같은 소스에서 파생돼 self_awareness가 자기충족으로
+# 허수화됨(T-47/council 확정 불변식). 안정형=하락축(fear/anxiety)에 민감·상승축은 둔감,
+# 공격투자형=상승축(greed/restlessness)에 민감·하락축은 둔감. 위험중립형=1.0(무배율),
+# 양끝으로 갈수록 대칭 강화. 잠정 튜닝치(PLAN-READY 4b — 배율×클램프[0,100]×감쇠0.15 상호작용,
+# 안정형 fear 과증폭 시 재검산). composure는 노출 델타에 없어 테이블 밖(→×1.0 통과).
+_EXPOSURE_SENSITIVITY: dict[str, dict[str, float]] = {
+    "안정형":     {"fear": 1.40, "anxiety": 1.40, "greed": 0.70, "restlessness": 0.70},
+    "안정추구형": {"fear": 1.20, "anxiety": 1.20, "greed": 0.85, "restlessness": 0.85},
+    "위험중립형": {"fear": 1.00, "anxiety": 1.00, "greed": 1.00, "restlessness": 1.00},
+    "적극투자형": {"fear": 0.85, "anxiety": 0.85, "greed": 1.20, "restlessness": 1.20},
+    "공격투자형": {"fear": 0.70, "anxiety": 0.70, "greed": 1.40, "restlessness": 1.40},
+}
+
+
+def sensitivity_scale(declared_type: str, delta: dict[str, float]) -> dict[str, float]:
+    """T-61: 노출 감정 델타를 성향별 민감도로 곱한 **새 dict**(입력 불변). 미지의 유형·축은
+    ×1.0(무배율) — 테이블에 없는 성향/축은 그대로 통과."""
+    mults = _EXPOSURE_SENSITIVITY.get(declared_type, {})
+    return {axis: value * mults.get(axis, 1.0) for axis, value in delta.items()}
+
+
+# T-63 (2안) — 클론 본능 액션(2-1-2). 성향이 게시판에서 "무의식적으로 끌리는" 3액션.
+# 안정형/안정추구형=매도(방어 본능), 위험중립형=유지(관망), 적극/공격투자형=매수(공격 본능).
+# 이걸 거스르면 감정 비용(emo_game INSTINCT_DEFY_DELTA) — 선언 자아 vs 실제 행동의 주제.
+_INSTINCT_ACTION: dict[str, str] = {
+    "안정형": "sell", "안정추구형": "sell",
+    "위험중립형": "hold",
+    "적극투자형": "buy", "공격투자형": "buy",
+}
+
+
+def instinct_action(declared_type: str) -> str | None:
+    """T-63: declared_type → 게시판 본능 액션(buy/sell/hold). 미지 유형은 None(본능 없음)."""
+    return _INSTINCT_ACTION.get(declared_type)
+
+
 def collect_seeds(answers: dict) -> tuple[list[str], list[str]]:
     """선택지 seed 수집(중복 제거·순서 보존). seed_conflicts는 현재 없음([])."""
     seeds: list[str] = []

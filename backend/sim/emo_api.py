@@ -309,6 +309,7 @@ def report(game_id: str) -> dict:
     rep = disposition_report.compute_report(
         run.disposition, run.actual_bias(),
         run.bias_tally, run.choice_history,   # T-48c 표본수 · T-48d 타임라인
+        discipline_tally=run.discipline_tally,   # T-63 — 본능 거스름 규율 요약
     )
     if rep.get("available"):
         # T-49c/v3 §B — 엔딩 후 블라인드 해제(실제 종목·시기). 게임 종료라
