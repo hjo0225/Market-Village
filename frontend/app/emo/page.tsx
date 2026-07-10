@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Users, CalendarDays, Wallet, PieChart, X, TrendingUp, TrendingDown } from "lucide-react";
 import * as api from "@/lib/emoApi";
-import { Board, ChainEvent, Dilemma, EmoState, NPC_NAME, CATEGORIES, CATEGORY_LABEL, Category, AXES, Axis, Emotion } from "@/lib/emoApi";
+import { Board, ChainEvent, Dilemma, EmoState, NPC_NAME, CATEGORY_LABEL, AXES, Axis, Emotion } from "@/lib/emoApi";
 import EmotionGauge from "@/components/EmotionGauge";
 import EmotionStrip from "@/components/EmotionStrip";
 import PortfolioPanel from "@/components/PortfolioPanel";
@@ -13,7 +13,9 @@ import AdvChoiceMenu from "@/components/AdvChoiceMenu";
 import DayReport, { DayReportData } from "@/components/DayReport";
 import DiagnosisReport from "@/components/DiagnosisReport";
 import InvestmentTypeCard from "@/components/InvestmentTypeCard";
-import InfoHint from "@/components/InfoHint";
+import NameStep from "@/components/emo/NameStep";
+import DiagnosisStep from "@/components/emo/DiagnosisStep";
+import AllocationStep from "@/components/emo/AllocationStep";
 import MapBackground, { MapBackgroundHandle } from "@/components/MapBackground";
 import PixelPanel from "@/components/pixel/PixelPanel";
 import PixelButton from "@/components/pixel/PixelButton";
@@ -22,15 +24,13 @@ import DailyPlan from "@/components/DailyPlan";
 import TickerBar from "@/components/TickerBar";
 import TierBadge from "@/components/TierBadge";
 import CoachMark from "@/components/CoachMark";
-import Term from "@/components/Term";
 import { PlanView, CatalogCoin } from "@/lib/emoApi";
-import { LevelMap } from "./types";
+import { LevelMap } from "@/types/emo";
 import {
   PROLOGUE_CUTS, BRIDGE_CUTS, ENDING_PRE_CUT, FIRST_BOARD_CUT, HALFWAY_CUTS,
-  LEVELS, LEVEL_WEIGHT, LEVEL_LABEL, DEFAULT_LEVELS, CATEGORY_FLAVOR, CATEGORY_TERM,
-  QUESTIONS, QUESTION_HINTS, TRADE_CATS,
-} from "./constants";
-import { positionTag, levelWeights } from "./utils";
+  DEFAULT_LEVELS, QUESTIONS, TRADE_CATS,
+} from "@/constants/emo";
+import { positionTag, levelWeights } from "@/utils/emo";
 
 
 export default function EmoPage() {
@@ -455,11 +455,8 @@ export default function EmoPage() {
     if (storyScene === "prologue") return <StoryScene cuts={PROLOGUE_CUTS} cloneName={name.trim() || "클론"} onDone={prologueDone} />;
     if (storyScene === "bridge") return <StoryScene cuts={BRIDGE_CUTS(name.trim() || "클론")} dim={false} cloneName={name.trim() || "클론"} onDone={bridgeDone} />;
     const diagnosisReady = QUESTIONS.every((q) => q.key in answers);
-    const totalW = CATEGORIES.reduce((s, c) => s + LEVEL_WEIGHT[levels[c]], 0);
     const STEP_TITLE = ["이사 온 날", "투자 성향 진단", "성향 결과", "초기 자산 배분"];
-    const currentQuestion = QUESTIONS[questionIndex];
-    const currentAnswered = currentQuestion.key in answers;
-    const progressPct = Math.round(((questionIndex + (currentAnswered ? 1 : 0)) / QUESTIONS.length) * 100);
+    const currentAnswered = QUESTIONS[questionIndex].key in answers;
     const goBack = () => {
       if (step === 1 && questionIndex > 0) { setQuestionIndex((i) => i - 1); return; }
       setStep((s) => Math.max(0, s - 1));
@@ -539,63 +536,12 @@ export default function EmoPage() {
 
               {/* STEP 0 — 이름만 */}
               {step === 0 && (
-                <div>
-                  <p className="text-[12px] text-pixel-muted mb-4">이 마을에서 30일을 살아갈 내 클론의 이름을 지어주세요.</p>
-                  <label htmlFor="clone-name" className="text-[13px] font-bold block mb-2">클론 이름</label>
-                  <input
-                    id="clone-name" type="text" value={name} maxLength={12}
-                    placeholder="내 클론"
-                    autoFocus
-                    className="w-full px-3 py-2.5 text-[14px] rounded-lg border-2 border-black/15 bg-white focus:border-black/40 outline-none"
-                    onChange={(e) => setName(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter") toDiagnosis(); }}
-                  />
-                </div>
+                <NameStep name={name} onChange={setName} onSubmit={toDiagnosis} />
               )}
 
               {/* STEP 1 — 진단(한 문항 한 화면) */}
               {step === 1 && (
-                <div>
-                  <div className="mb-4">
-                    <div className="mb-1 flex items-center justify-between text-[11px] font-bold text-pixel-muted">
-                      <span>{questionIndex + 1} / {QUESTIONS.length}</span>
-                      <span>{progressPct}%</span>
-                    </div>
-                    <div className="h-2 rounded-full border-2 border-black bg-white overflow-hidden">
-                      <div className="h-full bg-[#76d672]" style={{ width: `${progressPct}%` }} />
-                    </div>
-                  </div>
-                  <div className="rounded-xl border-2 border-black bg-white p-4 shadow-pixel-sm">
-                    <div className="text-[11px] font-black text-black/45">{currentQuestion.key}</div>
-                    <div className="mt-1 text-[17px] font-black leading-snug">
-                      {currentQuestion.text}
-                      {QUESTION_HINTS[currentQuestion.key] && (
-                        <span className="ml-1.5 inline-block">
-                          <InfoHint title={QUESTION_HINTS[currentQuestion.key].title} text={QUESTION_HINTS[currentQuestion.key].text} />
-                        </span>
-                      )}
-                    </div>
-                    <div className="mt-4 grid gap-2">
-                      {currentQuestion.options.map(([label, val], optionIndex) => (
-                        <button
-                          type="button"
-                          key={label}
-                          aria-label={`선택지 ${optionIndex + 1}: ${label}`}
-                          className={`grid min-h-12 grid-cols-[1fr_auto] items-center gap-3 rounded-xl border-2 px-3 py-2 text-left text-[13px] font-extrabold shadow-pixel-sm ${answers[currentQuestion.key] === val
-                            ? "border-black bg-yellow-300"
-                            : "border-black/35 bg-pixel-wall hover:bg-white"
-                            }`}
-                          onClick={() => selectQuestionOption(optionIndex)}
-                        >
-                          <span>{label}</span>
-                          <span className={`inline-flex h-5 min-w-5 items-center justify-center rounded-md px-1 text-[8px] leading-none border border-gray-400 text-gray-400`}>
-                            {optionIndex + 1}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
+                <DiagnosisStep questionIndex={questionIndex} answers={answers} onSelect={selectQuestionOption} />
               )}
 
               {/* STEP 2 — 결과 카드 */}
@@ -623,44 +569,11 @@ export default function EmoPage() {
                   ("비트코인(BTC) — 대장주" 식)으로, 없으면(조회 실패) 기존 제네릭
                   라벨로 자연 폴백(I6). */}
               {step === 3 && (
-                <div>
-                  <div className="flex flex-col gap-2.5">
-                    {CATEGORIES.map((c: Category) => {
-                      const pct = totalW > 0 ? Math.round((LEVEL_WEIGHT[levels[c]] / totalW) * 100) : 0;
-                      const coin = catalog?.find((k) => k.category === c);
-                      const termKey = CATEGORY_TERM[c];
-                      return (
-                        <div key={c} className="flex items-center gap-3 text-[12px]">
-                          <span className="w-28 shrink-0 text-black leading-tight">
-                            {coin ? (
-                              <>
-                                {coin.name}({coin.symbol})
-                                <span className="block text-[10px] text-pixel-muted">
-                                  {termKey ? <Term term={termKey}>{CATEGORY_FLAVOR[c]}</Term> : CATEGORY_FLAVOR[c]}
-                                </span>
-                              </>
-                            ) : (
-                              CATEGORY_LABEL[c]
-                            )}
-                          </span>
-                          <div className="flex gap-1 flex-1">
-                            {LEVELS.map((lv) => (
-                              <PixelButton
-                                key={lv} size="sm"
-                                variant={levels[c] === lv ? "primary" : "ghost"}
-                                className="flex-1"
-                                onClick={() => setLevels((m) => ({ ...m, [c]: lv }))}
-                              >
-                                {LEVEL_LABEL[lv]}
-                              </PixelButton>
-                            ))}
-                          </div>
-                          <span className="w-9 text-right font-bold tabular-nums">{pct}%</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
+                <AllocationStep
+                  levels={levels}
+                  catalog={catalog}
+                  onChange={(c, lv) => setLevels((m) => ({ ...m, [c]: lv }))}
+                />
               )}
 
               {error && (
