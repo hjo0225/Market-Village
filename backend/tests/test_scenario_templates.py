@@ -58,9 +58,12 @@ def test_choice_labels_have_no_trap_name_prefix():
             assert "추격매수" not in ch["label"], (
                 f"{cat}/{ch['id']} 라벨에 함정명 접두: {ch['label']!r}"
             )
-    # T-53: 급등 매수(buy) 라벨도 함정명 접두 없이 '놓칠 수 없다'로 시작한다.
-    buy = next(c for c in get_scenario("market_surge")["choices"] if c["id"] == "buy")
-    assert buy["label"].startswith("놓칠 수 없다")
+    # T-53/#3(2026-07-10): 라벨은 함정명(over/fomo/추격매수)이 아니라 **소모 감정**을
+    # 명시하는 기계식(🙋 스펙). 감정 게이지는 원래 노출이라 편향 판독 누출 없음(P2).
+    for cat in ("market_crash", "market_surge", "rumor_spread", "market_volatile"):
+        buy = next(c for c in get_scenario(cat)["choices"] if c["id"] == "buy")
+        assert buy["label"].startswith("탐욕"), f"{cat} buy 라벨: {buy['label']!r}"
+        assert "추격매수" not in buy["label"] and "fomo" not in buy["label"].lower()
 
 
 def test_choice_ids_unique_within_scenario():

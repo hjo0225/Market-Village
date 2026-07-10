@@ -33,11 +33,11 @@ def test_sell_consumes_fear_and_moves_chosen_coin_to_cash():
     r.choose("sell", coin_target="meme")
     s = r.last_settlement["choice"]
     assert s["action"] == "sell"
-    assert s["consumed"] == pytest.approx(40.0)          # 공포 80의 50%
+    assert s["consumed"] == pytest.approx(40.0)          # 공포 80의 50%(소모=TI 무관)
     assert s["coin_target"] == "meme"
-    assert s["traded"] == pytest.approx(800.0)           # fear level 80 → meme 1000의 80%
-    assert r.holdings["meme"] == pytest.approx(200.0)
-    assert r.holdings[CASH] == pytest.approx(800.0)
+    assert s["traded"] == pytest.approx(480.0)           # meme 1000 × (80/100 × 0.6[TRADE_INTENSITY])
+    assert r.holdings["meme"] == pytest.approx(520.0)
+    assert r.holdings[CASH] == pytest.approx(480.0)
 
 
 def test_buy_consumes_greed_and_moves_cash_into_chosen_coin():
@@ -47,10 +47,10 @@ def test_buy_consumes_greed_and_moves_cash_into_chosen_coin():
     r.choose("buy", coin_target="meme")
     s = r.last_settlement["choice"]
     assert s["action"] == "buy"
-    assert s["consumed"] == pytest.approx(18.0)           # 탐욕 90의 20%
-    assert s["traded"] == pytest.approx(900.0)            # greed level 90 → 현금 1000의 90%
-    assert r.holdings["meme"] == pytest.approx(900.0)
-    assert r.holdings[CASH] == pytest.approx(100.0)
+    assert s["consumed"] == pytest.approx(18.0)           # 탐욕 90의 20%(소모=TI 무관)
+    assert s["traded"] == pytest.approx(540.0)            # 현금 1000 × (90/100 × 0.6[TRADE_INTENSITY])
+    assert r.holdings["meme"] == pytest.approx(540.0)
+    assert r.holdings[CASH] == pytest.approx(460.0)
 
 
 def test_hold_consumes_composure_and_does_not_trade():

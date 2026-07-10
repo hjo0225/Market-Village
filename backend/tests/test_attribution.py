@@ -96,7 +96,7 @@ def test_attribution_cause_choice_label_is_previous_days_choice():
     run.choose("hold")   # 급락 유지 라벨이 다음 날 원인 카드의 cause_choice_label
     run.choose("sell", coin_target="meme")
     attr = run.last_settlement["attribution"]
-    assert attr["cause_choice_label"] == "버틴다 — 평정을 붙잡고 계획대로"
+    assert attr["cause_choice_label"] == "평정의 10%를 소모해 포트폴리오 유지"
 
 
 # --- 4종 정적 템플릿 ---------------------------------------------------------- #
