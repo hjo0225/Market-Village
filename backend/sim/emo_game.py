@@ -505,6 +505,8 @@ class EmoGameRun:
 
         day_for_settlement = self.day
         emotion_before = self.emotion
+        # T-56 — 그날 게시판에서 실제로 보인 라벨(변주 반영)을 정산·원인카드에 기록.
+        display_label = _scenario.resolve_label(event_id, choice_id, self.seed, day_for_settlement)
 
         # 1) 오늘 시장 실현: 진입 시점 보유액에 카테고리별 수익률(I1 — cat_returns 불가침).
         #    T-35 — 그날 카테고리별 수익률(%)을 기록해 저녁 리포트에서 '오늘의 장'으로.
@@ -561,7 +563,7 @@ class EmoGameRun:
         # 오늘 정산 직후(리밸런스 전) 보유액 스냅샷 — 내일 attribution의 반사실
         # 기준(오늘 리밸런스를 안 했을 경우)이 된다. cash 포함 전체 카테고리.
         self.counterfactual_holdings = dict(self.holdings)
-        self.counterfactual_choice_label = choice["label"]
+        self.counterfactual_choice_label = display_label
         self.counterfactual_choice_position = float(choice.get("position", 0.0))
 
         # 2) 감정 캐스케이드: 선택 → (플랜 장소) → (체인은 낮에 이미 반영됨) → 밤 감쇠.
@@ -630,7 +632,7 @@ class EmoGameRun:
 
         self.last_settlement = {
             "day": day_for_settlement,
-            "choice": {"id": choice["id"], "label": choice["label"],
+            "choice": {"id": choice["id"], "label": display_label,
                        "position": float(choice.get("position", 0.0)),
                        "action": action, "consume_axis": consume_axis_name,
                        "consumed": round(consumed, 2), "coin_target": coin_target,

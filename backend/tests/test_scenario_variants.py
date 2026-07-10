@@ -3,7 +3,7 @@
 "급락이라도 열릴 때마다 시나리오가 달라야 한다"(🙋). 같은 날=같은 텍스트(4d 리로드
 안전), 다른 날 같은 이벤트=다른 서사. 3액션(메커닉)은 불변, 상황 서사만 변주.
 """
-from sim.scenario import get_scenario, load_scenarios, pick_text_variant
+from sim.scenario import get_scenario, load_scenarios, pick_variant_index
 
 
 def test_every_type_has_multiple_text_variants():
@@ -37,6 +37,16 @@ def test_text_and_choices_vary_independently():
     assert {c["id"] for c in sc["choices"]} == {"buy", "sell", "hold"}
 
 
-def test_pick_text_variant_is_deterministic():
-    v = ["a", "b", "c", "d"]
-    assert pick_text_variant(v, 1, 5, "x") == pick_text_variant(v, 1, 5, "x")
+def test_pick_variant_index_deterministic():
+    assert pick_variant_index(4, 1, 5, "x") == pick_variant_index(4, 1, 5, "x")
+    assert 0 <= pick_variant_index(4, 1, 5, "x") < 4
+
+
+def test_choice_labels_vary_by_day_with_consume_spec():
+    # T-56: 선택지 문구도 변주 — 급락 매수 버튼이 날마다 다른 문구 + 소모 스펙 유지.
+    def buy_label(d: int) -> str:
+        chs = get_scenario("market_crash", seed=1, day=d)["choices"]
+        return next(c["label"] for c in chs if c["id"] == "buy")
+    labels = {buy_label(d) for d in range(20)}
+    assert len(labels) >= 2, f"버튼 문구가 20일 내내 동일: {labels}"
+    assert all("탐욕" in lab and "소모" in lab for lab in labels)
