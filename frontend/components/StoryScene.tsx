@@ -18,12 +18,14 @@ export default function StoryScene({
   cloneName,
   dim = true,
   overlay = false,
+  backdrop = true,
 }: {
   cuts: StoryCut[];
   onDone: () => void;
   cloneName?: string;   // 있으면 컷씬 배경의 클론 이름표로 표시
   dim?: boolean;        // false면 배경 어둡기(backdrop) 없이 마을이 그대로 보임
   overlay?: boolean;    // true면 자체 배경(iframe·검정) 없이 현재 게임 화면 위에 UI만 얹는다
+  backdrop?: boolean;   // false면 부모가 깔아둔 공유 컷씬 iframe을 그대로 쓴다(재부팅 방지)
 }) {
   const [i, setI] = useState(0);
   const cut = cuts[i];
@@ -47,16 +49,21 @@ export default function StoryScene({
   const dark = cut.bg === "dark";   // 암전 컷(무드 라인)은 배경 없이 검정 유지
 
   return (
-    <div className={`fixed inset-0 z-50 overflow-hidden ${overlay ? "" : "bg-black"}`}>
+    <div className={`fixed inset-0 z-50 overflow-hidden ${!overlay && backdrop ? "bg-black" : ""}`}>
       {/* 게임 컷씬 배경 — Phaser(map.html?mode=cutscene). overlay 모드(인게임 컷)에선
-          현재 게임 맵이 그대로 뒤에 있으므로 자체 배경을 만들지 않는다. */}
-      {!overlay && (
+          현재 게임 맵이, backdrop=false에선 부모의 공유 컷씬 iframe이 뒤에 있으므로
+          자체 iframe을 만들지 않는다(재부팅 반짝임 방지). */}
+      {!overlay && backdrop && (
         <iframe
           src={`/map.html?mode=cutscene${cloneName ? `&name=${encodeURIComponent(cloneName)}` : ""}`}
           title="컷씬 배경"
           aria-hidden
           className={`absolute inset-0 h-full w-full border-0 pointer-events-none transition-opacity duration-700 ${dark ? "opacity-0" : "opacity-100"}`}
         />
+      )}
+      {/* 공유 배경 모드에서의 암전 컷 — iframe 대신 검정을 위에 페이드 */}
+      {!overlay && !backdrop && (
+        <div className={`absolute inset-0 bg-black transition-opacity duration-700 pointer-events-none ${dark ? "opacity-100" : "opacity-0"}`} />
       )}
       {/* 텍스트 가독용 어둡기(프롤로그 등 dim 씬에서만) */}
       {!overlay && !dark && dim && <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/25 to-black/75 pointer-events-none" />}

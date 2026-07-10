@@ -17,14 +17,8 @@ export default function TitleScreen({
   onSettings?: () => void;
 }) {
   return (
-    <main className="relative min-h-screen overflow-hidden bg-pixel-grass">
-      {/* 맵 배경(어둡게) — 정적 스크린샷 대신 살아있는 Phaser 컷씬(클론 집 고정 카메라). */}
-      <iframe
-        src="/map.html?mode=cutscene"
-        title="마을 배경"
-        aria-hidden
-        className="pointer-events-none absolute inset-0 h-full w-full select-none border-0"
-      />
+    <main className="relative min-h-screen overflow-hidden">
+      {/* 맵 배경은 부모(emo/page)의 공유 컷씬 iframe — 화면 전환 시 재부팅 방지. */}
       <div className="absolute inset-0 bg-black/60" />
       <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-black/70" />
 
