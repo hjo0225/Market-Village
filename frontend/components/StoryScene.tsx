@@ -65,8 +65,12 @@ export default function StoryScene({
       {!overlay && !backdrop && (
         <div className={`absolute inset-0 bg-black transition-opacity duration-700 pointer-events-none ${dark ? "opacity-100" : "opacity-0"}`} />
       )}
-      {/* 텍스트 가독용 어둡기(프롤로그 등 dim 씬에서만) */}
-      {!overlay && !dark && dim && <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/25 to-black/75 pointer-events-none" />}
+      {/* 텍스트 가독용 어둡기 — dim 씬은 그라데이션, 그 외(인게임 컷 포함)는 은은한 드랍 */}
+      {!dark && (
+        !overlay && dim
+          ? <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/25 to-black/75 pointer-events-none" />
+          : <div className="absolute inset-0 bg-black/35 pointer-events-none" />
+      )}
 
       <button
         type="button"

@@ -502,6 +502,11 @@ export default function EmoPage() {
       <div className="relative flex-1 min-h-0 min-w-0 rounded-xl overflow-hidden border-2 border-black/25">
         <MapBackground ref={mapRef} gameId={state.game_id} game="emo" contained onActivity={() => undefined} />
 
+        {/* 게시판·대화씬 동안 맵 위 은은한 드랍(UI 레이어들 아래) */}
+        {(boardFeedVisible || advEvent) && (
+          <div className="absolute inset-0 z-[5] bg-black/35 pointer-events-none transition-opacity duration-300" />
+        )}
+
         {tradeFlash && <TradeFlashBadge action={tradeFlash.action} detail={tradeFlash.detail} />}
 
         {boardFeedVisible && (
