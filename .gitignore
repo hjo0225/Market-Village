@@ -102,13 +102,14 @@ node_modules
 
 # 기획 문서(바이너리, 레포에 싣지 않음)
 *.docx
+/scenariodoc
 
 # build artifacts
 *.tsbuildinfo
 .gstack/
 
-# runtime-generated live sims (not committed)
-environment/
+# secrets (not committed). environment/(the_ville 맵 에셋)은 팀 협업(새 clone 실행)
+# 위해 git 추적으로 전환 — 30MB 정적 에셋, 런타임 생성물 아님.
 .env.local
 
 .agents

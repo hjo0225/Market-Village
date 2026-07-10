@@ -72,6 +72,10 @@ def _seed_insights(disposition: dict, actual: dict) -> list[str]:
 # T-48c — 표본이 이 미만이면 '참고'(임계 n=3 턱걸이는 해상도가 거칠어 신뢰 주의).
 _LOW_SAMPLE = 5
 
+# v3 §A — 10일 전환으로 측정축이 0개(BIAS_MIN_SAMPLE 미달)가 되는 경우를 위한
+# 정적 안내(빈 화면 금지). LLM 아님(I5), 결정론 고정 문구.
+LOW_SAMPLE_NOTICE = "열흘은 짧다. 더 놀러 오면 더 정확해진다."
+
 
 def _timeline(choice_history: list | None) -> list[dict]:
     """T-48d — 편향이 실제로 발현된 결정점의 인과 타임라인(날·종류·발현 편향 라벨).
@@ -115,6 +119,7 @@ def compute_report(
         attitude_score=disposition.get("attitude_score", 50),
         capacity_score=disposition.get("capacity_score", 50),
     )
+    measured_axes = [c["axis"] for c in comparison]
     return {
         "available": True,
         "declared_type": disposition.get("declared_type"),
@@ -122,10 +127,12 @@ def compute_report(
         "attitude_score": disposition.get("attitude_score"),
         "subdimension": {"pattern": pattern, "text": _SUBDIM_TEXT.get(pattern, "")},
         "bias_comparison": comparison,
-        "measured_axes": [c["axis"] for c in comparison],
+        "measured_axes": measured_axes,
         "self_awareness": self_awareness(expected, actual_bias),
         "insights": _seed_insights(disposition, actual_bias),
         "timeline": _timeline(choice_history),   # T-48d
+        # v3 §A — 측정축 0개(짧은 10일 등)일 때만 정적 안내. 있으면 None.
+        "low_sample_notice": LOW_SAMPLE_NOTICE if not measured_axes else None,
     }
 
 

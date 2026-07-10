@@ -32,23 +32,37 @@ def render_board(
     event_id: str,
     rng: random.Random,
     drawn_news: list[dict] | None = None,
+    *,
+    seed: int | None = None,
+    day: int | None = None,
+    coin_symbol: str | None = None,
 ) -> dict:
     """순수 표시용 게시판(글+댓글+시나리오). 감정 상태를 변이하지 않는다.
 
     같은 (event_id, 같은 시드의 rng)면 항상 같은 결과 → GET 멱등·재생 가능
     (PLAN-READY 4d). 미지의 event_id면 ValueError.
-    """
+
+    seed·day를 주면(호출자=emo_game.board()) §4.2 3-of-6 풀 선택이 적용된
+    choices를 반환한다(get_scenario(event_id, seed, day)). 생략하면(레거시
+    호출부) 6개 전부(하위 호환).
+
+    §B — `coin_symbol`을 주면 scenario.text의 `{coin}` 플레이스홀더를 그
+    심볼로 치환한다(그날 |변동률| 최대 카테고리, 호출자=emo_game.board()가
+    결정론으로 계산). 생략하면(레거시 호출부) 치환 없음(하위 호환)."""
     if event_id not in EVENT_CATEGORIES:
         raise ValueError(f"unknown board event_id: {event_id!r}")
     context = EVENT_TO_CONTEXT[event_id]
     conv = offline_conversation(context, {}, drawn_news or [], rng)
-    scenario = get_scenario(event_id)
+    scenario = get_scenario(event_id, seed, day)
+    text = scenario["text"]
+    if coin_symbol:
+        text = text.replace("{coin}", coin_symbol)
     return {
         "event_id": event_id,
         "context": context,
         "verdict": conv["verdict"],
         "threads": conv["threads"],
-        "scenario": {"text": scenario["text"], "choices": scenario["choices"]},
+        "scenario": {"text": text, "choices": scenario["choices"]},
     }
 
 
@@ -88,9 +102,12 @@ def build_board_exposure(
 def apply_choice(
     emotion_state: PlayerEmotionState, event_id: str, choice_id: str
 ) -> PlayerEmotionState:
-    """시나리오 선택지의 결과 델타를 플레이어 상태에 적용한다(클램핑 포함).
+    """⚠️ T-53 이후 사용 안 함(orphaned·dead). 게시판 선택지가 고정 `deltas`에서
+    감정 '소모' 3액션으로 바뀌어 이 함수의 `ch["deltas"]`는 KeyError를 낸다.
+    현재는 `EmoGameRun.choose`(consume_axis + per-코인 매매)가 그 역할을 한다.
+    호출부 0(전수조사 확인) — 원칙3(죽은 코드 지우지 말고 언급)로 마커만 남긴다.
 
-    미지의 event_id/choice_id면 ValueError.
+    (원래) 시나리오 선택지의 결과 델타를 플레이어 상태에 적용. 미지 id면 ValueError.
     """
     scenario = get_scenario(event_id)
     for ch in scenario["choices"]:

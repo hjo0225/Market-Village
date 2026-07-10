@@ -32,13 +32,22 @@ def test_start_returns_game_id_and_initial_state():
     assert set(body["emotion"]) == {"fear", "greed", "anxiety", "restlessness", "composure"}
 
 
+# --- v3 §A: days 기본값 20 → 10 ------------------------------------------- #
+def test_start_default_days_is_10_when_omitted():
+    c = _client()
+    r = c.post("/emo/start", json={"answers": ANSWERS, "seed": 42})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["total_days"] == 10
+
+
 def test_board_and_choose_advances():
     c = _client()
     gid = c.post("/emo/start", json={"answers": ANSWERS, "seed": 42, "days": 3}).json()["game_id"]
     board = c.get(f"/emo/{gid}/board").json()
     assert board["scenario"]["choices"]
-    choice = board["scenario"]["choices"][0]["id"]
-    r = c.post(f"/emo/{gid}/choose", json={"choice_id": choice})
+    choice = board["scenario"]["choices"][0]["id"]   # 매도(방어) — coin_target 필요
+    r = c.post(f"/emo/{gid}/choose", json={"choice_id": choice, "coin_target": "meme"})
     assert r.status_code == 200
     assert r.json()["day"] == 1
 
@@ -69,7 +78,8 @@ def test_full_playthrough_to_ending():
         if ch:
             c.post(f"/emo/{gid}/chain/choose", json={"choice_id": ch["choices"][0]["id"]})
         board = c.get(f"/emo/{gid}/board").json()
-        c.post(f"/emo/{gid}/choose", json={"choice_id": board["scenario"]["choices"][0]["id"]})
+        c.post(f"/emo/{gid}/choose",
+               json={"choice_id": board["scenario"]["choices"][0]["id"], "coin_target": "meme"})
     state = c.get(f"/emo/{gid}/state").json()
     assert state["is_over"]
     ending = c.get(f"/emo/{gid}/ending").json()

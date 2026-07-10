@@ -47,6 +47,22 @@ def test_board_is_idempotent_get():
     assert len(b1["scenario"]["choices"]) == 3
 
 
+# --- v3 §B: 게시판 {coin} 플레이스홀더 — 오늘 |변동률| 최대 카테고리 심볼 --- #
+def test_board_substitutes_coin_with_biggest_move_category_symbol():
+    # meme(DOGE)만 크게 흔들리게, 나머지는 0으로 고정 → meme이 항상 최대.
+    returns = {"large_stable": [0.0], "mid_alt": [0.0], "meme": [-0.5], "stable": [0.0]}
+    r = EmoGameRun.new(ANSWERS, ["market_crash"], returns, seed=1)
+    board = r.board()
+    assert "{coin}" not in board["scenario"]["text"]
+    assert "DOGE" in board["scenario"]["text"]
+
+
+def test_board_coin_symbol_picks_largest_absolute_move_deterministically():
+    returns = {"large_stable": [0.01], "mid_alt": [0.5], "meme": [-0.05], "stable": [0.0]}
+    r = EmoGameRun.new(ANSWERS, ["market_crash"], returns, seed=1)
+    assert r._biggest_move_symbol() == "XRP"   # mid_alt = XRP, |0.5| 최대
+
+
 def test_exposure_delta_applied_once_on_entering_day():
     # 급락 진입 → 초기 대비 fear 상승(노출 델타 1회 적용).
     r = _run()
@@ -58,11 +74,11 @@ def test_exposure_delta_applied_once_on_entering_day():
 def test_choose_applies_delta_logs_and_advances():
     r = _run()
     fear_before = r.emotion.fear
-    r.choose("cut")            # 급락 손절 → 그 날 fear 상승
+    r.choose("sell", coin_target="meme")   # 급락 매도 → 공포를 소모(감소)
     assert r.day == 1
-    # 그 날 선택 효과는 스냅샷에 기록(다음 날 노출 전). live emotion은 이미 day1
-    # 노출(양방향)까지 반영돼 방향이 달라질 수 있으므로 스냅샷으로 검증.
-    assert r.emotion_log.snapshots[0].state.fear > fear_before
+    # T-53: 매도는 공포를 consume_fraction만큼 소모 → 스냅샷 공포가 감소한다
+    # (스냅샷은 소모 직후·다음 날 노출 전 상태).
+    assert r.emotion_log.snapshots[0].state.fear < fear_before
     # 하루 완료마다 스냅샷 1개.
     assert len(r.emotion_log.snapshots) == 1
 
@@ -75,26 +91,26 @@ def test_choose_rejects_unknown_choice():
 
 def test_full_playthrough_terminates():
     r = _run()
-    r.choose("hold")     # day0 급락
-    r.choose("chase")    # day1 급등
-    r.choose("stare")    # day2 변동
+    r.choose("sell", coin_target="meme")   # day0 급락 매도
+    r.choose("buy", coin_target="meme")    # day1 급등 매수
+    r.choose("hold")                        # day2 변동 유지
     assert r.is_over
     assert len(r.emotion_log.snapshots) == 3
 
 
 def test_choose_after_over_raises():
     r = _run()
-    for cid in ("hold", "watch", "step_away"):
-        r.choose(cid)
+    for _ in range(3):
+        r.choose("hold")
     with pytest.raises(RuntimeError):
         r.choose("hold")
 
 
 def test_ending_inputs_has_verdict_and_wealth():
     r = _run()
-    r.choose("buy_dip")   # 급락에 매수
-    r.choose("chase")
-    r.choose("day_trade")
+    r.choose("buy", coin_target="meme")   # 급락에 매수
+    r.choose("buy", coin_target="meme")
+    r.choose("buy", coin_target="meme")
     ei = r.ending_inputs()
     assert ei["verdict"] in ("과열", "위축", "중립")
     assert ei["wealth_level"] in ("high", "low")
@@ -127,10 +143,10 @@ def test_choice_rebalances_risk_to_cash_affects_wealth():
     alloc = {"large_stable": 0.4, "mid_alt": 0.4, "meme": 0.2, "stable": 0.0}
     seller = EmoGameRun.new(ANSWERS, events, cr, seed=1, allocation=alloc)
     holder = EmoGameRun.new(ANSWERS, events, cr, seed=1, allocation=alloc)
-    seller.choose("cut")     # day0 급락에 손절 → 위험자산 대량 현금화(반등 놓침)
-    holder.choose("hold")    # day0 버티기 → 위험자산 유지(반등 탐)
-    seller.choose("watch"); holder.choose("watch")
-    # 버틴 쪽이 반등을 더 많이 타서 재산이 더 크다.
+    seller.choose("sell", coin_target="mid_alt")   # day0 급락에 매도 → 위험자산 현금화(반등 놓침)
+    holder.choose("hold")                           # day0 유지 → 위험자산 유지(반등 탐)
+    seller.choose("hold"); holder.choose("hold")
+    # 유지한 쪽이 반등을 더 많이 타서 재산이 더 크다.
     assert holder.portfolio_value > seller.portfolio_value
 
 
@@ -194,7 +210,7 @@ def test_daytime_visits_vary_3_to_4():
 
 def test_holdings_serialized_roundtrip():
     r = EmoGameRun.new(ANSWERS, EVENTS, _cat(RETURNS), seed=1)
-    r.choose("cut")          # 위험자산 → 현금 리밸런싱
+    r.choose("sell", coin_target="meme")   # 지정 코인 → 현금 매도
     assert abs(sum(r.holdings.values()) - r.portfolio_value) < 0.01
     restored = EmoGameRun.from_doc(r.to_doc())
     assert restored.holdings == r.holdings
@@ -203,9 +219,9 @@ def test_holdings_serialized_roundtrip():
 
 def test_ending_returns_e1_to_e5_after_playthrough():
     r = _run()
-    r.choose("buy_dip")
-    r.choose("chase")
-    r.choose("day_trade")
+    r.choose("buy", coin_target="meme")
+    r.choose("buy", coin_target="meme")
+    r.choose("buy", coin_target="meme")
     e = r.ending()
     assert e["id"] in ("E1", "E2", "E3", "E4", "E5")
     assert e["grade"] in ("고수", "벼락부자형", "강철멘탈형", "호구")
@@ -216,7 +232,7 @@ def test_chain_events_resolve_during_playthrough():
     # 실제 24편 데이터가 로드된 상태에서, 발동한 체인을 해결하며 완주.
     r = EmoGameRun.new(ANSWERS, EVENTS * 3, _cat(RETURNS * 3), seed=7)
     triggered = 0
-    for cid in ["hold", "chase", "stare"] * 3:
+    for cid in ["hold"] * 9:   # 유지로 매일 진행(체인 발동/해결이 검증 대상)
         ev = r.chain_event()
         if ev is not None:
             assert ev["text"].strip() and len(ev["choices"]) == 2
@@ -297,7 +313,7 @@ def test_cash_has_zero_return_market_never_moves_it():
     r = EmoGameRun.new(ANSWERS, events, cr, seed=1,
                        allocation={"cash": 1.0})   # 전액 현금
     start_cash = r.holdings["cash"]
-    r.choose("watch")   # 시장 실현(급등) — 현금은 그대로여야
+    r.choose("hold")   # 유지(무매매) — 시장 실현(급등)돼도 현금은 그대로여야
     assert r.holdings["cash"] == start_cash
 
 
@@ -308,7 +324,7 @@ def test_cut_moves_risk_into_cash_not_stable():
                        allocation={"large_stable": 0.5, "mid_alt": 0.5,
                                    "meme": 0.0, "stable": 0.0, "cash": 0.0})
     assert r.holdings["cash"] == 0.0
-    r.choose("cut")   # 손절 → 위험자산이 현금(cash)으로 이동
+    r.choose("sell", coin_target="large_stable")   # 매도 → 위험자산이 현금(cash)으로 이동
     assert r.holdings["cash"] > 0.0        # 도피처는 현금
     assert r.holdings["stable"] == 0.0     # USDT는 손대지 않음
 
@@ -323,14 +339,18 @@ def test_cash_survives_serialization():
 
 # --- T-30c: 캐시아웃 딜레마 ------------------------------------------------ #
 def _big_gain_run():
-    # 매일 추격매수(chase)로 탐욕이 정점에 오른 중반 상태를 만든다(감정 기반 트리거).
+    # T-53: 매수(buy)는 탐욕을 소모하므로 옛 chase 반복으로 탐욕 정점을 만들 수
+    # 없다. 캐시아웃 딜레마는 '탐욕/공포 정점 + 위험 비중'에서 발동하므로, 며칠
+    # 진행해 위험 비중을 유지한 중반 상태를 만든 뒤 감정 정점을 직접 세팅한다
+    # (권위 테스트 패턴 r.emotion = PlayerEmotionState(...)와 동일).
     events = ["market_surge"] * 6
     cr = {c: ([0.25] * 6 if c != "stable" else [0.0] * 6) for c in CATEGORIES}
     r = EmoGameRun.new(ANSWERS, events, cr, seed=1,
                        allocation={"large_stable": 0.4, "mid_alt": 0.4, "meme": 0.2,
                                    "stable": 0.0, "cash": 0.0})
-    for _ in range(4):          # day0..3 진행(추격매수로 탐욕 정점)
-        r.choose("chase")
+    for _ in range(4):          # day0..3 진행(유지 → 위험 비중 유지, 중반 진입)
+        r.choose("hold")
+    r.emotion = PlayerEmotionState(greed=85, fear=20, anxiety=40, restlessness=55, composure=45)
     return r
 
 
@@ -384,18 +404,18 @@ def test_composure_starts_neutral():
     assert r.emotion.composure == 50   # 중립 시작
 
 
-def test_disciplined_choice_raises_composure_impulsive_lowers():
-    # 급락에 '버틴다'(원칙)=평정↑, '손절'(패닉)=평정↓ (같은 시작 상태 비교).
+def test_hold_consumes_composure_sell_leaves_it():
+    # T-53: 유지(hold)=평정을 consume_fraction만큼 소모(옛 '버티기=평정↑'의 반전),
+    # 매도(sell)=공포 소모라 평정 불변. 스냅샷(선택 직후, 밤 회귀 전)으로 비교.
     events = ["market_crash", "market_crash"]
     cr = {c: [0.0, 0.0] for c in CATEGORIES}
-    disc = EmoGameRun.new(ANSWERS, events, cr, seed=1)
-    imp = EmoGameRun.new(ANSWERS, events, cr, seed=1)
-    c0 = disc.emotion.composure
-    disc.choose("hold")     # 원칙
-    imp.choose("cut")       # 패닉
-    # 스냅샷(선택 직후, 밤 회귀 전)으로 방향 비교.
-    assert disc.emotion_log.snapshots[0].state.composure > c0
-    assert imp.emotion_log.snapshots[0].state.composure < c0
+    hold_run = EmoGameRun.new(ANSWERS, events, cr, seed=1)
+    sell_run = EmoGameRun.new(ANSWERS, events, cr, seed=1)
+    c0 = hold_run.emotion.composure
+    hold_run.choose("hold")                       # 유지 → 평정 소모
+    sell_run.choose("sell", coin_target="meme")   # 매도 → 공포 소모(평정 불변)
+    assert hold_run.emotion_log.snapshots[0].state.composure < c0   # 평정 소모
+    assert sell_run.emotion_log.snapshots[0].state.composure == c0   # 매도는 평정 불변
 
 
 def test_composure_survives_serialization():
@@ -427,7 +447,7 @@ def test_last_market_records_day_returns_as_percent():
           "meme": [0.40, 0.0], "stable": [0.0, 0.0]}
     r = EmoGameRun.new(ANSWERS, events, cr, seed=1)
     assert r.last_market == {}          # 정산 전엔 비어있음
-    r.choose("watch")                    # day0 정산
+    r.choose("hold")                     # day0 정산(무매매)
     assert r.last_market["meme"] == 40.0
     assert r.last_market["large_stable"] == 2.0
     assert r.last_market["stable"] == 0.0

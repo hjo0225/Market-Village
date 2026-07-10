@@ -106,16 +106,21 @@ def test_decay_rate_zero_is_identity():
     assert decay_toward_equilibrium(s, rate=0.0) == s
 
 
+# T-53: 게시판 선택지에서 per-choice `deltas`가 제거됐다(매수=탐욕 소모로 대체).
+# 이 테스트들은 감쇠 엔진(T-27)의 검증이라, 시나리오 데이터가 아니라 "반복 매수가
+# 미는 대표 델타"만 있으면 된다 — 탐욕 주도의 복합 델타를 로컬 상수로 고정한다
+# (탐욕 6 < 50×감쇠율 0.15 → 감쇠 있으면 steady<100, 없으면 반복 누적으로 포화).
+_BUY_PUSH = {"greed": 6, "restlessness": 4, "fear": -3, "anxiety": -3}
+
+
 def test_repeated_buy_never_saturates_any_axis_with_decay():
-    """T-27 핵심 회귀: 매일 매수(chase 델타)만 반복해도 감쇠 덕에 어떤 축도
-    100에 고정되지 않는다(steady = 평형 + 델타/감쇠율 < 100). 사용자 "구매하면
-    무조건 탐욕 100"의 구조적 방지."""
-    from sim.scenario import get_choice
-    chase = get_choice("market_surge", "chase")["deltas"]
+    """T-27 핵심 회귀: 매일 매수 델타만 반복해도 감쇠 덕에 어떤 축도 100에
+    고정되지 않는다(steady = 평형 + 델타/감쇠율 < 100). 사용자 "구매하면 무조건
+    탐욕 100"의 구조적 방지."""
     e = PlayerEmotionState(fear=36, greed=65, anxiety=41, restlessness=58)
     for _ in range(60):
         e = decay_toward_equilibrium(e)   # 밤사이 회귀
-        e = apply_delta(e, chase)          # 낮에 또 추격매수
+        e = apply_delta(e, _BUY_PUSH)      # 낮에 또 매수
     for axis in ("fear", "greed", "anxiety", "restlessness"):
         assert getattr(e, axis) < AXIS_MAX, f"{axis} 포화({getattr(e, axis)})"
 
@@ -123,10 +128,8 @@ def test_repeated_buy_never_saturates_any_axis_with_decay():
 def test_without_decay_repeated_buy_would_saturate_greed():
     """대조군: 감쇠(rate=0)가 없으면 같은 반복 매수가 greed를 천장에 고정시킨다 —
     감쇠가 포화를 막는 장치임을 증명."""
-    from sim.scenario import get_choice
-    chase = get_choice("market_surge", "chase")["deltas"]
     e = PlayerEmotionState(fear=36, greed=65, anxiety=41, restlessness=58)
     for _ in range(60):
         e = decay_toward_equilibrium(e, rate=0.0)   # 무감쇠
-        e = apply_delta(e, chase)
+        e = apply_delta(e, _BUY_PUSH)
     assert e.greed == AXIS_MAX   # 감쇠 없으면 포화

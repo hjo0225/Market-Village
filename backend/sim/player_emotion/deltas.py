@@ -6,8 +6,8 @@
 
 from __future__ import annotations
 
-from .config import DAILY_DECAY_RATE, EQUILIBRIUM
-from .state import PlayerEmotionState, clamp
+from .config import DAILY_DECAY_RATE, EMOTION_ACTION_FLOOR, EQUILIBRIUM
+from .state import PlayerEmotionState, clamp, get_axis
 
 # 이벤트ID -> {축: 델타값}. 양방향(pole) 모델 — 감정은 두 극으로 묶인다:
 #   위축극 = fear + anxiety (하락장 감정)   /   과열극 = greed + restlessness (상승장 감정)
@@ -58,6 +58,35 @@ def decay_toward_equilibrium(
         anxiety=d(state.anxiety), restlessness=d(state.restlessness),
         composure=d(state.composure),
     ))
+
+
+def consume_amount(state: PlayerEmotionState, axis: str, fraction: float) -> float:
+    """T-51: axis의 현재값 × fraction = 소모될 양(상태 불변).
+
+    게시판 액션의 매매 규모 원천 — 감정이 클수록 소모량↑ → 매매↑(감정 비례, 4b).
+    fraction은 [0, 1]. 범위 밖이면 ValueError, 미지의 axis면 get_axis가 ValueError."""
+    if not 0.0 <= fraction <= 1.0:
+        raise ValueError(f"consume fraction must be in [0,1]: {fraction!r}")
+    return get_axis(state, axis) * fraction
+
+
+def consume_axis(
+    state: PlayerEmotionState, axis: str, fraction: float
+) -> tuple[PlayerEmotionState, float]:
+    """T-51: axis를 현재값의 fraction만큼 감산한 새 상태 + 소모량을 반환(입력 불변, 클램프).
+
+    반환 (new_state, consumed). consumed는 T-52 매매 규모 산정에 쓰인다.
+    바닥(0)이면 소모량 0·상태 불변(클램프)."""
+    amount = consume_amount(state, axis, fraction)
+    return apply_delta(state, {axis: -amount}), amount
+
+
+def can_act_on(
+    state: PlayerEmotionState, axis: str, floor: float = EMOTION_ACTION_FLOOR
+) -> bool:
+    """T-51: 감정이 플로어 이상이어야 그 감정 기반 액션(매수=탐욕/매도=공포/유지=평정)이
+    실행 가능하다 — "안 느끼는 감정으론 못 움직인다". 미지의 axis면 ValueError."""
+    return get_axis(state, axis) >= floor
 
 
 def apply_event(state: PlayerEmotionState, event_id: str) -> PlayerEmotionState:
