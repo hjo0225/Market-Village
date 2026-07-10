@@ -490,86 +490,86 @@ export default function EmoPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.55, ease: "easeOut" }}
         >
-            <PixelPanel tone="wall" className="w-full max-w-xl p-6">
-              {/* 진행 표시 */}
-              <div className="flex items-center gap-1.5 mb-4">
-                {[0, 1, 2, 3].map((i) => (
-                  <div key={i} className={`h-1.5 flex-1 rounded-full ${i <= step ? "bg-black/70" : "bg-black/15"}`} />
-                ))}
-              </div>
-              <div className="text-[11px] text-pixel-muted mb-1">{step + 1} / 4</div>
-              <h1 className="text-lg font-extrabold mb-5">{STEP_TITLE[step]}</h1>
+          <PixelPanel tone="wall" className="w-full max-w-xl p-6">
+            {/* 진행 표시 */}
+            <div className="flex items-center gap-1.5 mb-4">
+              {[0, 1, 2, 3].map((i) => (
+                <div key={i} className={`h-1.5 flex-1 rounded-full ${i <= step ? "bg-black/70" : "bg-black/15"}`} />
+              ))}
+            </div>
+            <div className="text-[11px] text-pixel-muted mb-1">{step + 1} / 4</div>
+            <h1 className="text-lg font-extrabold mb-5">{STEP_TITLE[step]}</h1>
 
-              {/* STEP 0 — 이름만 */}
-              {step === 0 && (
-                <NameStep name={name} onChange={setName} onSubmit={toDiagnosis} />
-              )}
+            {/* STEP 0 — 이름만 */}
+            {step === 0 && (
+              <NameStep name={name} onChange={setName} onSubmit={toDiagnosis} />
+            )}
 
-              {/* STEP 1 — 진단(한 문항 한 화면) */}
-              {step === 1 && (
-                <DiagnosisStep questionIndex={questionIndex} answers={answers} onSelect={selectQuestionOption} />
-              )}
+            {/* STEP 1 — 진단(한 문항 한 화면) */}
+            {step === 1 && (
+              <DiagnosisStep questionIndex={questionIndex} answers={answers} onSelect={selectQuestionOption} />
+            )}
 
-              {/* STEP 2 — 결과 카드 */}
-              {step === 2 && (
-                diagnosis ? (
-                  <InvestmentTypeCard
-                    diagnosis={diagnosis}
-                    onCopy={() => setShareCopied(true)}
-                    onReset={() => {
-                      setAnswers({});
-                      setDiagnosis(null);
-                      setQuestionIndex(0);
-                      setShareCopied(false);
-                      setStep(1);
-                    }}
-                  />
-                ) : (
-                  <div className="rounded-xl border-2 border-black bg-white p-4 text-[13px] font-bold shadow-pixel-sm">
-                    결과를 계산하는 중…
-                  </div>
-                )
-              )}
+            {/* STEP 2 — 결과 카드 */}
+            {step === 2 && (
+              diagnosis ? (
+                <InvestmentTypeCard
+                  diagnosis={diagnosis}
+                  onCopy={() => setShareCopied(true)}
+                  onReset={() => {
+                    setAnswers({});
+                    setDiagnosis(null);
+                    setQuestionIndex(0);
+                    setShareCopied(false);
+                    setStep(1);
+                  }}
+                />
+              ) : (
+                <div className="rounded-xl border-2 border-black bg-white p-4 text-[13px] font-bold shadow-pixel-sm">
+                  결과를 계산하는 중…
+                </div>
+              )
+            )}
 
-              {/* STEP 3 — 배분. v3 §B — catalog가 있으면 카테고리 라벨을 실명 코인
+            {/* STEP 3 — 배분. v3 §B — catalog가 있으면 카테고리 라벨을 실명 코인
                   ("비트코인(BTC) — 대장주" 식)으로, 없으면(조회 실패) 기존 제네릭
                   라벨로 자연 폴백(I6). */}
-              {step === 3 && (
-                <AllocationStep
-                  levels={levels}
-                  catalog={catalog}
-                  onChange={(c, lv) => setLevels((m) => ({ ...m, [c]: lv }))}
-                />
+            {step === 3 && (
+              <AllocationStep
+                levels={levels}
+                catalog={catalog}
+                onChange={(c, lv) => setLevels((m) => ({ ...m, [c]: lv }))}
+              />
+            )}
+
+            {error && (
+              <p className="mt-4 text-[12px] font-bold text-red-600" role="alert">{error}</p>
+            )}
+
+
+            {/* 네비게이션 */}
+            <div className="flex gap-2 mt-6">
+              {step > 0 && (
+                <PixelButton size="lg" variant="ghost" className="shrink-0" onClick={goBack}>
+                  ← 뒤로
+                </PixelButton>
               )}
-
-              {error && (
-                <p className="mt-4 text-[12px] font-bold text-red-600" role="alert">{error}</p>
+              {step < 3 ? (
+                <PixelButton
+                  size="lg" className="flex-1"
+                  disabled={(step === 1 && !currentAnswered) || (step === 2 && (!diagnosisReady || !diagnosis))}
+                  onClick={goNext}
+                >
+                  {step === 1 && questionIndex < QUESTIONS.length - 1 ? "다음 문항 →" : "다음 →"}
+                </PixelButton>
+              ) : (
+                <PixelButton size="lg" className="flex-1" disabled={busy} onClick={start}>
+                  {busy ? "시작하는 중…" : "이사 온 날 →"}
+                </PixelButton>
               )}
-
-
-              {/* 네비게이션 */}
-              <div className="flex gap-2 mt-6">
-                {step > 0 && (
-                  <PixelButton size="lg" variant="ghost" className="shrink-0" onClick={goBack}>
-                    ← 뒤로
-                  </PixelButton>
-                )}
-                {step < 3 ? (
-                  <PixelButton
-                    size="lg" className="flex-1"
-                    disabled={(step === 1 && !currentAnswered) || (step === 2 && (!diagnosisReady || !diagnosis))}
-                    onClick={goNext}
-                  >
-                    {step === 1 && questionIndex < QUESTIONS.length - 1 ? "다음 문항 →" : "다음 →"}
-                  </PixelButton>
-                ) : (
-                  <PixelButton size="lg" className="flex-1" disabled={busy} onClick={start}>
-                    {busy ? "시작하는 중…" : "이사 온 날 →"}
-                  </PixelButton>
-                )}
-              </div>
-            </PixelPanel>
-          </motion.div>
+            </div>
+          </PixelPanel>
+        </motion.div>
       </main>
     );
   }
@@ -606,7 +606,7 @@ export default function EmoPage() {
               setState(null); setAnswers({}); setQuestionIndex(0); setShareCopied(false);
               setReport(null); setStep(0); setEndingCutDone(false); setStoryScene(null);
               setSeed(null); setCatalog(null); setDiagnosis(null); prevTierNameRef.current = null;
-              setStarted(false); setCanStart(false);
+              setScreen("title");
             }}
           >
             다시 시작
@@ -712,23 +712,45 @@ export default function EmoPage() {
           </div>
         )}
 
-        {/* T-41 — 게시판 여론 미연시 넘기기: 우상단 동시노출 대신, 글(post)을 하단
-            대사창에서 한 명씩 표시하고 클릭(▶)으로 다음 글로 넘긴다. 마지막 글 다음에
-            이벤트 요약+선택지(advEvent board 분기)가 뜬다. */}
+        {/* T-41 — 게시판 여론: 왼쪽 피드 공간. "다음"을 누르면 기존 글이 위로 밀려
+            올라가고(레이아웃 애니메이션) 새 글이 아래에서 등장한다. 이전 글은 흐리게
+            한 장까지 남긴다. 마지막 글 다음에 이벤트 요약+선택지(advEvent board 분기). */}
         {boardOnOpinion && (
           <button
             type="button"
             onClick={advanceBoard}
             aria-label="다음 여론 보기"
-            className="absolute left-2 sm:left-3 top-1/2 -translate-y-1/2 z-10 w-[min(24rem,85vw)] text-left cursor-pointer"
+            className="absolute left-2 sm:left-3 inset-y-0 z-10 w-[min(24rem,85vw)] flex flex-col justify-center gap-2 text-left cursor-pointer"
           >
-            <AdvDialogue
-              speakerId={board!.threads[boardStep].author_id}
-              title={`게시판 여론 · ${boardStep + 1}/${board!.threads.length}`}
-              text={board!.threads[boardStep].text}
-              tone="board"
-            />
-            <div className="mt-1 pr-1 text-right text-[12px] font-extrabold text-white/85 animate-pulse">▶ 클릭</div>
+            <AnimatePresence mode="popLayout" initial={false}>
+              {board!.threads.slice(0, boardStep + 1).map((th, idx) => {
+                const isCurrent = idx === boardStep;
+                return (
+                  <motion.div
+                    key={idx}
+                    layout
+                    className="relative"
+                    initial={{ opacity: 0, y: 48 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -48 }}
+                    transition={{ duration: 0.35, ease: "easeOut" }}
+                  >
+                    <AdvDialogue
+                      speakerId={th.author_id}
+                      title={`게시판 여론 · ${idx + 1}/${board!.threads.length}`}
+                      text={th.text}
+                      tone="board"
+                    />
+                    {/* ▶ 클릭 — 배경 위에서 안 보이는 문제로 최신 카드 우하단에 부착 */}
+                    {isCurrent && (
+                      <span className="absolute bottom-2 right-3 text-[12px] font-extrabold text-black/90 animate-pulse">
+                        ▶ 클릭
+                      </span>
+                    )}
+                  </motion.div>
+                );
+              })}
+            </AnimatePresence>
           </button>
         )}
 

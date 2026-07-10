@@ -18,10 +18,12 @@ export default function TitleScreen({
 }) {
   return (
     <main className="relative min-h-screen overflow-hidden bg-pixel-grass">
-      {/* 맵 배경(어둡게) — the_ville 전체 맵(bg+fg 합성)을 다 보이게 깔고 어둡게 오버레이. */}
-      <div
-        className="pointer-events-none absolute inset-0 select-none bg-center bg-no-repeat"
-        style={{ backgroundImage: "url(/assets/ui/title_bg.png)", backgroundSize: "150%", imageRendering: "pixelated" }}
+      {/* 맵 배경(어둡게) — 정적 스크린샷 대신 살아있는 Phaser 컷씬(클론 집 고정 카메라). */}
+      <iframe
+        src="/map.html?mode=cutscene"
+        title="마을 배경"
+        aria-hidden
+        className="pointer-events-none absolute inset-0 h-full w-full select-none border-0"
       />
       <div className="absolute inset-0 bg-black/60" />
       <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-transparent to-black/70" />
