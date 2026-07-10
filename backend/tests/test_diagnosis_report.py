@@ -16,8 +16,8 @@ from sim import disposition as D
 from sim import emo_store
 from sim.emo_api import router
 
-ALL_MAX = {"Q1": 4, "Q2": 4, "Q3": 4, "Q4": 4, "Q5": 4, "Q6": 4, "Q7": 4}
-ALL_MIN = {"Q1": 1, "Q2": 1, "Q3": 1, "Q4": 1, "Q5": 1, "Q6": 1, "Q7": 1}
+ALL_MAX = {q["id"]: max(o["points"] for o in q["options"]) for q in D.QUESTIONS}
+ALL_MIN = {q["id"]: min(o["points"] for o in q["options"]) for q in D.QUESTIONS}
 
 
 def _client():
@@ -67,39 +67,34 @@ def test_contributions_row_shape_and_axis_matches_question_dim():
         assert c["q_label"] == q_by_id[c["q"]]["text"]
 
 
-def test_contributions_points_equal_score_times_weight():
+def test_contributions_points_equal_chosen_option_points():
     diag = DR.build_diagnosis(ALL_MAX)
     q_by_id = {q["id"]: q for q in D.QUESTIONS}
     for c in diag["contributions"]:
         q = q_by_id[c["q"]]
-        # ALL_MAX → 모든 문항 최고 선택지(score=4) 선택.
-        assert c["points"] == 4 * q["weight"]
-
-
-def test_contributions_q5_weighted_double_reflected_in_points():
-    diag = DR.build_diagnosis(ALL_MAX)
-    q5 = next(c for c in diag["contributions"] if c["q"] == "Q5")
-    assert q5["points"] == 8   # score 4 × weight 2
+        # ALL_MAX → 모든 문항 최고 선택지 선택(가중치는 points에 이미 반영됨).
+        assert c["points"] == max(o["points"] for o in q["options"])
 
 
 def test_contributions_choice_label_matches_chosen_option():
     diag = DR.build_diagnosis(ALL_MAX)
     q1 = next(c for c in diag["contributions"] if c["q"] == "Q1")
-    assert q1["choice_label"] == "바로 산다. 기회는 안 기다려준다"
+    assert q1["choice_label"] == "코인 1,000만 원"
 
 
 def test_contributions_reflect_min_answers_different_labels_and_points():
     diag = DR.build_diagnosis(ALL_MIN)
     q1 = next(c for c in diag["contributions"] if c["q"] == "Q1")
-    assert q1["choice_label"] == "다들 탈 때가 제일 위험하다. 무시"
-    assert q1["points"] == 1
+    assert q1["choice_label"] == "예금 1,000만 원"
+    assert q1["points"] == 2
 
 
-def test_contributions_missing_answer_falls_back_to_neutral_score_2():
-    diag = DR.build_diagnosis({})   # 전부 누락 → disposition._score 폴백 2
+def test_contributions_missing_answer_falls_back_to_neutral_mid():
+    diag = DR.build_diagnosis({})   # 전부 누락 → disposition._score 폴백(중앙값)
+    q_by_id = {q["id"]: q for q in D.QUESTIONS}
     for c in diag["contributions"]:
-        q = next(q for q in D.QUESTIONS if q["id"] == c["q"])
-        assert c["points"] == 2 * q["weight"]
+        pts = [o["points"] for o in q_by_id[c["q"]]["options"]]
+        assert c["points"] == pts[len(pts) // 2]
 
 
 # --- summary: declared_type별 2줄 + 고정 마무리 -------------------------- #

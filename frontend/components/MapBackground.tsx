@@ -81,7 +81,7 @@ const MapBackground = forwardRef<MapBackgroundHandle, {
   return (
     <iframe
       ref={iframeRef}
-      src={`/map?game_id=${encodeURIComponent(gameId)}&game=${encodeURIComponent(game)}`}
+      src={`/map.html?game_id=${encodeURIComponent(gameId)}&game=${encodeURIComponent(game)}`}
       title="Market Village 배경 지도"
       className={contained
         ? "absolute inset-0 w-full h-full border-0"

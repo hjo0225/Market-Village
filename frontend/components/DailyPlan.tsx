@@ -224,8 +224,16 @@ export default function DailyPlan({
   const goNext = () => { if (!isLastStep) goToStep(stepIndex + 1); };
 
   return (
-    <div className="fixed inset-0 z-40 bg-pixel-path flex items-center justify-center p-2 sm:p-4">
-      <PixelPanel tone="cloud" className="w-full max-w-4xl h-full sm:h-auto sm:max-h-[92vh] flex flex-col p-4 sm:p-5 overflow-hidden">
+    <div className="fixed inset-0 z-40 bg-black flex items-center justify-center p-2 sm:p-4 overflow-hidden">
+      {/* 일과 편성 배경 — 컷씬(클론 집 고정 카메라) 위에 패널이 뜬다. */}
+      <iframe
+        src={`/map.html?mode=cutscene&name=${encodeURIComponent(cloneName)}`}
+        title="마을 배경"
+        aria-hidden
+        className="absolute inset-0 h-full w-full border-0 pointer-events-none"
+      />
+      <div className="absolute inset-0 bg-black/55 pointer-events-none" />
+      <PixelPanel tone="cloud" className="relative z-10 w-full max-w-4xl h-full sm:h-auto sm:max-h-[92vh] flex flex-col p-4 sm:p-5 overflow-hidden">
         {/* 상단: Day N */}
         <div className="shrink-0 flex items-center justify-between flex-wrap gap-2 mb-1">
           <div>

@@ -198,15 +198,14 @@ def _ensure_game_walker(game_id: str, npc_scheds: dict | None = None) -> dict:
         walker["pos"] = list(home_tile) if home_tile else [70, 40]
     # T-239 — 집 타일은 게임당 1회 뽑아 박제(시작은 랜덤, 게임 내내 같은 집으로 귀가).
     walker.setdefault("home", list(walker["pos"]))
-    scheds = npc_scheds or {}
+    # NPC 시작 위치 = 마을 공용 장소 중 게임별 랜덤(사용자 요청 — 매 게임 다른 배치).
+    # 집(스폰 영역)은 제외해 고정 유지. 시드가 game_id 기반이라 리로드엔 결정론.
+    spawn_places = [a for k, a in _GAME_LOCATION_ADDR.items() if k != "집_차트"]
     for p in _personas.TRADER_PERSONAS:
         if p["id"] in walker["npcs"]:
             continue
-        # NPC 시작 위치 = 자기 일과의 첫 장소(결정론, game_id·npc_id 시드).
-        sched = scheds.get(p["id"], p["sched"])
-        first_place = sched[min(sched)]
         rng_n = random.Random(_walker_seed("walker", game_id, p["id"]))
-        tile = _gamerun_rand_tile_for(_GAME_LOCATION_ADDR[first_place], rng_n)
+        tile = _gamerun_rand_tile_for(rng_n.choice(spawn_places), rng_n)
         walker["npcs"][p["id"]] = list(tile) if tile else [70, 40]
     return walker
 

@@ -29,10 +29,10 @@ def _axes(disp: dict) -> list[dict]:
 
 def _chosen_option(qid: str, answers: dict) -> dict | None:
     """그 문항에서 실제 선택된 옵션(점수로 역참조, disposition._score와 동일
-    폴백 규칙 — 누락/무효는 중립 2)."""
+    폴백 규칙 — 누락/무효는 중앙값)."""
     s = _score(answers, qid)
     for opt in _Q[qid]["options"]:
-        if opt["score"] == s:
+        if opt["points"] == s:
             return opt
     return None
 
@@ -47,7 +47,7 @@ def _contributions(answers: dict) -> list[dict]:
         opt = _chosen_option(qid, answers)
         if opt is None:
             continue
-        points = opt["score"] * q["weight"]
+        points = opt["points"]   # 새 스키마: 가중치가 points에 이미 반영됨
         out.append({
             "q": qid,
             "q_label": q["text"],

@@ -13,7 +13,7 @@ from sim import emo_api, emo_store
 from sim.emo_game import EmoGameRun
 from sim.fate_line import CATEGORIES
 
-AGGRESSIVE = {"Q1": 4, "Q2": 4, "Q3": 4, "Q4": 4, "Q5": 4, "Q6": 4, "Q7": 4}
+AGGRESSIVE = {"Q1": 10, "Q2": 5, "Q3": 10, "Q4": 6, "Q5": 6, "Q6": 6, "Q7": 10}
 
 DISP = {
     "declared_type": "공격투자형",

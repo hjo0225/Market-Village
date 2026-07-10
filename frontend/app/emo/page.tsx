@@ -13,6 +13,7 @@ import AdvChoiceMenu from "@/components/AdvChoiceMenu";
 import DayReport, { DayReportData } from "@/components/DayReport";
 import DiagnosisReport from "@/components/DiagnosisReport";
 import InvestmentTypeCard from "@/components/InvestmentTypeCard";
+import InfoHint from "@/components/InfoHint";
 import MapBackground, { MapBackgroundHandle } from "@/components/MapBackground";
 import PixelPanel from "@/components/pixel/PixelPanel";
 import PixelButton from "@/components/pixel/PixelButton";
@@ -23,84 +24,14 @@ import TierBadge from "@/components/TierBadge";
 import CoachMark from "@/components/CoachMark";
 import Term from "@/components/Term";
 import { PlanView, CatalogCoin } from "@/lib/emoApi";
+import { LevelMap } from "./types";
+import {
+  PROLOGUE_CUTS, BRIDGE_CUTS, ENDING_PRE_CUT, FIRST_BOARD_CUT, HALFWAY_CUTS,
+  LEVELS, LEVEL_WEIGHT, LEVEL_LABEL, DEFAULT_LEVELS, CATEGORY_FLAVOR, CATEGORY_TERM,
+  QUESTIONS, QUESTION_HINTS, TRADE_CATS,
+} from "./constants";
+import { positionTag, levelWeights } from "./utils";
 
-// §3.1/§3.2/§3.3 — 정적 스토리 씬 스크립트(원문 그대로, LLM 호출 없음·I5).
-const PROLOGUE_CUTS: StoryCut[] = [
-  { bg: "dark", lines: ["어떤 판단은, 내가 한 게 아니라 내 기분이 한 것이었다."] },
-  { lines: ["마켓 빌리지. 주민 전원이 코인을 하는 작은 마을.", "이곳에 당신을 닮은 클론이 이사를 온다."] },
-  { lines: ["클론은 당신의 습관대로 기뻐하고, 당신의 습관대로 흔들린다.", "그러니 먼저 — 당신이 어떤 사람인지 알려주세요."] },
-];
-const BRIDGE_CUTS = (cloneName: string): StoryCut[] => [
-  { lines: [`……여기가 마켓 빌리지구나. 이삿짐이라곤 지갑 하나.`], speaker: cloneName },
-  { lines: ["마을 사람들은 전부 코인을 한다. 단톡방은 하루 종일 울린다.", "카페의 동수, 광장의 재훈, 펍 구석의 만식…… 곧 다 알게 된다."] },
-  { lines: ["당신이 해줄 일은 하나. 클론의 하루를 짜주는 것.", "어디서 시간을 보내는지가, 마음을 만든다. 마음이, 지갑을 지킨다."] },
-  { lines: ["그럼 — 첫째 날."] },
-];
-const ENDING_PRE_CUT: StoryCut[] = [
-  { lines: ["열흘 남짓, 클론의 계절이 끝났다. 이제 거울을 볼 시간."] },
-];
-// v2 §3.2 — 첫 게시판 진입 컷(게임당 1회, 컴포넌트 상태로만 관리). 첫 board 노출 직전.
-const FIRST_BOARD_CUT: StoryCut[] = [
-  { lines: ["점심. 단톡방이 울린다.", "이 마을에서 점심 메뉴보다 뜨거운 화제 — 오늘의 시장."] },
-];
-// v2 §3.3 — 반환점 컷(day == total_days//2, 게임당 1회). 그날 편성 화면 진입 전.
-const HALFWAY_CUTS = (cloneName: string): StoryCut[] => [
-  { lines: ["벌써 절반이구나. 처음엔 알림음마다 심장이 뛰었는데."], speaker: cloneName },
-  { lines: ["이제 어떤 알림은 그냥 지나가게 둔다. 그게 좋은 건지는, 끝에 가서 알겠지."] },
-];
-
-// T-30 · 초기 배분 UX — 슬라이더 대신 높음/중간/낮음(가중치). 백엔드가 합으로
-// 정규화하므로 상대 가중치만 보내면 된다(low1·med2·high3).
-type Level = "low" | "med" | "high";
-const LEVELS: Level[] = ["low", "med", "high"];
-const LEVEL_WEIGHT: Record<Level, number> = { low: 1, med: 2, high: 3 };
-const LEVEL_LABEL: Record<Level, string> = { low: "낮음", med: "중간", high: "높음" };
-const DEFAULT_LEVELS: Record<Category, Level> = {
-  large_stable: "med", mid_alt: "med", meme: "low", stable: "low", cash: "med",
-};
-// v3 §B — 배분 화면 실명 코인 카드의 성격 한 줄("대장주"/"급등급락" 식). catalog로
-// 받은 실제 종목명 아래에 카테고리 성격을 덧붙여 감을 잡게 한다.
-const CATEGORY_FLAVOR: Record<Category, string> = {
-  large_stable: "대장주", mid_alt: "중견 알트", meme: "급등급락", stable: "안정적 페그", cash: "시장 밖 현금",
-};
-// §2.1 — 배분 화면 카테고리별 용어 사전 키(있으면 라벨에 Term 적용). mid_alt는
-// "알트코인", meme은 "밈코인"이 정확한 사전 키(CATEGORY_FLAVOR 표현과는 별개).
-const CATEGORY_TERM: Partial<Record<Category, string>> = {
-  large_stable: "대장주", mid_alt: "알트코인", meme: "밈코인",
-};
-
-// 성향분석.md — 전국투자자교육협의회 '투자 성향 진단표' 7문항을 코인 맥락으로 재구성.
-// 값=문항별 가중 점수(문항 내 유일). 백엔드 disposition.diagnose가 점수로 선택지를 역참조.
-const QUESTIONS: { key: string; text: string; options: [string, number][] }[] = [
-  {
-    key: "Q1", text: "여유자금 1,000만 원이 생겼다. 예금과 코인에 나눈다면?",
-    options: [["예금 1,000만 원", 2], ["예금 700 · 코인 300", 4], ["예금 500 · 코인 500", 6], ["예금 300 · 코인 700", 8], ["코인 1,000만 원", 10]]
-  },
-  {
-    key: "Q2", text: "이 자금을 얼마 동안 굴릴 생각이야?",
-    options: [["1개월 미만", 1], ["1개월 이상 ~ 6개월 미만", 2], ["6개월 이상 ~ 1년 미만", 3], ["1년 이상 ~ 3년 미만", 4], ["3년 이상", 5]]
-  },
-  {
-    key: "Q3", text: "매달 남는 100만 원을 적금과 코인 적립에 나눈다면?",
-    options: [["적금 100만 원", 2], ["적금 70 · 코인 30", 4], ["적금 50 · 코인 50", 6], ["적금 30 · 코인 70", 8], ["코인 100만 원", 10]]
-  },
-  {
-    key: "Q4", text: "자산관리에서 내가 우선하는 순서는?",
-    options: [["안전성 > 유동성 > 수익성", 1], ["안전성 > 수익성 > 유동성", 2], ["유동성 > 안전성 > 수익성", 3], ["유동성 > 수익성 > 안전성", 4], ["수익성 > 안전성 > 유동성", 5], ["수익성 > 유동성 > 안전성", 6]]
-  },
-  {
-    key: "Q5", text: "가장 선호하는 자산은?",
-    options: [["예금 · 스테이블코인", 2], ["비트코인 · 이더 같은 우량 코인", 4], ["신규 · 알트코인", 6]]
-  },
-  {
-    key: "Q6", text: "더 선호하는 투자 전략은?",
-    options: [["분산된 포트폴리오로 시장 평균 정도의 성과", 3], ["원금 손실 위험이 있어도 시장 평균보다 높은 수익", 6]]
-  },
-  {
-    key: "Q7", text: "투자 손실을 어디까지 견딜 수 있어?",
-    options: [["무슨 일이 있어도 원금은 지켜야 한다", 2], ["10% 미만까지는 감수", 4], ["20% 미만까지는 감수", 6], ["40% 미만까지는 감수", 8], ["기대수익이 높다면 위험은 상관없다", 10]]
-  },
-];
 
 export default function EmoPage() {
   const [state, setState] = useState<EmoState | null>(null);
@@ -114,7 +45,7 @@ export default function EmoPage() {
   const [diagnosis, setDiagnosis] = useState<api.DispositionDiagnosis | null>(null);
   const [shareCopied, setShareCopied] = useState(false);
   const [name, setName] = useState("");   // T-28 — 클론 이름
-  const [levels, setLevels] = useState<Record<Category, Level>>({ ...DEFAULT_LEVELS });   // T-30
+  const [levels, setLevels] = useState<LevelMap>({ ...DEFAULT_LEVELS });   // T-30
   const [step, setStep] = useState(0);   // 온보딩 스텝(0 이름 · 1 진단 · 2 결과 · 3 배분)
   const [started, setStarted] = useState(false);   // 인트로 스플래시 → 시작 여부
   const [canStart, setCanStart] = useState(false);   // 몇 초 뒤 "click to start" 노출
@@ -274,8 +205,7 @@ export default function EmoPage() {
           const pickedChoice = b.scenario.choices.find((c) => c.id === picked!.id);
           pickedLabel = pickedChoice?.label ?? "";
           if (pickedLabel) {
-            const pos = pickedChoice?.position ?? 0;
-            dayLogRef.current.push({ label: pickedLabel, tag: pos >= TRADE_FX_MIN ? "buy" : pos <= -TRADE_FX_MIN ? "sell" : "hold" });
+            dayLogRef.current.push({ label: pickedLabel, tag: positionTag(pickedChoice?.position ?? 0) });
           }
           if (cancelled) return;
           setBoard(null);   // 반응 후 닫고 남은 하루를 마저 걷는다
@@ -419,10 +349,7 @@ export default function EmoPage() {
   const start = async () => {
     setBusy(true); setError(null);
     const usedSeed = seed ?? Math.floor(Math.random() * 100000);
-    // T-30 — 높음/중간/낮음 → 상대 가중치(백엔드가 합으로 정규화).
-    const weights: Record<string, number> = {};
-    CATEGORIES.forEach((c) => { weights[c] = LEVEL_WEIGHT[levels[c]]; });
-    const s = await api.startEmo(answers, usedSeed, 10, weights, name.trim());   // v3 §A — 10일
+    const s = await api.startEmo(answers, usedSeed, 10, levelWeights(levels), name.trim());   // v3 §A — 10일
     if (s) {
       pendingStartRef.current = s;
       // 진단 결과는 배분 전 step 2(InvestmentTypeCard)에서 이미 보여줬으므로 바로 브릿지로.
@@ -459,15 +386,9 @@ export default function EmoPage() {
     tradeFlashTimer.current = setTimeout(() => setTradeFlash(null), 1800);
   };
 
-  // 게시판 반응 — 낮에 고름. 정산은 아니고(저녁에 함) 일과 시퀀스의 대기를 푼다.
-  // 고른 반응의 position으로 매매 배지를 띄운다. 관망(-0.2)·소액 태움(0.1) 같은
-  // **소극적 선택**엔 안 뜨게 결정적 매매(|position|≥0.25)만.
-  const TRADE_FX_MIN = 0.25;
   // T-41 — 게시판 여론 미연시 넘기기: 글(post)을 한 명씩 보고 클릭으로 다음 글 →
   // 마지막 글 다음에 이벤트 요약+선택지가 뜬다(아래 advEvent board 분기).
   const advanceBoard = () => setBoardStep((s) => s + 1);
-  // T-54 — 코인 매매 대상 카테고리(현금 제외). 매수/매도는 이 중 하나를 골라야 실행.
-  const TRADE_CATS: Category[] = ["large_stable", "mid_alt", "meme", "stable"];
   const reactBoard = (id: string) => {
     const action = board?.scenario.choices.find((c) => c.id === id)?.action;
     if (action === "buy" || action === "sell") {
@@ -531,8 +452,8 @@ export default function EmoPage() {
 
   // ---------- 온보딩 위저드(T-29: 한 화면 한 목적 — 이름 → 진단 → 배분) ----------
   if (!state) {
-    if (storyScene === "prologue") return <StoryScene cuts={PROLOGUE_CUTS} onDone={prologueDone} />;
-    if (storyScene === "bridge") return <StoryScene cuts={BRIDGE_CUTS(name.trim() || "클론")} onDone={bridgeDone} />;
+    if (storyScene === "prologue") return <StoryScene cuts={PROLOGUE_CUTS} cloneName={name.trim() || "클론"} onDone={prologueDone} />;
+    if (storyScene === "bridge") return <StoryScene cuts={BRIDGE_CUTS(name.trim() || "클론")} dim={false} cloneName={name.trim() || "클론"} onDone={bridgeDone} />;
     const diagnosisReady = QUESTIONS.every((q) => q.key in answers);
     const totalW = CATEGORIES.reduce((s, c) => s + LEVEL_WEIGHT[levels[c]], 0);
     const STEP_TITLE = ["이사 온 날", "투자 성향 진단", "성향 결과", "초기 자산 배분"];
@@ -550,13 +471,16 @@ export default function EmoPage() {
       setStep((s) => s + 1);
     };
     return (
-      <main
-        className="min-h-screen bg-pixel-path bg-cover bg-center flex items-center justify-center p-4"
-        style={{
-          backgroundImage:
-            "linear-gradient(rgba(0,0,0,0.72),rgba(0,0,0,0.72)), url('/img/cover.png')",
-        }}
-      >
+      <main className="relative min-h-screen bg-black flex items-center justify-center p-4 overflow-hidden">
+        {/* 온보딩 배경 — Phaser 컷씬(클론 집 고정 카메라). 이름은 진단 진입(step≥1)
+            후에만 붙인다(입력 중 키 입력마다 iframe 재부팅 방지). */}
+        <iframe
+          src={`/map.html?mode=cutscene${step > 0 && name.trim() ? `&name=${encodeURIComponent(name.trim())}` : ""}`}
+          title="마을 배경"
+          aria-hidden
+          className="fixed inset-0 h-full w-full border-0 pointer-events-none"
+        />
+        <div className="fixed inset-0 bg-black/55 pointer-events-none" />
         {/* 타이틀 — 처음엔 화면 가운데 크게, 시작하면 좌상단으로 부드럽게 이동 */}
         <motion.img
           src="/img/title_image.png"
@@ -598,7 +522,7 @@ export default function EmoPage() {
 
         {started && (
           <motion.div
-            className="w-full max-w-xl pt-16"
+            className="relative z-10 w-full max-w-xl pt-16"
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 1.2, duration: 0.55, ease: "easeOut" }}
@@ -643,7 +567,14 @@ export default function EmoPage() {
                   </div>
                   <div className="rounded-xl border-2 border-black bg-white p-4 shadow-pixel-sm">
                     <div className="text-[11px] font-black text-black/45">{currentQuestion.key}</div>
-                    <div className="mt-1 text-[17px] font-black leading-snug">{currentQuestion.text}</div>
+                    <div className="mt-1 text-[17px] font-black leading-snug">
+                      {currentQuestion.text}
+                      {QUESTION_HINTS[currentQuestion.key] && (
+                        <span className="ml-1.5 inline-block">
+                          <InfoHint title={QUESTION_HINTS[currentQuestion.key].title} text={QUESTION_HINTS[currentQuestion.key].text} />
+                        </span>
+                      )}
+                    </div>
                     <div className="mt-4 grid gap-2">
                       {currentQuestion.options.map(([label, val], optionIndex) => (
                         <button
@@ -693,7 +624,6 @@ export default function EmoPage() {
                   라벨로 자연 폴백(I6). */}
               {step === 3 && (
                 <div>
-                  <p className="text-[12px] text-pixel-muted -mt-2 mb-3">각 자산에 얼마나 담을지 고르세요. 현금(KRW)은 시장 밖 마른 장작이에요.</p>
                   <div className="flex flex-col gap-2.5">
                     {CATEGORIES.map((c: Category) => {
                       const pct = totalW > 0 ? Math.round((LEVEL_WEIGHT[levels[c]] / totalW) * 100) : 0;
@@ -701,11 +631,11 @@ export default function EmoPage() {
                       const termKey = CATEGORY_TERM[c];
                       return (
                         <div key={c} className="flex items-center gap-3 text-[12px]">
-                          <span className="w-28 shrink-0 text-pixel-muted leading-tight">
+                          <span className="w-28 shrink-0 text-black leading-tight">
                             {coin ? (
                               <>
                                 {coin.name}({coin.symbol})
-                                <span className="block text-[10px] opacity-70">
+                                <span className="block text-[10px] text-pixel-muted">
                                   {termKey ? <Term term={termKey}>{CATEGORY_FLAVOR[c]}</Term> : CATEGORY_FLAVOR[c]}
                                 </span>
                               </>
@@ -770,7 +700,7 @@ export default function EmoPage() {
   if (state.is_over && state.ending) {
     // §3.3 — 엔딩 텍스트 앞 짧은 1컷("열흘 남짓…"). 1회만 보여주고 넘어간다.
     if (!endingCutDone) {
-      return <StoryScene cuts={ENDING_PRE_CUT} onDone={() => setEndingCutDone(true)} />;
+      return <StoryScene cuts={ENDING_PRE_CUT} dim={false} cloneName={state.clone_name} onDone={() => setEndingCutDone(true)} />;
     }
     const e = state.ending;
     return (
@@ -811,10 +741,10 @@ export default function EmoPage() {
   // v2 §3.2/§3.3 — 첫 게시판 진입 컷 / 반환점 컷(게임당 1회, 걷기 시퀀스가 게이트로
   // 대기 중일 때 표시). 씬이 끝나면(건너뛰기 포함) storySceneGateRef를 풀어 재개.
   if (storyScene === "firstBoard") {
-    return <StoryScene cuts={FIRST_BOARD_CUT} onDone={() => storySceneGateRef.current?.()} />;
+    return <StoryScene cuts={FIRST_BOARD_CUT} dim={false} cloneName={state.clone_name} onDone={() => storySceneGateRef.current?.()} />;
   }
   if (storyScene === "halfway") {
-    return <StoryScene cuts={HALFWAY_CUTS(state.clone_name)} onDone={() => storySceneGateRef.current?.()} />;
+    return <StoryScene cuts={HALFWAY_CUTS(state.clone_name)} dim={false} cloneName={state.clone_name} onDone={() => storySceneGateRef.current?.()} />;
   }
 
   // ---------- 플레이 (하이브리드 ADV: 상단 감정스트립 / 큰 맵 / 하단 JRPG 대사창) ----------
