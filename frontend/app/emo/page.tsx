@@ -21,6 +21,7 @@ import TickerBar from "@/components/TickerBar";
 import TierBadge from "@/components/TierBadge";
 import CoachMark from "@/components/CoachMark";
 import Term from "@/components/Term";
+import TitleScreen from "@/components/TitleScreen";
 import { PlanView, CatalogCoin } from "@/lib/emoApi";
 
 // §3.1/§3.2/§3.3 — 정적 스토리 씬 스크립트(원문 그대로, LLM 호출 없음·I5).
@@ -98,6 +99,7 @@ export default function EmoPage() {
   const [name, setName] = useState("");   // T-28 — 클론 이름
   const [levels, setLevels] = useState<Record<Category, Level>>({ ...DEFAULT_LEVELS });   // T-30
   const [step, setStep] = useState(0);   // T-29 — 온보딩 스텝(0 이름 · 1 진단 · 2 배분)
+  const [screen, setScreen] = useState<"title" | "game">("title");   // T-57 — 타이틀/시작 메뉴 게이트
   // v3 §B — 배분 화면(step 2) 진입 시 seed를 먼저 뽑아 GET /emo/catalog?seed=로 실명
   // 코인을 가져온다. 이후 start()는 이 seed 그대로 사용(카탈로그·실제 시장 일치).
   const [seed, setSeed] = useState<number | null>(null);
@@ -444,6 +446,11 @@ export default function EmoPage() {
     setStep(2);
     api.getCatalog(s).then((c) => { if (c) setCatalog(c.coins); });
   };
+
+  // T-57 — 타이틀/시작 메뉴(스플래시). 새 게임 → 온보딩. 이어하기/업적은 T-58/59(미구현).
+  if (screen === "title") {
+    return <TitleScreen onNewGame={() => setScreen("game")} />;
+  }
 
   // ---------- 온보딩 위저드(T-29: 한 화면 한 목적 — 이름 → 진단 → 배분) ----------
   if (!state) {
