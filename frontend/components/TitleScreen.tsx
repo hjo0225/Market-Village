@@ -20,7 +20,7 @@ export default function TitleScreen({
     <main className="relative min-h-screen overflow-hidden bg-pixel-grass">
       {/* 맵 배경(어둡게) — the_ville 전체 맵(bg+fg 합성)을 다 보이게 깔고 어둡게 오버레이. */}
       <div
-        className="pointer-events-none absolute inset-0 select-none bg-contain bg-center bg-no-repeat"
+        className="pointer-events-none absolute inset-0 select-none bg-cover bg-center bg-no-repeat"
         style={{ backgroundImage: "url(/assets/ui/title_bg.png)", imageRendering: "pixelated" }}
       />
       <div className="absolute inset-0 bg-black/60" />
