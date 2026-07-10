@@ -69,6 +69,33 @@ export interface DiagnosisReport {
   blind_reveal?: BlindReveal[];   // T-49c — 엔딩 후 실제 종목·시기
 }
 
+export interface MbtiAxis {
+  label: string;
+  left: string;
+  right: string;
+  left_pct: number;
+  right_pct: number;
+  selected: string;
+}
+
+export interface DispositionDiagnosis {
+  answers: Record<string, number>;
+  raw_score: number;
+  declared_type: string;
+  risk_grade: string;
+  capacity_score: number;
+  attitude_score: number;
+  mbti_type: string;
+  mbti_name: string;
+  mbti_summary: string;
+  mbti_axes: Record<string, MbtiAxis>;
+  mbti_good_match: string;
+  mbti_bad_match: string;
+  seeds: string[];
+  seed_conflicts: string[];
+  expected_bias: Record<string, number>;
+}
+
 async function fetchJson<T>(input: RequestInfo, init?: RequestInit, retries = 1): Promise<T | null> {
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
@@ -95,6 +122,9 @@ export const startEmo = (
   answers: Record<string, number>, seed: number, days = 20,
   allocations?: Record<string, number>, name?: string,
 ) => postJson<EmoState>("/emo/start", { answers, seed, days, allocations, name });
+
+export const diagnoseDisposition = (answers: Record<string, number>) =>
+  postJson<DispositionDiagnosis>("/emo/diagnose", { answers });
 
 export const getState = (id: string) => getJson<EmoState>(`/emo/${id}/state`);
 export const getBoard = (id: string) => getJson<Board>(`/emo/${id}/board`);

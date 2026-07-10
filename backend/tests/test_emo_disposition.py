@@ -1,6 +1,6 @@
 """T-47c — EmoGameRun에 정적 성향 진단 + 편향 원장/집계 배선.
 
-new()가 7문항 answers로 disposition을 확정(불변)하고, choose/chain_choose가
+new()가 12문항 answers로 disposition을 확정(불변)하고, choose/chain_choose가
 선택지 bias_tags를 bias_tally(hits/opportunities)에 기록한다. actual_bias는
 비율식(hits/opportunities×100), 표본 n<3 축은 비노출(RETRO 4b).
 """
@@ -10,10 +10,10 @@ from __future__ import annotations
 from sim.emo_game import EmoGameRun
 from sim.fate_line import CATEGORIES
 
-# 공격형 7문항(전부 최고 위험) — 공격투자형
-AGGRESSIVE = {"Q1": 4, "Q2": 4, "Q3": 4, "Q4": 4, "Q5": 4, "Q6": 4, "Q7": 4}
-# 안정형 7문항
-CONSERVATIVE = {"Q1": 1, "Q2": 1, "Q3": 1, "Q4": 1, "Q5": 1, "Q6": 1, "Q7": 1}
+# 공격형 12문항(전부 최고 위험) — 공격투자형
+AGGRESSIVE = {f"Q{i}": 4 for i in range(1, 13)}
+# 안정형 12문항
+CONSERVATIVE = {f"Q{i}": 1 for i in range(1, 13)}
 
 
 def _cat(returns):
@@ -26,7 +26,7 @@ def _crash_game(answers, days=4):
 
 
 # ── 진단 확정 ───────────────────────────────────────────────────────────
-def test_new_sets_disposition_from_7q():
+def test_new_sets_disposition_from_12q():
     r = EmoGameRun.new(AGGRESSIVE, ["market_crash"], _cat([-0.1]), seed=1)
     assert r.disposition is not None
     assert r.disposition["declared_type"] == "공격투자형"

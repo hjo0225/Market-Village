@@ -15,7 +15,7 @@ import uuid
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from . import disposition_report, emo_store
+from . import disposition, disposition_report, emo_store
 from . import llm as _llm
 from .emo_game import EmoGameRun
 from .fate_line import CATEGORIES, load_fate_line
@@ -128,6 +128,12 @@ def start(body: StartBody) -> dict:
     game_id = uuid.uuid4().hex
     emo_store.save_run(game_id, run)
     return _state(run, game_id)
+
+
+@router.post("/diagnose")
+def diagnose(body: StartBody) -> dict:
+    """시작 전 성향 결과 카드용 순수 진단. 게임 상태를 만들지 않는다."""
+    return disposition.diagnose(body.answers)
 
 
 @router.get("/{game_id}/state")

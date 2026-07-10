@@ -1,6 +1,6 @@
 """T-47a — 정적 성향 진단 모듈 disposition.py.
 
-스펙: docs/STATIC_DISPOSITION_SPEC.md (Grable & Lytton 1999 각색 + 국내 5단계).
+스펙: 성향분석.md (투자자정보 확인서 기반 + MBTI 스타일 4축 표현).
 순수함수 검증 + 부록 D(타당성 체크리스트)를 테스트로 고정한다.
 """
 
@@ -12,26 +12,31 @@ from sim import disposition as D
 from sim.player_emotion.state import AXES
 
 # ── 편의: 극단 답안 세트 ────────────────────────────────────────────────
-ALL_MAX = {"Q1": 4, "Q2": 4, "Q3": 4, "Q4": 4, "Q5": 4, "Q6": 4, "Q7": 4}
-ALL_MIN = {"Q1": 1, "Q2": 1, "Q3": 1, "Q4": 1, "Q5": 1, "Q6": 1, "Q7": 1}
-# 스펙 §4 예시 답안(적극투자형)
-SPEC_EX = {"Q1": 4, "Q2": 3, "Q3": 4, "Q4": 4, "Q5": 3, "Q6": 2, "Q7": 4}
+ALL_MAX = {f"Q{i}": 4 for i in range(1, 13)}
+ALL_MIN = {f"Q{i}": 1 for i in range(1, 13)}
+# 성향분석.md 예시형 답안(적극투자형)
+SPEC_EX = {
+    "Q1": 4, "Q2": 3, "Q3": 4,
+    "Q4": 4, "Q5": 3, "Q6": 4,
+    "Q7": 4, "Q8": 3, "Q9": 4,
+    "Q10": 2, "Q11": 2, "Q12": 2,
+}
 
 
 # ── 채점 공식 (§2) ──────────────────────────────────────────────────────
 def test_raw_score_formula_max():
-    # raw = Q1+Q2+Q3+Q4+(Q5×2)+Q6+Q7 = 4+4+4+4+8+4+4 = 32
-    assert D.score_answers(ALL_MAX)["raw_score"] == 32
+    # 12문항 + Q3(손실감내도) 2배 = 11*4 + 8 = 52
+    assert D.score_answers(ALL_MAX)["raw_score"] == 52
 
 
 def test_raw_score_formula_min():
-    # 1+1+1+1+2+1+1 = 8
-    assert D.score_answers(ALL_MIN)["raw_score"] == 8
+    # 11*1 + 2 = 13
+    assert D.score_answers(ALL_MIN)["raw_score"] == 13
 
 
-def test_q5_weighted_double():
-    base = dict(ALL_MIN)  # raw 8, Q5=1
-    bumped = dict(ALL_MIN, Q5=2)  # Q5 +1 → raw +2 (가중 2배)
+def test_loss_tolerance_weighted_double():
+    base = dict(ALL_MIN)  # raw 13, Q3=1
+    bumped = dict(ALL_MIN, Q3=2)  # Q3 +1 → raw +2 (가중 2배)
     assert (
         D.score_answers(bumped)["raw_score"]
         - D.score_answers(base)["raw_score"]
@@ -43,11 +48,11 @@ def test_q5_weighted_double():
 @pytest.mark.parametrize(
     "raw,expected",
     [
-        (8, "안정형"), (12, "안정형"),
-        (13, "안정추구형"), (17, "안정추구형"),
-        (18, "위험중립형"), (22, "위험중립형"),
-        (23, "적극투자형"), (27, "적극투자형"),
-        (28, "공격투자형"), (32, "공격투자형"),
+        (13, "안정형"), (20, "안정형"),
+        (21, "안정추구형"), (28, "안정추구형"),
+        (29, "위험중립형"), (36, "위험중립형"),
+        (37, "적극투자형"), (44, "적극투자형"),
+        (45, "공격투자형"), (52, "공격투자형"),
     ],
 )
 def test_declared_type_boundaries(raw, expected):
@@ -98,13 +103,13 @@ def test_seeds_collected_from_choices():
 
 
 def test_seed_conflict_disposition():
-    # Q6=2(조금오르면 익절=disposition_sell) + Q2=3(존버=disposition_hold) → 충돌
-    ans = dict(ALL_MIN, Q2=3, Q6=2)
+    # Q5=2(조금오르면 익절=disposition_sell) + Q2=3(존버=disposition_hold) → 충돌
+    ans = dict(ALL_MIN, Q2=3, Q5=2)
     assert "disposition" in D.diagnose(ans)["seed_conflicts"]
 
 
 def test_no_disposition_conflict_when_consistent():
-    ans = dict(ALL_MAX, Q2=4, Q6=4)  # 존버 아님 + 목표가까지 안팜
+    ans = dict(ALL_MAX, Q2=4, Q5=4)  # 존버 아님 + 목표가까지 안팜
     assert "disposition" not in D.diagnose(ans)["seed_conflicts"]
 
 
@@ -126,15 +131,29 @@ def test_subdimension_balanced_when_close():
 def test_diagnose_schema_keys_and_type():
     d = D.diagnose(SPEC_EX)
     for k in ("answers", "raw_score", "declared_type", "capacity_score",
-              "attitude_score", "seeds", "seed_conflicts", "expected_bias"):
+              "attitude_score", "risk_grade", "mbti_type", "mbti_name",
+              "mbti_axes", "seeds", "seed_conflicts", "expected_bias"):
         assert k in d
-    # SPEC_EX raw = 4+3+4+4+6+2+4 = 27 → 적극투자형 (스펙 §4 예시와 일치)
-    assert d["raw_score"] == 27
+    assert d["raw_score"] == 43
     assert d["declared_type"] == "적극투자형"
+    assert d["risk_grade"] == "2등급 이하"
     assert d["expected_bias"] == {"loss": 35, "fomo": 60, "disp": 45, "over": 60, "panic": 25}
 
 
-# ── build_initial_emotion_v2 (7문항 → 감정 초기화) ──────────────────────
+def test_mbti_type_and_axes():
+    d = D.diagnose({
+        "Q1": 4, "Q2": 4, "Q3": 4,
+        "Q4": 4, "Q5": 4, "Q6": 3,
+        "Q7": 4, "Q8": 4, "Q9": 4,
+        "Q10": 1, "Q11": 1, "Q12": 1,
+    })
+    assert d["mbti_type"] == "ALDR"
+    assert d["mbti_name"] == "냉혈 설계자"
+    assert d["mbti_axes"]["AS"]["selected"] == "A"
+    assert d["mbti_axes"]["RE"]["selected"] == "R"
+
+
+# ── build_initial_emotion_v2 (12문항 → 감정 초기화) ─────────────────────
 def test_v2_aggressive_high_greed_low_fear():
     st = D.build_initial_emotion_v2(ALL_MAX)
     assert st.greed > 50
@@ -169,23 +188,24 @@ def test_v2_deterministic_and_clamped():
 
 # ── 부록 D: 타당성 체크리스트 ───────────────────────────────────────────
 def test_appendixD_questions_shape():
-    # 7문항, 각 최소 3선택지, 점수 1~4
-    assert len(D.QUESTIONS) == 7
+    # 12문항, 각 최소 3선택지, 점수 1~4
+    assert len(D.QUESTIONS) == 12
     for q in D.QUESTIONS:
         assert len(q["options"]) >= 3
         for opt in q["options"]:
             assert 1 <= opt["score"] <= 4
+            assert opt["pole"] in (-1, 1)
 
 
-def test_appendixD_q5_is_weighted():
-    q5 = next(q for q in D.QUESTIONS if q["id"] == "Q5")
-    assert q5["weight"] == 2
-    assert all(q["weight"] == 1 for q in D.QUESTIONS if q["id"] != "Q5")
+def test_appendixD_loss_tolerance_is_weighted():
+    q3 = next(q for q in D.QUESTIONS if q["id"] == "Q3")
+    assert q3["weight"] == 2
+    assert all(q["weight"] == 1 for q in D.QUESTIONS if q["id"] != "Q3")
 
 
 def test_appendixD_every_type_reachable():
     # 각 declared_type이 실제 도달 가능한 점수 범위인가(경계 검증)
-    seen = {D.declared_type(raw) for raw in range(8, 33)}
+    seen = {D.declared_type(raw) for raw in range(13, 53)}
     assert seen == set(D.DECLARED_TYPES)
 
 
@@ -194,3 +214,10 @@ def test_appendixD_neutral_option_may_lack_seed():
     q1 = next(q for q in D.QUESTIONS if q["id"] == "Q1")
     mid = next(o for o in q1["options"] if o["score"] == 2)
     assert mid["seed"] == []
+
+
+def test_appendixD_each_mbti_axis_has_three_questions():
+    counts = {}
+    for q in D.QUESTIONS:
+        counts[q["axis"]] = counts.get(q["axis"], 0) + 1
+    assert counts == {"AS": 3, "LQ": 3, "DF": 3, "RE": 3}

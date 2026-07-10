@@ -11,6 +11,7 @@ import AdvDialogue from "@/components/AdvDialogue";
 import AdvChoiceMenu from "@/components/AdvChoiceMenu";
 import DayReport, { DayReportData } from "@/components/DayReport";
 import DiagnosisReport from "@/components/DiagnosisReport";
+import InvestmentTypeCard from "@/components/InvestmentTypeCard";
 import MapBackground, { MapBackgroundHandle } from "@/components/MapBackground";
 import PixelPanel from "@/components/pixel/PixelPanel";
 import PixelButton from "@/components/pixel/PixelButton";
@@ -25,23 +26,57 @@ const DEFAULT_LEVELS: Record<Category, Level> = {
   large_stable: "med", mid_alt: "med", meme: "low", stable: "low", cash: "med",
 };
 
-// T-47e — 정적 성향 진단 7문항(spec docs/STATIC_DISPOSITION_SPEC.md §1). 값=점수
-// (1~4, 높을수록 위험지향). 백엔드 disposition.diagnose가 점수로 선택지를 역참조.
+// 성향분석.md — 정적 성향 진단 12문항. 값=점수(1~4, 높을수록 위험지향).
+// 백엔드 disposition.diagnose가 점수로 선택지를 역참조한다.
 const QUESTIONS: { key: string; text: string; options: [string, number][] }[] = [
-  { key: "Q1", text: "룸메이트가 눈을 반짝이며 말한다. \"지금 아니면 못 사. 다들 타는 중이야.\" 너라면?",
-    options: [["바로 산다. 기회는 안 기다려준다", 4], ["일단 뭔지 좀 알아본다", 2], ["다들 탈 때가 제일 위험하다. 무시", 1]] },
-  { key: "Q2", text: "투자한 돈이 하루 만에 −30%. 지금 네 심정은?",
-    options: [["기회다. 오히려 더 산다", 4], ["오를 때까지 버틴다(존버)", 3], ["정해둔 선에서 손절한다", 2], ["밤새 잠을 못 잔다", 1]] },
-  { key: "Q3", text: "예상 못 한 100만원이 생겼다. 어디에 넣어?",
-    options: [["신규/알트코인에 전부", 4], ["비트·이더 같은 메이저에", 3], ["절반만 투자, 절반은 예금", 2], ["전액 예적금", 1]] },
-  { key: "Q4", text: "너에게 '투자'란 한마디로?",
-    options: [["인생 역전의 기회", 4], ["자산을 불리는 수단", 3], ["노후를 위한 준비", 2], ["안 잃는 게 최우선", 1]] },
-  { key: "Q5", text: "얼마까지 잃어도 네 일상이 흔들리지 않아?",
-    options: [["전액 각오돼 있다", 4], ["절반 정도까지", 3], ["10% 정도까지", 2], ["한 푼도 잃기 싫다", 1]] },
-  { key: "Q6", text: "수익이 났다. 넌 언제 팔아?",
-    options: [["목표가까지 안 판다", 4], ["조금 오르면 바로 익절", 2], ["원금 회복하는 순간 판다", 1]] },
-  { key: "Q7", text: "코인 결정을 내릴 때 넌 주로 뭘 믿어?",
-    options: [["커뮤니티/인플루언서 분위기", 4], ["유튜브·뉴스의 분석", 3], ["내가 직접 조사한 자료", 2], ["아무도 안 믿는다, 안 한다", 1]] },
+  {
+    key: "Q1", text: "룸메이트가 눈을 반짝이며 말한다. \"지금 아니면 못 사. 다들 타는 중이야.\" 너라면?",
+    options: [["바로 산다. 기회는 안 기다려준다", 4], ["일단 판을 보고 소액만 담근다", 2], ["다들 탈 때가 제일 위험하다. 무시", 1]]
+  },
+  {
+    key: "Q2", text: "투자한 돈이 하루 만에 −30%. 지금 네 심정은?",
+    options: [["기회다. 오히려 더 산다", 4], ["오를 때까지 버틴다", 3], ["정해둔 선에서 손절한다", 2], ["밤새 잠을 못 잔다", 1]]
+  },
+  {
+    key: "Q3", text: "얼마까지 잃어도 네 일상이 흔들리지 않아?",
+    options: [["전액 각오돼 있다", 4], ["절반 정도까지", 3], ["10% 정도까지", 2], ["한 푼도 잃기 싫다", 1]]
+  },
+  {
+    key: "Q4", text: "투자 가능 기간을 고르라면 가장 가까운 쪽은?",
+    options: [["3년 이상 묻어둘 수 있다", 4], ["1년쯤은 기다릴 수 있다", 3], ["몇 달 안에 결과를 보고 싶다", 2], ["6개월도 길다", 1]]
+  },
+  {
+    key: "Q5", text: "수익이 났다. 넌 언제 팔아?",
+    options: [["목표가까지 안 판다", 4], ["분할로 조금씩 줄인다", 3], ["조금 오르면 바로 익절", 2], ["원금 회복하는 순간 판다", 1]]
+  },
+  {
+    key: "Q6", text: "예상 못 한 100만원이 생겼다. 어디에 넣어?",
+    options: [["분산해서 천천히 옮긴다", 3], ["장기 보유할 메이저에 넣는다", 2], ["오늘 뜨는 신규/알트코인에 전부", 4], ["일단 현금으로 두고 기회를 본다", 1]]
+  },
+  {
+    key: "Q7", text: "코인 결정을 내릴 때 넌 주로 뭘 믿어?",
+    options: [["내가 직접 조사한 자료", 3], ["재무·온체인·차트를 같이 본다", 4], ["커뮤니티/인플루언서 분위기", 2], ["지인이 좋다 하면 일단 본다", 1]]
+  },
+  {
+    key: "Q8", text: "새 상품 설명서를 받았다. 이해도는 어느 쪽에 가까워?",
+    options: [["구조와 수수료까지 대체로 읽힌다", 4], ["핵심 위험 정도는 파악한다", 3], ["수익 예시만 눈에 들어온다", 2], ["설명보다 분위기가 더 중요하다", 1]]
+  },
+  {
+    key: "Q9", text: "매수 버튼을 누르기 직전 마지막으로 확인하는 것은?",
+    options: [["내 기준표와 손절/익절 규칙", 4], ["가격·거래량·뉴스의 일관성", 3], ["실시간 채팅방의 온도", 2], ["놓치면 후회할 것 같은 느낌", 1]]
+  },
+  {
+    key: "Q10", text: "금융자산 중 투자에 넣어도 된다고 느끼는 비중은?",
+    options: [["40% 초과도 감당 가능하다", 4], ["20~40% 정도", 3], ["10~20% 정도", 2], ["10% 이내만", 1]]
+  },
+  {
+    key: "Q11", text: "수입원이 흔들릴 때 투자 계획은?",
+    options: [["그래도 승부금은 유지한다", 4], ["기회가 확실하면 더 넣는다", 3], ["생활비와 비상금을 먼저 잠근다", 2], ["투자를 멈추고 현금을 확보한다", 1]]
+  },
+  {
+    key: "Q12", text: "너에게 '투자'란 한마디로?",
+    options: [["인생 역전의 기회", 4], ["빠르게 판을 키우는 도구", 3], ["자산을 불리는 수단", 2], ["생활을 지키는 장기 준비", 1]]
+  },
 ];
 
 export default function EmoPage() {
@@ -52,9 +87,12 @@ export default function EmoPage() {
   const [dilemma, setDilemma] = useState<Dilemma | null>(null);   // T-30c 캐시아웃 딜레마
   const dilemmaPickRef = useRef<((id: string) => void) | null>(null);
   const [answers, setAnswers] = useState<Record<string, number>>({});
+  const [questionIndex, setQuestionIndex] = useState(0);
+  const [diagnosis, setDiagnosis] = useState<api.DispositionDiagnosis | null>(null);
+  const [shareCopied, setShareCopied] = useState(false);
   const [name, setName] = useState("");   // T-28 — 클론 이름
   const [levels, setLevels] = useState<Record<Category, Level>>({ ...DEFAULT_LEVELS });   // T-30
-  const [step, setStep] = useState(0);   // T-29 — 온보딩 스텝(0 이름 · 1 진단 · 2 배분)
+  const [step, setStep] = useState(0);   // 온보딩 스텝(0 이름 · 1 진단 · 2 결과 · 3 배분)
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mapActivity, setMapActivity] = useState<string | null>(null);
@@ -73,6 +111,24 @@ export default function EmoPage() {
   const day = state?.day ?? -1;
 
   const setRun = useCallback((s: EmoState) => { stateRef.current = s; setState(s); }, []);
+  const selectQuestionOption = useCallback((optionIndex: number) => {
+    const q = QUESTIONS[questionIndex];
+    const choice = q.options[optionIndex];
+    if (!choice) return false;
+    setAnswers((a) => ({ ...a, [q.key]: choice[1] }));
+    setShareCopied(false);
+    return true;
+  }, [questionIndex]);
+  const advanceQuestion = useCallback(() => {
+    const q = QUESTIONS[questionIndex];
+    if (!(q.key in answers)) return false;
+    if (questionIndex < QUESTIONS.length - 1) {
+      setQuestionIndex((i) => i + 1);
+    } else {
+      setStep(2);
+    }
+    return true;
+  }, [answers, questionIndex]);
 
   // T-22/A — 하루 일과: 클론이 시간대별로 걷고, 그 도중 만남·게시판이 등장한다.
   // 게시판(그날 시장 이벤트)은 랜덤 밴드에 도착 → 반응 선택은 그 자리에서 받되,
@@ -222,6 +278,34 @@ export default function EmoPage() {
     }
   }, [state?.is_over, state?.game_id, report]);
 
+  useEffect(() => {
+    if (state || step !== 1) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (["1", "2", "3", "4"].includes(e.key)) {
+        if (selectQuestionOption(Number(e.key) - 1)) e.preventDefault();
+        return;
+      }
+      if (e.key === "Enter") {
+        if (advanceQuestion()) e.preventDefault();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [advanceQuestion, selectQuestionOption, state, step]);
+
+  useEffect(() => {
+    if (state || step < 1) return;
+    if (!QUESTIONS.every((q) => q.key in answers)) {
+      setDiagnosis(null);
+      return;
+    }
+    let cancelled = false;
+    api.diagnoseDisposition(answers).then((d) => {
+      if (!cancelled) setDiagnosis(d);
+    });
+    return () => { cancelled = true; };
+  }, [answers, state, step]);
+
   const start = async () => {
     setBusy(true); setError(null);
     const seed = Math.floor(Math.random() * 100000);
@@ -291,17 +375,44 @@ export default function EmoPage() {
   if (!state) {
     const diagnosisReady = QUESTIONS.every((q) => q.key in answers);
     const totalW = CATEGORIES.reduce((s, c) => s + LEVEL_WEIGHT[levels[c]], 0);
-    const STEP_TITLE = ["이사 온 날", "투자 성향 진단", "초기 자산 배분"];
+    const STEP_TITLE = ["이사 온 날", "투자 성향 진단", "성향 결과", "초기 자산 배분"];
+    const currentQuestion = QUESTIONS[questionIndex];
+    const currentAnswered = currentQuestion.key in answers;
+    const progressPct = Math.round(((questionIndex + (currentAnswered ? 1 : 0)) / QUESTIONS.length) * 100);
+    const goBack = () => {
+      if (step === 1 && questionIndex > 0) { setQuestionIndex((i) => i - 1); return; }
+      setStep((s) => Math.max(0, s - 1));
+    };
+    const goNext = () => {
+      if (step === 1) {
+        advanceQuestion();
+        return;
+      }
+      setStep((s) => s + 1);
+    };
     return (
-      <main className="min-h-screen bg-pixel-path flex items-center justify-center p-4">
+      <main
+        className="min-h-screen bg-pixel-path bg-cover bg-center flex items-center justify-center p-4"
+        style={{
+          backgroundImage:
+            "linear-gradient(rgba(0,0,0,0.72),rgba(0,0,0,0.72)), url('/img/cover.png')",
+        }}
+      >
+        <div className="w-full max-w-xl">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/img/title_image.png"
+            alt="Market Village"
+            className="mx-auto mb-4 w-full max-w-sm drop-shadow-[0_2px_8px_rgba(0,0,0,0.8)]"
+          />
         <PixelPanel tone="wall" className="w-full max-w-xl p-6">
           {/* 진행 표시 */}
           <div className="flex items-center gap-1.5 mb-4">
-            {[0, 1, 2].map((i) => (
+            {[0, 1, 2, 3].map((i) => (
               <div key={i} className={`h-1.5 flex-1 rounded-full ${i <= step ? "bg-black/70" : "bg-black/15"}`} />
             ))}
           </div>
-          <div className="text-[11px] text-pixel-muted mb-1">{step + 1} / 3</div>
+          <div className="text-[11px] text-pixel-muted mb-1">{step + 1} / 4</div>
           <h1 className="text-lg font-extrabold mb-5">{STEP_TITLE[step]}</h1>
 
           {/* STEP 0 — 이름만 */}
@@ -320,32 +431,67 @@ export default function EmoPage() {
             </div>
           )}
 
-          {/* STEP 1 — 진단 */}
+          {/* STEP 1 — 진단(한 문항 한 화면) */}
           {step === 1 && (
-            <div className="flex flex-col gap-4">
-              <p className="text-[12px] text-pixel-muted -mt-2 mb-1">몇 가지로 당신의 투자 성향을 진단해요.</p>
-              {QUESTIONS.map((q) => (
-                <div key={q.key}>
-                  <div className="text-[13px] font-bold mb-2">{q.text}</div>
-                  <div className="flex flex-wrap gap-2">
-                    {q.options.map(([label, val]) => (
-                      <PixelButton
-                        key={label} size="sm"
-                        variant={answers[q.key] === val ? "primary" : "ghost"}
-                        className="whitespace-nowrap"
-                        onClick={() => setAnswers((a) => ({ ...a, [q.key]: val }))}
-                      >
-                        {label}
-                      </PixelButton>
-                    ))}
-                  </div>
+            <div>
+              <div className="mb-4">
+                <div className="mb-1 flex items-center justify-between text-[11px] font-bold text-pixel-muted">
+                  <span>{questionIndex + 1} / {QUESTIONS.length}</span>
+                  <span>{progressPct}%</span>
                 </div>
-              ))}
+                <div className="h-2 rounded-full border-2 border-black bg-white overflow-hidden">
+                  <div className="h-full bg-[#76d672]" style={{ width: `${progressPct}%` }} />
+                </div>
+              </div>
+              <div className="rounded-xl border-2 border-black bg-white p-4 shadow-pixel-sm">
+                <div className="text-[11px] font-black text-black/45">{currentQuestion.key}</div>
+                <div className="mt-1 text-[17px] font-black leading-snug">{currentQuestion.text}</div>
+                <div className="mt-4 grid gap-2">
+                  {currentQuestion.options.map(([label, val], optionIndex) => (
+                    <button
+                      type="button"
+                      key={label}
+                      aria-label={`선택지 ${optionIndex + 1}: ${label}`}
+                      className={`grid min-h-12 grid-cols-[1fr_auto] items-center gap-3 rounded-xl border-2 px-3 py-2 text-left text-[13px] font-extrabold shadow-pixel-sm ${answers[currentQuestion.key] === val
+                        ? "border-black bg-yellow-300"
+                        : "border-black/35 bg-pixel-wall hover:bg-white"
+                        }`}
+                      onClick={() => selectQuestionOption(optionIndex)}
+                    >
+                      <span>{label}</span>
+                      <span className={`inline-flex h-5 min-w-5 items-center justify-center rounded-md px-1 text-[8px] leading-none border border-gray-400 text-gray-400`}>
+                        {optionIndex + 1}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
 
-          {/* STEP 2 — 배분 */}
+          {/* STEP 2 — 결과 카드 */}
           {step === 2 && (
+            diagnosis ? (
+              <InvestmentTypeCard
+                diagnosis={diagnosis}
+                onCopy={() => setShareCopied(true)}
+                onReset={() => {
+                  setAnswers({});
+                  setDiagnosis(null);
+                  setQuestionIndex(0);
+                  setShareCopied(false);
+                  setStep(1);
+                }}
+              />
+            ) : (
+              <div className="rounded-xl border-2 border-black bg-white p-4 text-[13px] font-bold shadow-pixel-sm">
+                결과를 계산하는 중…
+              </div>
+            )
+          )}
+
+          {/* STEP 3 — 배분 */}
+          {step === 3 && (
             <div>
               <p className="text-[12px] text-pixel-muted -mt-2 mb-3">각 자산에 얼마나 담을지 고르세요. 현금(KRW)은 시장 밖 마른 장작이에요.</p>
               <div className="flex flex-col gap-2.5">
@@ -377,21 +523,24 @@ export default function EmoPage() {
           {error && (
             <p className="mt-4 text-[12px] font-bold text-red-600" role="alert">{error}</p>
           )}
+          {shareCopied && (
+            <p className="mt-4 text-[12px] font-bold text-[#27642a]" role="status">공유 문구를 클립보드에 담았어요.</p>
+          )}
 
           {/* 네비게이션 */}
           <div className="flex gap-2 mt-6">
             {step > 0 && (
-              <PixelButton size="lg" variant="ghost" className="shrink-0" onClick={() => setStep((s) => s - 1)}>
+              <PixelButton size="lg" variant="ghost" className="shrink-0" onClick={goBack}>
                 ← 뒤로
               </PixelButton>
             )}
-            {step < 2 ? (
+            {step < 3 ? (
               <PixelButton
                 size="lg" className="flex-1"
-                disabled={step === 1 && !diagnosisReady}
-                onClick={() => setStep((s) => s + 1)}
+                disabled={(step === 1 && !currentAnswered) || (step === 2 && (!diagnosisReady || !diagnosis))}
+                onClick={goNext}
               >
-                다음 →
+                {step === 1 && questionIndex < QUESTIONS.length - 1 ? "다음 문항 →" : "다음 →"}
               </PixelButton>
             ) : (
               <PixelButton size="lg" className="flex-1" disabled={busy} onClick={start}>
@@ -400,6 +549,7 @@ export default function EmoPage() {
             )}
           </div>
         </PixelPanel>
+        </div>
       </main>
     );
   }
@@ -424,7 +574,19 @@ export default function EmoPage() {
           {/* T-47e — 진단 리포트(선언 vs 실제 편향) */}
           <DiagnosisReport report={report} />
 
-          <PixelButton size="lg" className="w-full mt-6" onClick={() => { setState(null); setAnswers({}); setReport(null); setStep(0); }}>
+          <PixelButton
+            size="lg"
+            className="w-full mt-6"
+            onClick={() => {
+              setState(null);
+              setAnswers({});
+              setQuestionIndex(0);
+              setDiagnosis(null);
+              setShareCopied(false);
+              setReport(null);
+              setStep(0);
+            }}
+          >
             다시 시작
           </PixelButton>
         </PixelPanel>
@@ -437,18 +599,24 @@ export default function EmoPage() {
   // 마지막 글 다음(boardStep >= threads.length)에 비로소 이벤트 요약+선택지(advEvent board 분기).
   const boardOnOpinion = !!board && !chain && !dilemma && boardStep < board.threads.length;
   const advEvent = dilemma
-    ? { speakerId: undefined as string | undefined, speakerName: state.clone_name,
-        title: dilemma.title, text: dilemma.text, choices: dilemma.choices,
-        run: resolveDilemma, tone: "dilemma" as const }
+    ? {
+      speakerId: undefined as string | undefined, speakerName: state.clone_name,
+      title: dilemma.title, text: dilemma.text, choices: dilemma.choices,
+      run: resolveDilemma, tone: "dilemma" as const
+    }
     : chain
-    ? { speakerId: chain.npc_id as string | undefined, speakerName: undefined as string | undefined,
+      ? {
+        speakerId: chain.npc_id as string | undefined, speakerName: undefined as string | undefined,
         title: chain.title, text: chain.text, choices: chain.choices,
-        run: resolveChain, tone: "chain" as const }
-    : board && boardStep >= board.threads.length
-    ? { speakerId: undefined as string | undefined, speakerName: "게시판",
-        title: `게시판 · 여론 ${board.verdict}`, text: board.scenario.text,
-        choices: board.scenario.choices, run: reactBoard, tone: "board" as const }
-    : null;
+        run: resolveChain, tone: "chain" as const
+      }
+      : board && boardStep >= board.threads.length
+        ? {
+          speakerId: undefined as string | undefined, speakerName: "게시판",
+          title: `게시판 · 여론 ${board.verdict}`, text: board.scenario.text,
+          choices: board.scenario.choices, run: reactBoard, tone: "board" as const
+        }
+        : null;
 
   return (
     <main className="relative h-screen w-screen overflow-hidden bg-pixel-path flex flex-col gap-2 p-2 sm:p-3">
