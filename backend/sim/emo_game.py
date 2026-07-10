@@ -24,7 +24,7 @@ from . import ending as _ending
 from . import place_effects as _place_effects
 from . import scenario as _scenario
 from . import story_texts as _story_texts
-from .disposition import BIAS_AXES, build_initial_emotion_v2, diagnose
+from .disposition import BIAS_AXES, build_initial_emotion_v2, diagnose, sensitivity_scale
 from .fate_line import CATEGORIES
 from .personas import TRADER_PERSONAS, npc_scheds
 from .player_emotion.deltas import apply_delta, consume_axis, decay_toward_equilibrium
@@ -196,6 +196,9 @@ class EmoGameRun:
     bias_tally: dict[str, dict[str, int]] = field(default_factory=dict)
     # T-47f — 엔딩 리포트 서술(LLM or 결정론). 게임당 1회 생성 후 캐시(과금 상한·멱등).
     report_narrative: list[str] | None = None
+    # T-62 (D) — 밤 전이의 중간상태(감쇠 후·노출 전). _enter_day가 매번 세팅, 직후 choose가
+    # 감쇠/노출 스텝 분리에 소비. 전이 파생값이라 직렬화 안 함(로드 후 다음 _enter_day가 재설정).
+    _night_intermediate: "PlayerEmotionState | None" = None
     # §2.2 — 오늘의 일과 편성(플랜). {"오전":장소,"오후":장소,"저녁":장소} or None(미제출).
     day_plan: dict[str, str] | None = None
     plan_locked_day: int | None = None   # 플랜을 잠근 날짜(하루 1회 제출 가드, I4)
@@ -336,14 +339,20 @@ class EmoGameRun:
     # --- 진행 ------------------------------------------------------------- #
     def _enter_day(self) -> None:
         """그 날에 진입할 때 노출 델타 1회 적용 + 오늘의 companion 결정."""
+        self._night_intermediate = None   # T-62 — 전이 시작마다 리셋(is_over면 None 유지)
         if self.is_over:
             self.companion_id = None
             return
         if self.day > 0:
             # T-27 (4b) — 밤사이 평형 회귀(누적 포화 방지). 첫날(진단 직후)은 유지.
             self.emotion = decay_toward_equilibrium(self.emotion)
+        self._night_intermediate = self.emotion   # T-62 — 감쇠 후·노출 전 스냅샷
         board = self.board()
         delta = board_exposure.exposure_delta(self.events[self.day], board["threads"])
+        if self.disposition:
+            # T-61 (1안) — 성향별 감정 민감도 배율(안정형=하락 민감, 공격형=상승 민감).
+            # 노출 델타에만 곱해 "선언한 성향대로 매일 반응하는 체질"을 유지(초기 1회 세팅 소실 방지).
+            delta = sensitivity_scale(self.disposition.get("declared_type", ""), delta)
         self.emotion = apply_delta(self.emotion, delta)
         self._resolve_companion()
         self._maybe_start_chain()
@@ -626,8 +635,14 @@ class EmoGameRun:
 
         state_before_decay = self.emotion
         self.day += 1
-        self._enter_day()   # is_over가 아니면 내부에서 decay_toward_equilibrium 적용
-        _push_step("decay", "하루가 저물며", state_before_decay, self.emotion)
+        self._enter_day()   # is_over가 아니면 내부에서 감쇠 + 노출(성향 배율) 적용
+        # T-62 (D) — 밤 전이를 감쇠/노출 2스텝으로 분리한다. 기존엔 한 "decay" 스텝에 뭉쳐
+        # 노출이 캐스케이드에 안 보였다(§5.1 불변식은 두 스텝 diff 합=전체라 그대로 성립).
+        # _night_intermediate = 감쇠 후·노출 전. 노출 스텝 크기엔 T-61 성향 배율이 반영된다.
+        # is_over면 _enter_day가 emotion을 안 건드려 mid==self.emotion → 두 스텝 0(자동 제외).
+        mid = self._night_intermediate if self._night_intermediate is not None else self.emotion
+        _push_step("decay", "하루가 저물며", state_before_decay, mid)
+        _push_step("exposure", "다음 장이 열리며", mid, self.emotion)
         emotion_after = self.emotion
 
         self.last_settlement = {
