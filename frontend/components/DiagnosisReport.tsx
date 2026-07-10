@@ -50,6 +50,22 @@ export default function DiagnosisReport({ report }: { report: ReportData | null 
         </section>
       )}
 
+      {/* T-64 (2안) — 규율: 성향 본능을 얼마나 거슬렀나(엔딩 후) */}
+      {report.discipline && (
+        <section className="bg-black/5 rounded-lg p-3">
+          <div className="text-[11px] text-pixel-muted mb-1">클론의 본능을 거스른 비율</div>
+          <div className="flex items-end gap-2">
+            <span className="text-3xl font-extrabold tabular-nums leading-none">{report.discipline.defy_rate}</span>
+            <span className="text-[12px] text-pixel-muted mb-0.5">
+              % · {report.discipline.defied}/{report.discipline.total}회
+            </span>
+          </div>
+          <div className="text-[11px] text-pixel-muted mt-1.5">
+            성향이 이끄는 대로 따랐는지, 거슬러 판단했는지 — 규율의 흔적입니다.
+          </div>
+        </section>
+      )}
+
       {/* B — 선언 vs 실제 편향 */}
       {comparison.length > 0 && (
         <section>
