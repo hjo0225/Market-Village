@@ -27,9 +27,9 @@ from . import story_texts as _story_texts
 from .disposition import BIAS_AXES, build_initial_emotion_v2, diagnose
 from .fate_line import CATEGORIES
 from .personas import TRADER_PERSONAS, npc_scheds
-from .player_emotion.deltas import apply_delta, decay_toward_equilibrium
+from .player_emotion.deltas import apply_delta, consume_axis, decay_toward_equilibrium
 from .player_emotion.log import EmotionLog, record_snapshot
-from .player_emotion.state import PlayerEmotionState
+from .player_emotion.state import PlayerEmotionState, get_axis
 from .player_emotion.verdict import compute_verdict
 
 START_VALUE = 1_000_000.0
@@ -65,6 +65,13 @@ CASHOUT_MIN_DAY = 3            # 이 날 이후부터(초반 제외)
 CASHOUT_EMOTION_PEAK = 72     # 탐욕 or 공포가 이 이상(감정 정점)일 때
 CASHOUT_RISK_SHARE = 0.35     # 위험자산 비중(뺄 게 있어야 함)
 _CASHOUT_FRAC = 0.7           # 현금화 선택 시 위험자산의 이 비율을 현금으로
+
+# T-52 (F4): 게시판 감정-소모 매매의 규모 계수. 매매액 = 감정 level 비례(level 100
+# → 지갑의 이 비율까지). 충동 크기(감정)가 곧 행동 크기 → 자기 편향이 눈에 보인다
+# (거울 강화, 4b). 🤖 council(2026-07-10, 3렌즈 만장일치): 모델 A 유지·계수만 1.0→0.6
+# — 1.0은 탐욕 100에서 현금 100% 몰빵→다음 매수 불가 하자. 0.6이면 최대 60%로 드라마틱하되
+# 판을 안 끝내고 거울도 살아있음. 잠정 튜닝 밴드 0.5~0.7(플레이테스트 확정).
+TRADE_INTENSITY = 0.6
 
 # T-50d — 장소 딜레마(disp 처분효과 결정점): 도서관=익절 복기, 마켓=현실소비 유혹.
 # '이익을 너무 일찍 실현'(익절/소비) 선택 = disp 태깅 → 리포트에서 처분효과 측정
@@ -256,6 +263,34 @@ class EmoGameRun:
                      if risk_total > 0 else 1.0 / len(_RISK))
                 self.holdings[cat] = round(self.holdings.get(cat, 0.0) + moved * w, 2)
 
+    # --- per-코인 지정 매매 (T-52, F4) ----------------------------------- #
+    def _board_trade_size(self, level: float, wallet: float) -> float:
+        """감정 비례 매매 규모 — 감정 level(0~100)에 비례해 wallet의 일부.
+        level 100 → wallet×TRADE_INTENSITY, level 20 → 그 1/5(찔끔). [0,1] 클램프."""
+        frac = max(0.0, min(1.0, level / 100.0 * TRADE_INTENSITY))
+        return round(wallet * frac, 2)
+
+    def _buy_coin(self, cat: str, amount: float) -> float:
+        """현금 → cat 코인 1개 매수(가용 현금 한도). 실제 이동액 반환. _rebalance의
+        버킷 자동배분과 달리 지정 코인 1개에만 태운다(F4 3액션)."""
+        cash = self.holdings.get(CASH, 0.0)
+        moved = round(min(max(0.0, amount), cash), 2)
+        if moved <= 0.0:
+            return 0.0
+        self.holdings[CASH] = round(cash - moved, 2)
+        self.holdings[cat] = round(self.holdings.get(cat, 0.0) + moved, 2)
+        return moved
+
+    def _sell_coin(self, cat: str, amount: float) -> float:
+        """cat 코인 1개 → 현금 매도(보유 한도). 실제 이동액 반환. 보유 없으면 무매매."""
+        held = self.holdings.get(cat, 0.0)
+        moved = round(min(max(0.0, amount), held), 2)
+        if moved <= 0.0:
+            return 0.0
+        self.holdings[cat] = round(held - moved, 2)
+        self.holdings[CASH] = round(self.holdings.get(CASH, 0.0) + moved, 2)
+        return moved
+
     # --- 상태 조회 -------------------------------------------------------- #
     @property
     def is_over(self) -> bool:
@@ -442,27 +477,30 @@ class EmoGameRun:
                 out[axis] = round(t.get("hits", 0) / opp * 100)
         return out
 
-    def choose(self, choice_id: str) -> None:
-        """하루 결산: 시장 실현(진입 배분) → 선택 감정델타 → 플랜 장소 효과 →
-        (그날 체인이 있었으면 이미 반영된) → 밤 감쇠 → 매매행동으로 배분
-        리밸런싱 → 다음 날 진입.
+    def choose(self, choice_id: str, coin_target: str | None = None) -> None:
+        """하루 결산(T-53, F4): 시장 실현(진입 배분) → 감정 소모(매수=탐욕/매도=공포/
+        유지=평정) → 플랜 장소 효과 → 밤 감쇠 → per-코인 매매(다음 날 노출 반영) →
+        다음 날 진입.
 
         재산은 행동의 결과다: 오늘 시장 이동은 '어제 정한 배분'만큼 각 카테고리에
-        맞고, 오늘 선택의 매매(손절=현금↑, 추격=위험자산↑)는 '다음 날' 이동에
-        반영된다. 손절 후 반등을 놓치고, 버티면 반등을 타는 행동적 인과가 생긴다.
+        맞고, 오늘 선택의 매매(매수=현금→지정코인, 매도=지정코인→현금)는 '다음 날'
+        이동에 반영된다. 매매 규모는 소모 전 감정 level에 비례(충동 크기=행동 크기).
+        coin_target은 매수/매도에 필수(CATEGORIES 중 1), 유지는 무매매(무시).
 
         §5.1 — last_settlement에 「선택 → 수익률 → 감정」 캐스케이드를 기록한다.
         I1: market/portfolio는 오늘의 선택과 무관(cat_returns 그대로) — 선택은
-        rebalance(다음 날 노출)에만 반영된다.
+        매매(다음 날 노출)에만 반영된다.
 
-        노출-풀 검증(§4.2 "노출 안 된 id로 choose 시 400")은 HTTP 레이어
-        (emo_api.choose)에서 board()의 오늘자 3개 노출과 비교해 수행한다 — 엔진
-        메서드 자체는 6개 풀 전체에서 조회 가능해야 기존 엔진 레벨 테스트(I6,
-        board() GET 없이 임의 seed/day로 직접 choose 호출)가 계속 통과한다."""
+        노출-풀 검증(노출 안 된 id로 choose 시 400)은 HTTP 레이어(emo_api.choose)에서
+        board()의 오늘자 3액션 노출과 비교해 수행한다."""
         if self.is_over:
             raise RuntimeError("game is over")
         event_id = self.events[self.day]
-        choice = _scenario.get_choice(event_id, choice_id)   # 검증 먼저(변이 전, 6개 풀 전체)
+        choice = _scenario.get_choice(event_id, choice_id)   # 검증 먼저(변이 전, 3액션 풀)
+        action = choice.get("action")
+        if action in ("buy", "sell") and coin_target not in CATEGORIES:
+            raise ValueError(
+                f"action {action!r} requires coin_target in CATEGORIES, got {coin_target!r}")
         self._record_bias(_scenario.get_scenario(event_id)["choices"], choice, "scenario")
 
         day_for_settlement = self.day
@@ -544,7 +582,11 @@ class EmoGameRun:
                 emotion_steps.append(step)
 
         state = emotion_before
-        next_state = apply_delta(state, choice["deltas"])
+        # T-53: 선택 = 감정 소모(매수=탐욕/매도=공포/유지=평정). 소모 전 level은
+        # 매매 규모(감정 비례)에 쓰고, 소모 자체가 '선택의 여파' step이 된다.
+        consume_axis_name = choice["consume_axis"]
+        level_before = get_axis(state, consume_axis_name)
+        next_state, consumed = consume_axis(state, consume_axis_name, float(choice["consume_fraction"]))
         _push_step("choice", "선택의 여파", state, next_state)
         state = next_state
 
@@ -569,9 +611,15 @@ class EmoGameRun:
         self.log = record_snapshot(self.log, self.day, self.emotion)
 
         risk_share_before = self._risk_share()
-        # 3) 매매행동 → 배분 리밸런싱(다음 날 이동에 반영). I1 — 오늘의 선택은
-        #    market/portfolio가 아니라 '내일의 노출'(rebalance)에만 영향을 준다.
-        self._rebalance(float(choice.get("position", 0.0)))
+        # 3) 매매행동(T-53): 코인 1개 지정 매수/매도, 규모=소모 전 감정 level 비례.
+        #    유지=무매매(평정만 소모). I1 — 오늘의 선택은 '내일의 노출'에만 영향.
+        traded = 0.0
+        if action == "buy":
+            traded = self._buy_coin(
+                coin_target, self._board_trade_size(level_before, self.holdings.get(CASH, 0.0)))
+        elif action == "sell":
+            traded = self._sell_coin(
+                coin_target, self._board_trade_size(level_before, self.holdings.get(coin_target, 0.0)))
         risk_share_after = self._risk_share()
 
         state_before_decay = self.emotion
@@ -583,7 +631,10 @@ class EmoGameRun:
         self.last_settlement = {
             "day": day_for_settlement,
             "choice": {"id": choice["id"], "label": choice["label"],
-                       "position": float(choice.get("position", 0.0))},
+                       "position": float(choice.get("position", 0.0)),
+                       "action": action, "consume_axis": consume_axis_name,
+                       "consumed": round(consumed, 2), "coin_target": coin_target,
+                       "traded": traded},
             "market": market_steps,
             "portfolio": {
                 "before": portfolio_before, "after": portfolio_after_market,

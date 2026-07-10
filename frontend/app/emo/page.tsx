@@ -120,7 +120,8 @@ export default function EmoPage() {
   const pendingNextRef = useRef<EmoState | null>(null);
   const mapRef = useRef<MapBackgroundHandle>(null);
   const stateRef = useRef<EmoState | null>(null);
-  const boardPickRef = useRef<((id: string) => void) | null>(null);
+  const boardPickRef = useRef<((v: { id: string; coin_target: string | null }) => void) | null>(null);
+  const [coinPick, setCoinPick] = useState<{ action: string; choiceId: string } | null>(null);   // T-54 코인 피커
   const day = state?.day ?? -1;
 
   // §3 — 스토리 씬 게이트. "prologue"=이름→진단 사이, "bridge"=배분 완료→Day0 시작
@@ -199,7 +200,7 @@ export default function EmoPage() {
       // 점심에 반응을 끝내면 for-loop이 그때 대기하므로 오후 만남과 순차 진행된다
       // (게시판·만남 동시 표시 충돌 방지, 사용자 2026-07-08).
       const boardBand = "점심";
-      let picked: string | null = null;
+      let picked: { id: string; coin_target: string | null } | null = null;
       let pickedLabel = "";
       for (const band of bands) {
         if (cancelled) return;
@@ -220,9 +221,10 @@ export default function EmoPage() {
           if (cancelled || !b) continue;
           setBoardStep(0);   // T-41 — 여론 첫 글부터 넘겨보기
           setBoard(b);
-          picked = await new Promise<string>((resolve) => { boardPickRef.current = resolve; });
+          picked = await new Promise<{ id: string; coin_target: string | null }>((resolve) => { boardPickRef.current = resolve; });
           boardPickRef.current = null;
-          pickedLabel = b.scenario.choices.find((c) => c.id === picked)?.label ?? "";
+          setCoinPick(null);
+          pickedLabel = b.scenario.choices.find((c) => c.id === picked!.id)?.label ?? "";
           if (cancelled) return;
           setBoard(null);   // 반응 후 닫고 남은 하루를 마저 걷는다
         }
@@ -247,7 +249,7 @@ export default function EmoPage() {
       if (cancelled) return;
       // 저녁 정산 — 낮에 고른 반응을 반영(감정·시장·리밸런싱) + 다음 날.
       if (picked) {
-        const ns = await api.choose(s.game_id, picked);
+        const ns = await api.choose(s.game_id, picked.id, picked.coin_target);
         if (cancelled) return;
         if (!ns) { setError("정산에 실패했어요. 다시 시도해 주세요."); return; }
         if (ns.is_over) { setRun(ns); return; }   // 마지막 날 → 엔딩으로
@@ -382,11 +384,22 @@ export default function EmoPage() {
   // T-41 — 게시판 여론 미연시 넘기기: 글(post)을 한 명씩 보고 클릭으로 다음 글 →
   // 마지막 글 다음에 이벤트 요약+선택지가 뜬다(아래 advEvent board 분기).
   const advanceBoard = () => setBoardStep((s) => s + 1);
+  // T-54 — 코인 매매 대상 카테고리(현금 제외). 매수/매도는 이 중 하나를 골라야 실행.
+  const TRADE_CATS: Category[] = ["large_stable", "mid_alt", "meme", "stable"];
   const reactBoard = (id: string) => {
-    const pos = board?.scenario.choices.find((c) => c.id === id)?.position ?? 0;
-    if (pos >= TRADE_FX_MIN) showTradeFlash("buy");
-    else if (pos <= -TRADE_FX_MIN) showTradeFlash("sell");
-    boardPickRef.current?.(id);
+    const action = board?.scenario.choices.find((c) => c.id === id)?.action;
+    if (action === "buy" || action === "sell") {
+      setCoinPick({ action, choiceId: id });   // 코인 피커를 띄우고 대기(coin_target 필요)
+      return;
+    }
+    boardPickRef.current?.({ id, coin_target: null });   // 유지(hold) 등 — 코인 불필요
+  };
+  // T-54 — 코인 선택 완료 → 매매 배지 + boardPick 확정(coin_target 실어 choose).
+  const pickCoin = (cat: string) => {
+    if (!coinPick) return;
+    showTradeFlash(coinPick.action === "buy" ? "buy" : "sell");
+    boardPickRef.current?.({ id: coinPick.choiceId, coin_target: cat });
+    setCoinPick(null);
   };
   // T-30c — 캐시아웃 딜레마 응답. 현금화(cash_out)=위험자산 매도 → 매매 배지.
   const resolveDilemma = (id: string) => {
@@ -723,7 +736,7 @@ export default function EmoPage() {
         )}
 
         {/* choice 스크린 — say와 분리, 맵 중앙에 창형 메뉴 */}
-        {advEvent && (
+        {advEvent && !coinPick && (
           <div className="absolute inset-x-0 top-[34%] z-20 flex flex-col items-center gap-2 px-3">
             <AdvChoiceMenu choices={advEvent.choices} onChoose={advEvent.run} busy={busy} tone={advEvent.tone} />
             {/* v3 §D2 — 코치마크: 첫 게시판 선택지 */}
@@ -733,6 +746,31 @@ export default function EmoPage() {
                 text="정답은 없어요. 선택은 감정과 내일의 노출을 바꿔요 — 밤에 결과로 보여드려요."
               />
             )}
+          </div>
+        )}
+
+        {/* T-54 — 매수/매도 코인 피커: 포트폴리오 코인 하나를 골라 coin_target으로 실행. */}
+        {advEvent && coinPick && (
+          <div className="absolute inset-x-0 top-[30%] z-30 flex flex-col items-center gap-2 px-3">
+            <div className="text-[13px] font-extrabold bg-black/70 text-white rounded px-3 py-1">
+              {coinPick.action === "buy" ? "어떤 코인을 매수할까?" : "어떤 코인을 매도할까?"}
+            </div>
+            <AdvChoiceMenu
+              tone="board"
+              busy={busy}
+              onChoose={pickCoin}
+              choices={TRADE_CATS.map((c) => ({
+                id: c,
+                label: `${CATEGORY_LABEL[c]} · ${Math.round(state?.holdings?.[c] ?? 0).toLocaleString()}원`,
+              }))}
+            />
+            <button
+              type="button"
+              onClick={() => setCoinPick(null)}
+              className="text-[12px] font-bold text-white/70 underline"
+            >
+              ← 다시 고르기
+            </button>
           </div>
         )}
 

@@ -22,19 +22,26 @@ def test_bias_axes_match_expected_bias_keys():
 
 
 # ── 시장 시나리오 태그 (§ 투자결정) ─────────────────────────────────────
-# T-48b 구성개념 정합(확정 매핑): panic(공포로 던지기)=cut·panic_sell /
-# loss(손실 실현 거부=버티기)=hold·ignore / over=buy_dip·day_trade / fomo=chase.
-# 예전엔 cut·panic_sell에 panic·loss가 함께 붙어 두 축 actual_bias가 항상 동일했다.
+# T-53 (F4) council 매핑: 각 시나리오 3액션(매수/매도/유지)에 편향축을 붙인다.
+#   급락  buy=over  · sell=panic · hold=loss
+#   급등  buy=fomo  · sell=disp  · hold=(태그 없음)
+#   루머  buy=over  · sell=panic · hold=loss
+#   변동  buy=over  · sell=panic · hold=(태그 없음)
+# panic(공포로 던지기)=sell, loss(손실 실현 거부=버티기)=hold로 서로 다른 액션에
+# 분리돼 두 축의 actual_bias가 구별 가능하다(옛 cut=[panic,loss] 결합 문제 해소).
 @pytest.mark.parametrize(
     "event,cid,tags",
     [
-        ("market_crash", "cut", ["panic"]),
+        ("market_crash", "buy", ["over"]),
+        ("market_crash", "sell", ["panic"]),
         ("market_crash", "hold", ["loss"]),
-        ("market_crash", "buy_dip", ["over"]),
-        ("market_surge", "chase", ["fomo", "over"]),
-        ("rumor_spread", "panic_sell", ["panic"]),
-        ("rumor_spread", "ignore", ["loss"]),
-        ("market_volatile", "day_trade", ["over"]),
+        ("market_surge", "buy", ["fomo"]),
+        ("market_surge", "sell", ["disp"]),
+        ("rumor_spread", "buy", ["over"]),
+        ("rumor_spread", "sell", ["panic"]),
+        ("rumor_spread", "hold", ["loss"]),
+        ("market_volatile", "buy", ["over"]),
+        ("market_volatile", "sell", ["panic"]),
     ],
 )
 def test_scenario_choice_bias_tags(event, cid, tags):
@@ -42,9 +49,8 @@ def test_scenario_choice_bias_tags(event, cid, tags):
 
 
 def test_scenario_disciplined_choices_untagged():
-    # 관망·확인·자리뜸만 편향 없음(태그 부재). hold·ignore는 이제 loss(버티기)로 태깅.
-    for event, cid in [("market_surge", "watch"),
-                       ("rumor_spread", "verify"), ("market_volatile", "step_away")]:
+    # T-53: 급등·변동의 유지(hold)만 편향 없음(태그 부재). 급락·루머 hold는 loss(버티기).
+    for event, cid in [("market_surge", "hold"), ("market_volatile", "hold")]:
         assert not S.get_choice(event, cid).get("bias_tags")
 
 

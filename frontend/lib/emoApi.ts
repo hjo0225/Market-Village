@@ -45,7 +45,7 @@ export interface Tier { name: string; icon: string; score: number; next_at: numb
 export interface Dilemma { title: string; text: string; gain?: boolean; choices: Choice[]; place?: string; }
 
 // position: >0 매수(담기) · <0 매도(팔기) · 0 관망 — T-35 맵 매매 fx 방향에 사용.
-export interface Choice { id: string; label: string; deltas?: Record<string, number>; position?: number; }
+export interface Choice { id: string; label: string; deltas?: Record<string, number>; position?: number; action?: "buy" | "sell" | "hold"; }
 
 export interface Board {
   event_id: string;
@@ -190,8 +190,8 @@ export const getBoard = (id: string) => getJson<Board>(`/emo/${id}/board`);
 export const getChain = (id: string) => getJson<ChainEvent>(`/emo/${id}/chain`);
 export const chooseChain = (id: string, choice_id: string) =>
   postJson<EmoState>(`/emo/${id}/chain/choose`, { choice_id });
-export const choose = (id: string, choice_id: string) =>
-  postJson<EmoState>(`/emo/${id}/choose`, { choice_id });
+export const choose = (id: string, choice_id: string, coin_target?: string | null) =>
+  postJson<EmoState>(`/emo/${id}/choose`, { choice_id, coin_target });
 export const getDilemma = (id: string) => getJson<Dilemma>(`/emo/${id}/dilemma`);
 export const chooseDilemma = (id: string, choice_id: string) =>
   postJson<EmoState>(`/emo/${id}/dilemma/choose`, { choice_id });

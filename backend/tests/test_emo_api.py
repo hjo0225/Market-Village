@@ -46,8 +46,8 @@ def test_board_and_choose_advances():
     gid = c.post("/emo/start", json={"answers": ANSWERS, "seed": 42, "days": 3}).json()["game_id"]
     board = c.get(f"/emo/{gid}/board").json()
     assert board["scenario"]["choices"]
-    choice = board["scenario"]["choices"][0]["id"]
-    r = c.post(f"/emo/{gid}/choose", json={"choice_id": choice})
+    choice = board["scenario"]["choices"][0]["id"]   # 매도(방어) — coin_target 필요
+    r = c.post(f"/emo/{gid}/choose", json={"choice_id": choice, "coin_target": "meme"})
     assert r.status_code == 200
     assert r.json()["day"] == 1
 
@@ -78,7 +78,8 @@ def test_full_playthrough_to_ending():
         if ch:
             c.post(f"/emo/{gid}/chain/choose", json={"choice_id": ch["choices"][0]["id"]})
         board = c.get(f"/emo/{gid}/board").json()
-        c.post(f"/emo/{gid}/choose", json={"choice_id": board["scenario"]["choices"][0]["id"]})
+        c.post(f"/emo/{gid}/choose",
+               json={"choice_id": board["scenario"]["choices"][0]["id"], "coin_target": "meme"})
     state = c.get(f"/emo/{gid}/state").json()
     assert state["is_over"]
     ending = c.get(f"/emo/{gid}/ending").json()

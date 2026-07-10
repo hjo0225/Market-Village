@@ -27,14 +27,16 @@ TEMPLATES_PATH = Path(__file__).resolve().parent / "data" / "scenario_templates.
 # 게시판 강제노출을 트리거하는 시장 이벤트 4종.
 EVENT_CATEGORIES = ("market_crash", "market_surge", "rumor_spread", "market_volatile")
 
-CHOICES_PER_SCENARIO = 6   # §4.1 — 풀 크기(3→6)
-CHOICES_EXPOSED = 3        # 한 회차에 노출되는 개수(버킷당 1개)
-CHOICES_PER_BUCKET = 2     # §4.1 — 버킷(방어/관망/공격)마다 기존 1 + 신규 1 = 2
+# T-53 (F4): 게시판 선택지 = 감정-소모 3액션(매수/매도/유지)으로 대체. 각 시나리오는
+# 정확히 3액션(방어=매도/관망=유지/공격=매수 각 1개)을 갖고 전부 노출한다(추첨 없음).
+CHOICES_PER_SCENARIO = 3   # 매수/매도/유지
+CHOICES_EXPOSED = 3        # 3액션 전부 노출(버킷당 1개)
+CHOICES_PER_BUCKET = 1     # 방어(매도)/관망(유지)/공격(매수) 각 1개
 
-# §4.1 버킷 규칙: 방어(position <= -0.2, 기존 A류 + 신규 D류), 관망(|position| < 0.2,
-# 기존 B류 + 신규 E류), 공격(position >= 0.2, 기존 C류 + 신규 F류). id 접두는 기존
-# 선택지 문체(cut/hold/buy_dip 등 의미형 id)를 보존하려 문자 그대로 강제하지 않고,
-# position 부호로만 버킷을 판정한다(스펙 §4.1의 "A·D/B·E/C·F"는 버킷 슬롯 라벨).
+# T-53: 3액션. 매수=탐욕 소모·현금→코인(공격), 매도=공포 소모·코인→현금(방어),
+# 유지=평정 소모·무매매(관망). action·consume_axis·consume_fraction이 필수 필드.
+# 버킷은 position 부호로 판정(_bucket_of): 매도 -0.5=방어, 유지 0.0=관망, 매수 0.4=공격.
+ACTIONS = ("buy", "sell", "hold")
 
 
 class ScenarioError(ValueError):
@@ -58,8 +60,15 @@ def validate_scenarios(scenarios: dict) -> dict:
     for cat, sc in scenarios.items():
         if cat not in EVENT_CATEGORIES:
             raise ScenarioError(f"unknown event category: {cat!r}")
-        if not str(sc.get("text", "")).strip():
-            raise ScenarioError(f"{cat}: empty text")
+        # T-56: 시나리오 텍스트는 단일 text 또는 text_variants[](열릴 때마다 변주) 중 하나.
+        variants = sc.get("text_variants")
+        if variants is not None:
+            if not isinstance(variants, list) or not variants or any(
+                not str(v).strip() for v in variants
+            ):
+                raise ScenarioError(f"{cat}: text_variants must be non-empty strings")
+        elif not str(sc.get("text", "")).strip():
+            raise ScenarioError(f"{cat}: empty text (or provide text_variants)")
         choices = sc.get("choices") or []
         if len(choices) != CHOICES_PER_SCENARIO:
             raise ScenarioError(
@@ -74,13 +83,17 @@ def validate_scenarios(scenarios: dict) -> dict:
             seen_ids.add(cid)
             if not str(ch.get("label", "")).strip():
                 raise ScenarioError(f"{cat}/{cid}: empty label")
-            deltas = ch.get("deltas") or {}
-            if not deltas:
-                raise ScenarioError(f"{cat}/{cid}: empty deltas")
-            for axis in deltas:
-                if axis not in AXES:
-                    raise ScenarioError(f"{cat}/{cid}: invalid axis {axis!r}")
-            # T-47b: 선택적 편향 태그. 있으면 2층 5축의 부분집합이어야 한다.
+            # T-53: 3액션 필수 필드 — action·consume_axis·consume_fraction.
+            action = ch.get("action")
+            if action not in ACTIONS:
+                raise ScenarioError(f"{cat}/{cid}: invalid action {action!r}")
+            axis = ch.get("consume_axis")
+            if axis not in AXES:
+                raise ScenarioError(f"{cat}/{cid}: invalid consume_axis {axis!r}")
+            frac = ch.get("consume_fraction")
+            if not isinstance(frac, (int, float)) or not 0.0 < float(frac) <= 1.0:
+                raise ScenarioError(f"{cat}/{cid}: consume_fraction must be in (0,1]: {frac!r}")
+            # T-47b: 선택적 편향 태그. 있으면 5축의 부분집합이어야 한다.
             tags = ch.get("bias_tags")
             if tags is not None:
                 if not isinstance(tags, list) or any(t not in BIAS_AXES for t in tags):
@@ -126,6 +139,14 @@ def pick_exposed_choices(all_choices: list[dict], seed: int, day: int, event_id:
     return exposed
 
 
+def pick_text_variant(variants: list[str], seed: int, day: int, event_id: str) -> str:
+    """T-56: TYPE별 시나리오 텍스트 여러 개 중 하나를 (seed, day, event_id)로 결정론
+    선택. 같은 날=같은 텍스트(4d 리로드 안전), 다른 날 같은 이벤트=다른 서사(급락도
+    매번 다르게). choices 추첨과 독립된 rng 스트림(:text)이라 텍스트·선택지가 따로 변주."""
+    rng = _pool_rng(seed, day, event_id + ":text")
+    return rng.choice(variants)
+
+
 def get_scenario(event_id: str, seed: int | None = None, day: int | None = None) -> dict:
     """이벤트 카테고리의 시나리오를 조회. 미지의 event_id면 ScenarioError.
 
@@ -139,7 +160,11 @@ def get_scenario(event_id: str, seed: int | None = None, day: int | None = None)
     if seed is None or day is None:
         return scenario
     exposed = pick_exposed_choices(scenario["choices"], seed, day, event_id)
-    return {**scenario, "choices": exposed}
+    result = {**scenario, "choices": exposed}
+    variants = scenario.get("text_variants")
+    if variants:   # T-56 — 열릴 때마다 다른 서사(결정론)
+        result["text"] = pick_text_variant(variants, seed, day, event_id)
+    return result
 
 
 def get_choice(event_id: str, choice_id: str) -> dict:

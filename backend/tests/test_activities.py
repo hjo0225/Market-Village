@@ -162,7 +162,8 @@ def test_plan_preview_activity_matches_settlement_activity():
     assert post_r.status_code == 200
     board = c.get(f"/emo/{gid}/board").json()
     choice_id = board["scenario"]["choices"][0]["id"]
-    state = c.post(f"/emo/{gid}/choose", json={"choice_id": choice_id}).json()
+    state = c.post(f"/emo/{gid}/choose",
+                   json={"choice_id": choice_id, "coin_target": "meme"}).json()
     settlement = state["settlement"]
     place_steps = [s for s in settlement["emotion_steps"] if s["source"] == "place"]
     assert len(place_steps) == 3
@@ -195,7 +196,8 @@ def test_settlement_place_step_label_uses_activity_name():
     r = c.post(f"/emo/{gid}/plan", json={"plan": plan})
     assert r.status_code == 200
     board = c.get(f"/emo/{gid}/board").json()
-    state = c.post(f"/emo/{gid}/choose", json={"choice_id": board["scenario"]["choices"][0]["id"]}).json()
+    state = c.post(f"/emo/{gid}/choose",
+                   json={"choice_id": board["scenario"]["choices"][0]["id"], "coin_target": "meme"}).json()
     place_steps = [s for s in state["settlement"]["emotion_steps"] if s["source"] == "place"]
     for step in place_steps:
         assert step["label"] == f"「{step['activity_name']}」 후"
@@ -220,7 +222,8 @@ def test_budget_blocks_two_cost_three_activities_plus_nonnegative_third():
     gid = _start(c, seed=seed, days=found + 1)
     for _ in range(found):
         board = c.get(f"/emo/{gid}/board").json()
-        c.post(f"/emo/{gid}/choose", json={"choice_id": board["scenario"]["choices"][0]["id"]})
+        c.post(f"/emo/{gid}/choose",
+               json={"choice_id": board["scenario"]["choices"][0]["id"], "coin_target": "meme"})
 
     am_cost = min(PE.activity_cost(seed, found, "오전", p) for p in PE.PLAN_PLACES)
     assert am_cost >= 0
@@ -238,6 +241,7 @@ def test_no_plan_keeps_legacy_route_with_activities_present():
     c = _client()
     gid = _start(c, seed=42, days=5)
     board = c.get(f"/emo/{gid}/board").json()
-    state = c.post(f"/emo/{gid}/choose", json={"choice_id": board["scenario"]["choices"][0]["id"]}).json()
+    state = c.post(f"/emo/{gid}/choose",
+                   json={"choice_id": board["scenario"]["choices"][0]["id"], "coin_target": "meme"}).json()
     settlement = state["settlement"]
     assert not [s for s in settlement["emotion_steps"] if s["source"] == "place"]

@@ -48,13 +48,13 @@ def test_emotion_uses_v2_composure_neutral():
 # ── 편향 집계 ───────────────────────────────────────────────────────────
 def test_choose_records_hit_and_opportunity():
     r = _crash_game(AGGRESSIVE, days=1)
-    r.choose("cut")   # T-48b: cut = [panic] (loss는 hold로 분리)
+    r.choose("sell", coin_target="meme")   # T-53: 급락 매도(sell) = [panic]
     assert r.bias_tally["panic"]["hits"] == 1
     assert r.bias_tally["panic"]["opportunities"] == 1
-    # loss는 이 결정점의 hold=[loss]로 opportunity지만, cut을 골라 hit=0
+    # loss는 이 결정점의 hold=[loss]로 opportunity지만, sell을 골라 hit=0
     assert r.bias_tally["loss"]["opportunities"] == 1
     assert r.bias_tally["loss"]["hits"] == 0
-    # 급락엔 buy_dip=[over]도 있어 over는 opportunity(안 골랐으니 hit 0)
+    # 급락엔 buy=[over]도 있어 over는 opportunity(안 골랐으니 hit 0)
     assert r.bias_tally["over"]["opportunities"] == 1
     assert r.bias_tally["over"]["hits"] == 0
 
@@ -71,26 +71,24 @@ def test_hold_records_loss_not_panic():
 def test_actual_bias_ratio_and_min_sample():
     r = _crash_game(AGGRESSIVE, days=4)
     for _ in range(4):
-        r.choose("cut")
+        r.choose("sell", coin_target="meme")
     ab = r.actual_bias()
-    # panic: 4 opp / 4 hit = 100 (표본 4 ≥ 3 → 노출)
+    # panic: 4 opp / 4 hit = 100 (표본 4 ≥ 3 → 노출). sell = [panic].
     assert ab["panic"] == 100
-    # T-48b: loss는 hold로 분리 — cut만 4번 골랐으니 loss opp 4 / hit 0 = 0
-    # (예전엔 cut=[panic,loss]라 loss도 100이 나와 두 축이 항상 동일했다)
+    # loss는 hold로 분리 — sell만 4번 골랐으니 loss opp 4 / hit 0 = 0.
     assert ab["loss"] == 0
-    # over: 4 opp / 0 hit = 0
+    # over: buy=[over] 4 opp / 0 hit = 0
     assert ab["over"] == 0
-    # fomo: 급락 이벤트엔 여전히 없음 → 비노출.
-    # disp: §4.1 확장(D "미리 정해둔 손절선만 확인" bias_tags=["disp"])으로 급락에도
-    # disp opportunity가 생겼다 — cut만 4번 골랐으니 disp opp 4 / hit 0 = 0(노출은 됨).
+    # T-53: 급락 3액션은 buy=[over]/sell=[panic]/hold=[loss]뿐 — fomo·disp는
+    # opportunity가 아니라 측정축에 아예 없다(비노출).
     assert "fomo" not in ab
-    assert ab["disp"] == 0
+    assert "disp" not in ab
 
 
 def test_actual_bias_hides_small_sample():
     r = _crash_game(AGGRESSIVE, days=2)   # panic opp 2 < 3
     for _ in range(2):
-        r.choose("cut")
+        r.choose("sell", coin_target="meme")
     assert "panic" not in r.actual_bias()
 
 
@@ -134,8 +132,8 @@ def test_place_dilemma_none_when_not_today():
 # ── 직렬화 왕복 ─────────────────────────────────────────────────────────
 def test_to_from_doc_preserves_disposition_and_tally():
     r = _crash_game(AGGRESSIVE, days=3)
-    r.choose("cut")
-    r.choose("buy_dip")
+    r.choose("sell", coin_target="meme")
+    r.choose("buy", coin_target="meme")
     doc = r.to_doc()
     assert doc["disposition"]["declared_type"] == "공격투자형"
     r2 = EmoGameRun.from_doc(doc)
