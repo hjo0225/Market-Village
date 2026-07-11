@@ -15,6 +15,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
+# standalone 출력은 public/을 포함하지 않는다 — 수동 복사 필수.
+# 빠지면 map.html(지도 iframe)·favicon 등 public 정적 파일 전부 404.
+COPY --from=builder /app/public ./public
 
 EXPOSE 3000
 CMD ["node", "server.js"]
