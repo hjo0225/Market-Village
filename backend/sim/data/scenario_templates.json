@@ -9,7 +9,7 @@
       "장 열자마자 {coin} 폭락. '이럴 줄 알았다'는 뒷북과 '지금이 바닥'이라는 낙관이 뒤섞여 채팅창이 시끄럽다."
     ],
     "choices": [
-      {"id": "buy", "action": "buy", "label": "지금 담는다 · 탐욕 20% 소모", "label_variants": ["지금 담는다", "평단 낮춘다", "바닥이라 줍는다"], "consume_axis": "greed", "consume_fraction": 0.2, "position": 0.4, "bias_tags": ["over"]},
+      {"id": "buy", "action": "buy", "label": "지금 담는다 · 탐욕 20% 소모", "label_variants": ["지금 담는다", "물타기 한다", "바닥이라 줍는다"], "consume_axis": "greed", "consume_fraction": 0.2, "position": 0.4, "bias_tags": ["over"]},
       {"id": "sell", "action": "sell", "label": "손절한다 · 공포 50% 소모", "label_variants": ["손절한다", "일단 던진다", "미련없이 자른다"], "consume_axis": "fear", "consume_fraction": 0.5, "position": -0.5, "bias_tags": ["panic"]},
       {"id": "hold", "action": "hold", "label": "버틴다 · 평정 10% 소모", "label_variants": ["버틴다", "존버한다", "계획선만 본다"], "consume_axis": "composure", "consume_fraction": 0.1, "position": 0.0, "bias_tags": ["loss"]}
     ]
