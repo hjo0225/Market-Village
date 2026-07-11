@@ -13,6 +13,13 @@ from __future__ import annotations
 # 🙋 튜닝 잠정치(플레이테스트로 확정 — 문서 §8) — E5 히든 엔딩 기준 횟수.
 SPECIAL_EVENT_ENDING_N = 6
 
+# 3일 압축 모드(emo_api.COMPACT_DAYS_MAX) 전용 E5 기준. 특수이벤트는 하루 최대
+# 1건이라 3일 최대 누적은 3 — 체인 확률 상향(chain.SPECIAL_EVENT_PROB_COMPACT=0.95)
+# 상태에서 기준을 3 이하로 두면 거의 모든 압축 회차가 E5로 수렴해, 플레이에 따라
+# 갈리는 2×2 엔딩(수익률×감정통제 — 제품 테제)이 가려진다. 도달 불가한 4로 두어
+# 히든 엔딩은 10일 정식판의 보상으로 남긴다.
+SPECIAL_EVENT_ENDING_N_COMPACT = 4
+
 _GRADE = {
     (True, True): "고수",
     (False, True): "벼락부자형",
@@ -81,13 +88,27 @@ def grade_2x2(verdict: str, wealth_level: str, composure: float = 50.0) -> str:
     return _GRADE[(emotion_controlled(verdict, composure), wealth_level == "high")]
 
 
+def days_word(n: int) -> str:
+    """일수를 한국어 자연수사로. 3일 압축 모드·10일 기본 게임 전용 표기(그 외는
+    "{n}일" 폴백) — 에필로그·블라인드 리빌 헤드라인 등 서사 문구가 실제 회차
+    길이에 맞게 말하도록(하드코딩 "열흘" 치환의 단일 소스)."""
+    return {3: "사흘", 10: "열흘"}.get(n, f"{n}일")
+
+
 def decide_ending(verdict: str, wealth_level: str, special_count: int,
-                  composure: float = 50.0) -> dict:
+                  composure: float = 50.0, total_days: int | None = None) -> dict:
     """엔딩 결정(문서 §4.2). 특수이벤트 N회 이상이면 히든 E5, 아니면 4분기.
-    평정이 높으면 감정 통제(good)로 쳐 E1/E3(좋은 엔딩) 쪽으로 간다(T-37)."""
+    평정이 높으면 감정 통제(good)로 쳐 E1/E3(좋은 엔딩) 쪽으로 간다(T-37).
+
+    `total_days` — 3일 압축 모드(emo_api.COMPACT_DAYS_MAX) 여부 판정용(하위 호환:
+    생략/None이면 기존 10일 기준·문구 그대로). 3일이면 E5 기준을 낮추고
+    (SPECIAL_EVENT_ENDING_N_COMPACT), 에필로그의 "열흘"을 "사흘"로 치환한다."""
+    compact = total_days is not None and total_days <= 3
+    threshold = SPECIAL_EVENT_ENDING_N_COMPACT if compact else SPECIAL_EVENT_ENDING_N
+
     good = emotion_controlled(verdict, composure)
     hi = wealth_level == "high"
-    if special_count >= SPECIAL_EVENT_ENDING_N:
+    if special_count >= threshold:
         ending_id = "E5"
     elif good and hi:
         ending_id = "E1"
@@ -99,9 +120,14 @@ def decide_ending(verdict: str, wealth_level: str, special_count: int,
         ending_id = "E4"
 
     data = _ENDINGS[ending_id]
+    epilogue = list(data["epilogue"])
+    if total_days == 3:
+        # substring 치환이라 "열흘째"→"사흘째"도 함께 해결된다. 원본 리스트는
+        # 불변(_ENDINGS는 모듈 전역 캐시라 변이하면 다른 회차가 오염된다).
+        epilogue = [line.replace("열흘", days_word(3)) for line in epilogue]
     return {
         "id": ending_id,
         "title": data["title"],
         "grade": grade_2x2(verdict, wealth_level, composure),
-        "epilogue": list(data["epilogue"]),
+        "epilogue": epilogue,
     }

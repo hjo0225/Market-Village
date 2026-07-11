@@ -21,6 +21,7 @@ from . import disposition, disposition_report, emo_store
 from . import llm as _llm
 from . import tier as _tier
 from .emo_game import EmoGameRun
+from .ending import days_word
 from .fate_line import CATEGORIES, load_fate_line
 from .player_emotion.verdict import compute_verdict
 
@@ -37,6 +38,16 @@ _BELLWETHER = "meme"
 # 고정 이동(통제변인 보존). 창이 시드를 넘지 않게 클램프.
 _MARKET_OFFSET = 11
 
+# 3일 이하 = 압축 모드 기준(다른 모듈도 이 상수를 import해 쓴다 — chain.py의
+# SPECIAL_EVENT_PROB_COMPACT 적용 판정, ending.py의 E5 기준·에필로그 일수 대응).
+COMPACT_DAYS_MAX = 3
+
+# 압축 3일 아크 전용 드라마 윈도 오프셋. 검증된 결과: fate 오프셋 16의 3일 =
+# meme 수익률 +6.4% / -11.4% / +5.2% → 이벤트 [market_surge, market_crash,
+# market_surge] — 급등(유혹)→급락(시련)→반등(검증)의 교육 아크. 급락날 패닉셀하면
+# 반등을 놓치는 걸 정산이 보여준다(3일이라도 감정 코어를 자극하는 최소 서사 단위).
+_MARKET_OFFSET_COMPACT = 16
+
 
 def _build_market(seed: int, days: int) -> tuple[list[str], dict[str, list[float]]]:
     """시장 시퀀스 — **실 FateLine(블라인드 과거 업비트 OHLC)**에서 카테고리별
@@ -45,9 +56,13 @@ def _build_market(seed: int, days: int) -> tuple[list[str], dict[str, list[float
     이벤트는 벨웨더(meme, 고변동) 수익률에서 파생한다(급락=하락일, 급등=상승일) —
     "급락인데 +수익" 비일관 제거. 완만한 날은 변동폭으로 변동/루머 구분.
     emo day d = fate day d+offset(드라마 구간으로 당김, 창이 시드 넘지 않게 클램프).
+
+    days<=COMPACT_DAYS_MAX(3일 압축 모드)는 별도 오프셋(_MARKET_OFFSET_COMPACT)을
+    써서 급등→급락→반등의 짧은 교육 아크를 고정 노출한다(§ 위 주석).
     """
     fate = load_fate_line()
-    offset = min(_MARKET_OFFSET, max(1, fate.days - days))
+    base_offset = _MARKET_OFFSET_COMPACT if days <= COMPACT_DAYS_MAX else _MARKET_OFFSET
+    offset = min(base_offset, max(1, fate.days - days))
     cat_returns: dict[str, list[float]] = {
         cat: [fate.change_rate(cat, d + offset) / 100.0 for d in range(days)]
         for cat in CATEGORIES
@@ -145,7 +160,8 @@ def start(body: StartBody) -> dict:
         **_state(run, game_id),
         # v3 §D1 — 설문 직후 진단 근거 화면(신설). diagnose()가 이미 계산한
         # 값의 노출 + 문항별 기여 분해(점수 역추적)만 신규.
-        "diagnosis": _diagnosis_report.build_diagnosis(body.answers),
+        "diagnosis": _diagnosis_report.build_diagnosis(
+            body.answers, total_days=max(1, body.days)),
     }
 
 
@@ -319,8 +335,10 @@ def report(game_id: str) -> dict:
         reveal = load_fate_line().reveal()
         rep["blind_reveal"] = reveal
         bellwether = next((r for r in reveal if r["category"] == _BELLWETHER), None)
+        # 3일 압축 모드에서는 "열흘"이 아니라 실제 플레이한 일수(사흘 등)로 말한다
+        # — days_word(ending.py, 하드코딩 문구의 단일 소스)로 일수 대응.
         rep["blind_reveal_headline"] = (
-            f"당신의 열흘은 사실 {bellwether['period']}이었다."
+            f"당신의 {days_word(len(run.events))}은 사실 {bellwether['period']}이었다."
             if bellwether and bellwether.get("period") else None
         )
         # T-47f — 서술은 게임당 1회만 생성(LLM 게이트·일일한도·캐시=llm.py, 실패 시

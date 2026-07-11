@@ -136,5 +136,22 @@ def test_start_response_includes_diagnosis():
 def test_start_response_diagnosis_deterministic_same_answers():
     c = _client()
     b1 = c.post("/emo/start", json={"answers": ALL_MAX, "seed": 1, "days": 5}).json()
-    b2 = c.post("/emo/start", json={"answers": ALL_MAX, "seed": 2, "days": 7}).json()
-    assert b1["diagnosis"] == b2["diagnosis"]   # 진단은 답안에만 의존(seed/days 무관)
+    b2 = c.post("/emo/start", json={"answers": ALL_MAX, "seed": 2, "days": 5}).json()
+    assert b1["diagnosis"] == b2["diagnosis"]   # 진단은 답안에만 의존(seed 무관)
+
+
+def test_start_response_diagnosis_closing_line_matches_days():
+    # T-66 — summary 마무리 문장만 실제 게임 일수를 말한다(3일 압축 모드 대응).
+    # 일수 외 진단 내용(유형·축·기여)은 days와 무관하게 동일해야 한다.
+    c = _client()
+    b3 = c.post("/emo/start", json={"answers": ALL_MAX, "seed": 1, "days": 3}).json()
+    b10 = c.post("/emo/start", json={"answers": ALL_MAX, "seed": 1, "days": 10}).json()
+    assert b3["diagnosis"]["summary"][-1] == (
+        "클론은 이 성향대로 사흘을 산다. 진짜 당신과 같은지는, 끝에 확인하자."
+    )
+    assert b10["diagnosis"]["summary"][-1] == (
+        "클론은 이 성향대로 열흘을 산다. 진짜 당신과 같은지는, 끝에 확인하자."
+    )
+    assert b3["diagnosis"]["summary"][:-1] == b10["diagnosis"]["summary"][:-1]
+    for key in ("declared_type", "axes", "contributions"):
+        assert b3["diagnosis"][key] == b10["diagnosis"][key]
