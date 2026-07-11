@@ -493,7 +493,7 @@ export default function EmoPage() {
 
       {state.ticker && state.ticker.length > 0 && (
         <div className="shrink-0 px-1 relative">
-          <TickerBar ticker={state.ticker} />
+          <TickerBar ticker={state.ticker} preOpen={state.day === 0} />
           <CoachMark
             id="tickerBar"
             text="실제 코인의 과거 어느 열흘이에요. 언제인지는 비밀 — 끝나면 공개."
