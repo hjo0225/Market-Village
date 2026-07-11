@@ -415,8 +415,18 @@ class EmoGameRun:
         npc = self.companion_id
         if not npc or npc not in self.chains:
             return
+        # 3일 압축 모드(emo_api.COMPACT_DAYS_MAX)는 체인 발동 확률을 거의 확정적으로
+        # 올린다(SPECIAL_EVENT_PROB_COMPACT) — 짧은 회차에서도 심사/체험 플레이가
+        # NPC 체인을 놓치지 않게. rapport 게이트(CHAIN_RAPPORT_GATE)는 그대로 둔다.
+        from . import emo_api as _emo_api   # 지연 임포트 — 순환 임포트 회피(emo_api가 emo_game을 임포트)
+        prob = (
+            chain.SPECIAL_EVENT_PROB_COMPACT
+            if len(self.events) <= _emo_api.COMPACT_DAYS_MAX
+            else chain.SPECIAL_EVENT_PROB
+        )
         stage = chain.maybe_trigger(
-            self.seed, self.day, npc, self.chain_progress, self.rapport.get(npc, 0.0)
+            self.seed, self.day, npc, self.chain_progress, self.rapport.get(npc, 0.0),
+            prob=prob,
         )
         if stage is None or stage not in self.chains[npc]:
             return
@@ -902,7 +912,8 @@ class EmoGameRun:
         """최종 엔딩(E1~E5 + 등급 + 에필로그). 문서 §4."""
         ei = self.ending_inputs()
         return _ending.decide_ending(
-            ei["verdict"], ei["wealth_level"], ei["special_count"], ei["composure"]
+            ei["verdict"], ei["wealth_level"], ei["special_count"], ei["composure"],
+            total_days=len(self.events),   # 3일 압축 모드 E5 기준·에필로그 일수 대응(ending.py)
         )
 
     # --- 직렬화 (T-14 영속화가 소비) ------------------------------------- #

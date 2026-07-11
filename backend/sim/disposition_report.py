@@ -72,9 +72,10 @@ def _seed_insights(disposition: dict, actual: dict) -> list[str]:
 # T-48c — 표본이 이 미만이면 '참고'(임계 n=3 턱걸이는 해상도가 거칠어 신뢰 주의).
 _LOW_SAMPLE = 5
 
-# v3 §A — 10일 전환으로 측정축이 0개(BIAS_MIN_SAMPLE 미달)가 되는 경우를 위한
+# v3 §A — 측정축이 0개(BIAS_MIN_SAMPLE 미달)가 되는 경우를 위한
 # 정적 안내(빈 화면 금지). LLM 아님(I5), 결정론 고정 문구.
-LOW_SAMPLE_NOTICE = "열흘은 짧다. 더 놀러 오면 더 정확해진다."
+# T-66 — 3일 압축 모드에서도 노출되므로 일수 표기("열흘") 없이 말한다.
+LOW_SAMPLE_NOTICE = "이번 계절은 짧았다. 더 놀러 오면 더 정확해진다."
 
 
 def _timeline(choice_history: list | None) -> list[dict]:
@@ -169,7 +170,8 @@ def _deterministic_narrative(report: dict, ending: dict | None) -> list[str]:
         tone = ("선언과 행동이 대체로 일치했습니다" if sa >= 75
                 else "선언과 행동이 절반쯤 어긋났습니다" if sa >= 50
                 else "선언과 행동이 크게 어긋났습니다")
-        out.append(f"열흘 동안 당신의 말과 행동의 일치도는 {sa}점 — {tone}.")
+        # T-66 — 3일 압축 모드에서도 쓰이는 문장이라 일수 표기 없이 말한다.
+        out.append(f"이 마을에서 당신의 말과 행동의 일치도는 {sa}점 — {tone}.")
     comp = report.get("bias_comparison") or []
     if comp:
         worst = max(comp, key=lambda c: c.get("gap", 0))
@@ -182,11 +184,11 @@ def _deterministic_narrative(report: dict, ending: dict | None) -> list[str]:
     if coach:
         out.append(coach)
     out.extend(report.get("insights") or [])
-    return out or ["열흘의 기록이 아직 충분치 않습니다."]
+    return out or ["기록이 아직 충분치 않습니다."]
 
 
 _NARRATIVE_SYSTEM = (
-    "너는 투자 심리 코치다. 플레이어가 스스로 선언한 투자 성향과, 열흘 시뮬레이션에서 "
+    "너는 투자 심리 코치다. 플레이어가 스스로 선언한 투자 성향과, 마을 시뮬레이션에서 "
     "실제로 보인 행동 편향의 괴리를 짧고 강하게 짚어준다. 2인칭('당신')으로 사람에게 "
     "말하듯 직설적이고 따뜻하게. 주어진 구체 수치(예상 vs 실제)를 반드시 인용하되, "
     "학술적·완곡한 표현('~할 수 있습니다', '암시합니다', '영향을 미칠 수 있음', "

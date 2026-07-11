@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 from sim import emo_store
 from sim.emo_api import _build_market, router
+from sim.ending import decide_ending
 
 
 def _client():
@@ -117,3 +118,63 @@ def test_start_clone_name_defaults_when_omitted():
     c = _client()
     body = c.post("/emo/start", json={"answers": ANSWERS, "seed": 42, "days": 3}).json()
     assert body["clone_name"] == "내 클론"
+
+
+# --- 3일 압축 모드: 급등(유혹)→급락(시련)→반등(검증) 교육 아크 --------------- #
+def test_compact_3day_market_window_is_surge_crash_surge():
+    # emo_api._MARKET_OFFSET_COMPACT(16)의 검증된 결과 — meme 수익률
+    # +6.4% / -11.4% / +5.2%. 급락날 패닉셀하면 반등을 놓치는 걸 정산이 보여준다.
+    events, cat_returns = _build_market(seed=0, days=3)
+    assert events == ["market_surge", "market_crash", "market_surge"], events
+    assert all(len(v) == 3 for v in cat_returns.values())
+
+
+def test_start_3days_reports_total_days_3():
+    c = _client()
+    body = c.post("/emo/start", json={"answers": ANSWERS, "seed": 42, "days": 3}).json()
+    assert body["total_days"] == 3
+
+
+def test_full_3day_playthrough_epilogue_has_no_hardcoded_yeoltteul():
+    c = _client()
+    gid = c.post("/emo/start", json={"answers": ANSWERS, "seed": 42, "days": 3}).json()["game_id"]
+    for _ in range(3):
+        # §2.2 — 오늘 플랜이 아직 없으면 유효한 plan을 제출(기존 test_plan_api.py
+        # 패턴 재사용). 이미 잠겼거나(409) 게임이 끝났으면 건너뛴다.
+        c.post(f"/emo/{gid}/plan",
+               json={"plan": {"오전": "카페", "오후": "운동", "저녁": "집"}})
+        # 미해결 체인이 있으면 먼저 해결(test_full_playthrough_to_ending 패턴).
+        ch = c.get(f"/emo/{gid}/chain").json()
+        if ch:
+            c.post(f"/emo/{gid}/chain/choose", json={"choice_id": ch["choices"][0]["id"]})
+        board = c.get(f"/emo/{gid}/board").json()
+        c.post(f"/emo/{gid}/choose",
+               json={"choice_id": board["scenario"]["choices"][0]["id"], "coin_target": "meme"})
+    state = c.get(f"/emo/{gid}/state").json()
+    assert state["is_over"]
+    assert state["ending"] is not None
+    ending = c.get(f"/emo/{gid}/ending").json()
+    assert ending["id"] in ("E1", "E2", "E3", "E4", "E5")
+    assert len(ending["epilogue"]) == 3
+    assert all("열흘" not in line for line in ending["epilogue"])
+
+
+# --- decide_ending 단위: 3일 압축 모드 E5 기준(SPECIAL_EVENT_ENDING_N_COMPACT) - #
+def test_decide_ending_compact_e5_unreachable_in_3days():
+    # 압축 모드 특수이벤트 최대 누적은 3(하루 1건) — 기준(4) 미달이라 E5 불가.
+    # 체인 확률 0.95 상태에서 기준이 3 이하면 모든 압축 회차가 E5로 수렴해
+    # 2×2 엔딩(제품 테제)이 가려지므로, 히든 엔딩은 10일 정식판의 보상으로 남긴다.
+    ending = decide_ending("중립", "high", special_count=3, total_days=3)
+    assert ending["id"] == "E1"
+    ending = decide_ending("과열", "low", special_count=3, total_days=3, composure=0.0)
+    assert ending["id"] == "E4"
+
+
+def test_decide_ending_10day_default_needs_higher_special_count():
+    # 같은 special_count=3인데 total_days=10(또는 생략)이면 기존 기준(6) 미달 → E5 아님.
+    # 기준(6) 충족 시에만 E5.
+    ending_10 = decide_ending("중립", "high", special_count=3, total_days=10)
+    ending_none = decide_ending("중립", "high", special_count=3)
+    assert ending_10["id"] != "E5"
+    assert ending_none["id"] != "E5"
+    assert decide_ending("중립", "high", special_count=6, total_days=10)["id"] == "E5"

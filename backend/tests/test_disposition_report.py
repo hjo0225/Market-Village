@@ -61,7 +61,8 @@ def test_compute_report_low_sample_notice_when_no_measured_axes():
     rep = R.compute_report(DISP, {})   # actual_bias 빈 dict → measured_axes=[]
     assert rep["measured_axes"] == []
     assert rep["low_sample_notice"] == R.LOW_SAMPLE_NOTICE
-    assert rep["low_sample_notice"] == "열흘은 짧다. 더 놀러 오면 더 정확해진다."
+    # T-66 — 3일 압축 모드에서도 노출되는 문구라 일수 표기 없이 말한다.
+    assert rep["low_sample_notice"] == "이번 계절은 짧았다. 더 놀러 오면 더 정확해진다."
 
 
 def test_compute_report_low_sample_notice_none_when_axes_measured():
@@ -203,6 +204,8 @@ def test_report_endpoint_includes_reveal_and_sample():
 
 
 def test_report_endpoint_includes_period_centric_headline():
+    # 3일 압축 모드 도입(days_word)으로 헤드라인이 실제 일수를 말하게 됐다 —
+    # 4일 게임이면 "열흘"이 아니라 "4일"(days_word 폴백)이어야 정확하다.
     gid = _played_game_id(days=4)
     rep = emo_api.report(gid)
-    assert rep["blind_reveal_headline"] == "당신의 열흘은 사실 2021년 4월이었다."
+    assert rep["blind_reveal_headline"] == "당신의 4일은 사실 2021년 4월이었다."
