@@ -29,7 +29,7 @@ export default function EndingScreen({
           {state.tier && <span className="font-bold text-black">· 최종 티어 {state.tier.icon} {state.tier.name}</span>}
         </div>
 
-        <DiagnosisReport report={report} />
+        <DiagnosisReport report={report} totalDays={state.total_days} />
 
         <PixelButton size="lg" className="w-full mt-6" onClick={onRestart}>
           다시 시작

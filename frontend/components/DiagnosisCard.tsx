@@ -8,10 +8,11 @@ import { StartDiagnosis } from "@/lib/emoApi";
 import PixelPanel from "@/components/pixel/PixelPanel";
 import PixelButton from "@/components/pixel/PixelButton";
 import { TermText } from "@/components/Term";
+import { daysWord } from "@/utils/emo";
 
 export default function DiagnosisCard({
-  diagnosis, onConfirm,
-}: { diagnosis: StartDiagnosis; onConfirm: () => void }) {
+  diagnosis, totalDays = 10, onConfirm,
+}: { diagnosis: StartDiagnosis; totalDays?: number; onConfirm: () => void }) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -20,7 +21,7 @@ export default function DiagnosisCard({
         <div className="text-[11px] text-pixel-muted mb-1">진단 결과</div>
         <h1 className="text-xl font-extrabold mb-1">당신은 [{diagnosis.declared_type}]</h1>
         <p className="text-[12px] text-pixel-muted mb-5">
-          클론은 이 성향대로 열흘을 산다. 진짜 당신과 같은지는, 끝에 확인하자.
+          클론은 이 성향대로 {daysWord(totalDays)}을 산다. 진짜 당신과 같은지는, 끝에 확인하자.
         </p>
 
         {/* 축 바 */}

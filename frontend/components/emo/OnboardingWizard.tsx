@@ -15,13 +15,14 @@ import { QUESTIONS } from "@/constants/emo";
 const STEP_TITLE = ["이사 온 날", "투자 성향 진단", "성향 결과", "초기 자산 배분"];
 
 export default function OnboardingWizard({
-  step, name, questionIndex, answers, diagnosis, levels, catalog, busy, error,
+  step, name, totalDays = 10, questionIndex, answers, diagnosis, levels, catalog, busy, error,
   allocPresetType,
   onNameChange, onNameSubmit, onSelectOption, onLevelChange,
   onBack, onNext, onStart, onResetDiagnosis, onCopyShare,
 }: {
   step: number;
   name: string;
+  totalDays?: number;   // T-66 — 선택된 게임 일수(3일/10일). 이름 스텝 안내문에 사용.
   questionIndex: number;
   answers: Record<string, number>;
   diagnosis: api.DispositionDiagnosis | null;
@@ -69,7 +70,7 @@ export default function OnboardingWizard({
           <div className="text-[11px] text-pixel-muted mb-1">{step + 1} / 4</div>
           <h1 className="text-lg font-extrabold mb-5">{STEP_TITLE[step]}</h1>
 
-          {step === 0 && <NameStep name={name} onChange={onNameChange} onSubmit={onNameSubmit} />}
+          {step === 0 && <NameStep name={name} totalDays={totalDays} onChange={onNameChange} onSubmit={onNameSubmit} />}
 
           {step === 1 && (
             <DiagnosisStep questionIndex={questionIndex} answers={answers} onSelect={onSelectOption} />

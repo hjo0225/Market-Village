@@ -1,6 +1,7 @@
 import { StoryCut } from "@/components/StoryScene";
 import { Category } from "@/lib/emoApi";
 import { Level, LevelMap, Question, QuestionHint } from "@/types/emo";
+import { daysWord } from "@/utils/emo";
 
 // §3.1/§3.2/§3.3 — 정적 스토리 씬 스크립트(원문 그대로, LLM 호출 없음·I5).
 export const PROLOGUE_CUTS: StoryCut[] = [
@@ -8,24 +9,37 @@ export const PROLOGUE_CUTS: StoryCut[] = [
   { lines: ["마켓 빌리지. 주민 전원이 코인을 하는 작은 마을.", "이곳에 당신을 닮은 클론이 이사를 온다."] },
   { lines: ["클론은 당신의 습관대로 기뻐하고, 당신의 습관대로 흔들린다.", "그러니 먼저 — 당신이 어떤 사람인지 알려주세요."] },
 ];
-export const BRIDGE_CUTS = (cloneName: string): StoryCut[] => [
+// T-66 — 3일 압축판에서는 스케일 안내 컷을 하나 추가(마지막 "첫째 날" 컷 앞).
+export const BRIDGE_CUTS = (cloneName: string, totalDays = 10): StoryCut[] => [
   { lines: [`……여기가 마켓 빌리지구나. 이삿짐이라곤 지갑 하나.`], speaker: cloneName },
   { lines: ["마을 사람들은 전부 코인을 한다. 단톡방은 하루 종일 울린다.", "카페의 동수, 광장의 재훈, 펍 구석의 만식…… 곧 다 알게 된다."] },
   { lines: ["당신이 해줄 일은 하나. 클론의 하루를 짜주는 것.", "어디서 시간을 보내는지가, 마음을 만든다. 마음이, 지갑을 지킨다."] },
+  ...(totalDays <= 3 ? [{ lines: ["사흘. 짧지만, 마음이 드러나기엔 충분한 시간이다."] }] : []),
   { lines: ["그럼 — 첫째 날."] },
 ];
-export const ENDING_PRE_CUT: StoryCut[] = [
-  { lines: ["열흘 남짓, 클론의 계절이 끝났다. 이제 거울을 볼 시간."] },
+// T-66 — 10일이면 기존 문구 유지, 그 외 일수는 daysWord로 자연스럽게 대체.
+export const ENDING_PRE_CUT = (totalDays = 10): StoryCut[] => [
+  { lines: totalDays === 10
+      ? ["열흘 남짓, 클론의 계절이 끝났다. 이제 거울을 볼 시간."]
+      : [`${daysWord(totalDays)}, 클론의 계절이 끝났다. 이제 거울을 볼 시간.`] },
 ];
 // v2 §3.2 — 첫 게시판 진입 컷(게임당 1회, 컴포넌트 상태로만 관리). 첫 board 노출 직전.
 export const FIRST_BOARD_CUT: StoryCut[] = [
   { lines: ["점심. 단톡방이 울린다.", "이 마을에서 점심 메뉴보다 뜨거운 화제 — 오늘의 시장."] },
 ];
 // v2 §3.3 — 반환점 컷(day == total_days//2, 게임당 1회). 그날 편성 화면 진입 전.
-export const HALFWAY_CUTS = (cloneName: string): StoryCut[] => [
-  { lines: ["벌써 절반이구나. 처음엔 알림음마다 심장이 뛰었는데."], speaker: cloneName },
-  { lines: ["이제 어떤 알림은 그냥 지나가게 둔다. 그게 좋은 건지는, 끝에 가서 알겠지."] },
-];
+// T-66 — 3일 압축판에서는 반환점이 이틀째 아침(하루 경과)이라 "처음엔 ~ 뛰었는데"가
+// 과장으로 읽힌다 → 사흘 문맥의 전용 문구로 분기(10일 문구는 그대로 유지).
+export const HALFWAY_CUTS = (cloneName: string, totalDays = 10): StoryCut[] =>
+  totalDays <= 3
+    ? [
+      { lines: ["벌써 절반이구나. 어제는 알림음마다 심장이 뛰었는데."], speaker: cloneName },
+      { lines: ["오늘은 조금 다르게 들린다. 그게 좋은 건지는, 끝에 가서 알겠지."] },
+    ]
+    : [
+      { lines: ["벌써 절반이구나. 처음엔 알림음마다 심장이 뛰었는데."], speaker: cloneName },
+      { lines: ["이제 어떤 알림은 그냥 지나가게 둔다. 그게 좋은 건지는, 끝에 가서 알겠지."] },
+    ];
 
 // T-30 · 초기 배분 UX — low1·med2·high3(백엔드가 합으로 정규화).
 export const LEVELS: Level[] = ["low", "med", "high"];

@@ -12,6 +12,7 @@ import DailyPlan from "@/components/DailyPlan";
 import TickerBar from "@/components/TickerBar";
 import CoachMark from "@/components/CoachMark";
 import TitleScreen from "@/components/TitleScreen";
+import ModeSelectScreen from "@/components/emo/ModeSelectScreen";
 import OnboardingWizard from "@/components/emo/OnboardingWizard";
 import EndingScreen from "@/components/emo/EndingScreen";
 import PlayHeader from "@/components/emo/PlayHeader";
@@ -25,7 +26,7 @@ import {
   PROLOGUE_CUTS, BRIDGE_CUTS, ENDING_PRE_CUT, FIRST_BOARD_CUT, HALFWAY_CUTS,
   DEFAULT_LEVELS, ALLOCATION_PRESET, QUESTIONS,
 } from "@/constants/emo";
-import { positionTag, levelWeights } from "@/utils/emo";
+import { positionTag, levelWeights, daysWord } from "@/utils/emo";
 
 // 타이틀→온보딩→프롤로그→브릿지 내내 유지되는 단 하나의 컷씬 배경(Phaser).
 // 화면 전환마다 iframe이 remount되며 재부팅(검은 반짝임)되던 것을 방지.
@@ -63,6 +64,9 @@ export default function EmoPage() {
   const [allocSource, setAllocSource] = useState<"preset" | "user">("preset");
   const [step, setStep] = useState(0);
   const [screen, setScreen] = useState<"title" | "game">("title");
+  // T-66 — 게임 모드 선택(3일 압축판/10일 정식판). 타이틀 "새 게임" 직후,
+  // 온보딩 이전 단계에서 고른다. null이면 아직 선택 전(모드 선택 화면 노출).
+  const [gameDays, setGameDays] = useState<number | null>(null);
   const [seed, setSeed] = useState<number | null>(null);
   const [catalog, setCatalog] = useState<CatalogCoin[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -320,7 +324,7 @@ export default function EmoPage() {
   const start = async () => {
     setBusy(true); setError(null);
     const usedSeed = seed ?? Math.floor(Math.random() * 100000);
-    const s = await api.startEmo(answers, usedSeed, 10, levelWeights(levels), name.trim());
+    const s = await api.startEmo(answers, usedSeed, gameDays ?? 10, levelWeights(levels), name.trim());
     if (s) {
       pendingStartRef.current = s;
       setStoryScene("bridge");
@@ -422,6 +426,7 @@ export default function EmoPage() {
     setSeed(null); setCatalog(null); setDiagnosis(null); prevTierNameRef.current = null;
     // T-65 — 2회차 회귀 방지: 배분·프리셋 상태 리셋(새 진단이 새 프리셋을 담게).
     setLevels({ ...DEFAULT_LEVELS }); setAllocSource("preset");
+    setGameDays(null);   // T-66 — 재시작 시 모드 선택으로 되돌아가게 리셋
     setScreen("title");
   };
 
@@ -430,13 +435,15 @@ export default function EmoPage() {
     // 공유 컷씬 배경 하나 위에 타이틀/온보딩/스토리 씬을 얹는다(전환 시 재부팅 없음).
     const content = screen === "title" ? (
       <TitleScreen onNewGame={() => setScreen("game")} />
+    ) : gameDays === null ? (
+      <ModeSelectScreen onPick={setGameDays} onBack={() => setScreen("title")} />
     ) : storyScene === "prologue" ? (
       <StoryScene cuts={PROLOGUE_CUTS} cloneName={clone} backdrop={false} onDone={prologueDone} />
     ) : storyScene === "bridge" ? (
-      <StoryScene cuts={BRIDGE_CUTS(clone)} dim={false} cloneName={clone} backdrop={false} onDone={bridgeDone} />
+      <StoryScene cuts={BRIDGE_CUTS(clone, gameDays ?? 10)} dim={false} cloneName={clone} backdrop={false} onDone={bridgeDone} />
     ) : (
       <OnboardingWizard
-        step={step} name={name} questionIndex={questionIndex} answers={answers}
+        step={step} name={name} totalDays={gameDays ?? 10} questionIndex={questionIndex} answers={answers}
         diagnosis={diagnosis} levels={levels} catalog={catalog} busy={busy} error={error}
         allocPresetType={allocSource === "preset" ? diagnosis?.declared_type : null}
         onNameChange={setName} onNameSubmit={toDiagnosis}
@@ -460,7 +467,7 @@ export default function EmoPage() {
 
   if (state.is_over && state.ending) {
     if (!endingCutDone) {
-      return <StoryScene cuts={ENDING_PRE_CUT} dim={false} cloneName={state.clone_name} onDone={() => setEndingCutDone(true)} />;
+      return <StoryScene cuts={ENDING_PRE_CUT(state.total_days)} dim={false} cloneName={state.clone_name} onDone={() => setEndingCutDone(true)} />;
     }
     return <EndingScreen state={state} report={report} onRestart={restart} />;
   }
@@ -496,7 +503,7 @@ export default function EmoPage() {
           <TickerBar ticker={state.ticker} />
           <CoachMark
             id="tickerBar"
-            text="실제 코인의 과거 어느 열흘이에요. 언제인지는 비밀 — 끝나면 공개."
+            text={`실제 코인의 과거 어느 ${daysWord(state?.total_days ?? gameDays ?? 10)}이에요. 언제인지는 비밀 — 끝나면 공개.`}
             className="absolute left-0 top-full mt-1"
           />
         </div>
@@ -587,7 +594,7 @@ export default function EmoPage() {
         <StoryScene overlay cuts={FIRST_BOARD_CUT} onDone={() => storySceneGateRef.current?.()} />
       )}
       {storyScene === "halfway" && (
-        <StoryScene overlay cuts={HALFWAY_CUTS(state.clone_name)} onDone={() => storySceneGateRef.current?.()} />
+        <StoryScene overlay cuts={HALFWAY_CUTS(state.clone_name, state.total_days)} onDone={() => storySceneGateRef.current?.()} />
       )}
     </main>
   );

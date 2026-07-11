@@ -12,3 +12,7 @@ export const levelWeights = (levels: LevelMap): Record<string, number> => {
   CATEGORIES.forEach((c: Category) => { w[c] = LEVEL_WEIGHT[levels[c]]; });
   return w;
 };
+
+// T-66 — 게임 일수 → 자연스러운 한국어 표현("사흘"/"열흘"/그 외 "N일").
+export const daysWord = (n: number): string =>
+  n === 3 ? "사흘" : n === 10 ? "열흘" : `${n}일`;

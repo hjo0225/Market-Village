@@ -4,6 +4,7 @@
 // (편향) 괴리를 보여준다. 데이터는 GET /emo/{id}/report(disposition_report.py).
 import { DiagnosisReport as ReportData, CATEGORY_LABEL, Category } from "@/lib/emoApi";
 import { TermText } from "@/components/Term";
+import { daysWord } from "@/utils/emo";
 
 const TYPE_DESC: Record<string, string> = {
   안정형: "한 푼도 잃지 않는 것이 목표. 원금 보전 최우선.",
@@ -16,7 +17,9 @@ const TYPE_DESC: Record<string, string> = {
 // T-48d — 타임라인 결정점 종류 라벨.
 const KIND_LABEL: Record<string, string> = { scenario: "시장", place: "장소", chain: "만남" };
 
-export default function DiagnosisReport({ report }: { report: ReportData | null }) {
+export default function DiagnosisReport({
+  report, totalDays = 10,
+}: { report: ReportData | null; totalDays?: number }) {
   if (!report || !report.available) return null;
   const sa = report.self_awareness;
   const comparison = report.bias_comparison ?? [];
@@ -133,11 +136,11 @@ export default function DiagnosisReport({ report }: { report: ReportData | null 
             {report.blind_reveal_headline ? (
               <span className="text-rose-600">{report.blind_reveal_headline}</span>
             ) : (
-              <>당신의 열흘은 사실 <span className="text-rose-600">{report.blind_reveal![0].period ?? report.blind_reveal![0].date}</span>이었다</>
+              <>당신의 {daysWord(totalDays)}은 사실 <span className="text-rose-600">{report.blind_reveal![0].period ?? report.blind_reveal![0].date}</span>이었다</>
             )}
           </div>
           <p className="text-[11.5px] text-pixel-muted mb-2">
-            코인마다 서로 다른 실제 시기의 열흘을 지나왔다. 시기를 모른 채 내린 판단 — 그게 당신의 민낯이다.
+            코인마다 서로 다른 실제 시기의 {daysWord(totalDays)}을 지나왔다. 시기를 모른 채 내린 판단 — 그게 당신의 민낯이다.
           </p>
           <div className="flex flex-col gap-1 text-[12px]">
             {report.blind_reveal!.map((r) => (
